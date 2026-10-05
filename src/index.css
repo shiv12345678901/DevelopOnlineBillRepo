@@ -902,14 +902,15 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .push-group:first-child { margin-top: 2px; }
 .push-group .settings-group-label { margin: 0 2px 8px; text-transform: uppercase; letter-spacing: .04em; font-size: .68rem; }
 
-/* Key/value rows — the detail-page equivalent of settings rows */
-.insight-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 8px 15px; }
+/* Key/value rows — the detail-page equivalent of settings rows:
+   icon, then a dark title with a muted sub-line, value trailing right */
+.insight-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 15px; }
 .insight-row + .insight-row, .insight-row + .expense-row, .insight-row + .balance-row,
 .expense-row + .insight-row, .balance-row + .insight-row { border-top: 1px solid var(--line); }
-.insight-row span { color: var(--muted); font-size: .84rem; }
-.insight-row strong { display: grid; gap: 1px; justify-items: end; text-align: right; color: var(--ink); font-size: .9rem; font-weight: 600; }
-.insight-row strong i { color: var(--muted); font-size: .68rem; font-style: normal; font-weight: 500; }
-.insight-row strong .sync-dot { margin-right: 6px; }
+.insight-copy { flex: 1; display: grid; gap: 1px; min-width: 0; }
+.insight-copy strong { overflow: hidden; color: var(--ink); font-size: .92rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.insight-copy i { overflow: hidden; color: var(--muted); font-size: .72rem; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.insight-value { flex: 0 0 auto; color: var(--ink); font-size: 1rem; font-weight: 650; font-variant-numeric: tabular-nums; }
 .insight-row.action-row { justify-content: center; color: var(--blue); font-size: .92rem; font-weight: 600; text-align: center; cursor: pointer; }
 .insight-row.action-row:disabled { opacity: .5; cursor: default; }
 .insight-row.action-row:not(:disabled):active { background: rgba(120, 120, 128, .1); }
@@ -953,7 +954,6 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 :where(html.dark) .row-icon-orange { background: #ff9f0a; }
 
 .pay-flow { display: flex; align-items: center; gap: 3px; color: var(--blue); }
-.insight-row .pay-flow + span { color: var(--ink); font-size: .88rem; font-weight: 500; }
 
 .guide-platform-row { color: var(--ink); font-size: .92rem; font-weight: 600; }
 .guide-platform-row > span:last-child { display: flex; align-items: center; }

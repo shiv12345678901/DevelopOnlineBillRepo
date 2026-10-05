@@ -2051,25 +2051,39 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel 
               <>
                 <div className="insight-row">
                   <span className="row-icon row-icon-blue"><Icon name="settle" size={15} /></span>
-                  <span>Average receipt</span>
-                  <strong>{money(average, 2)}</strong>
+                  <div className="insight-copy">
+                    <strong>Average receipt</strong>
+                    <i>across {entries.length} receipt{entries.length === 1 ? "" : "s"}</i>
+                  </div>
+                  <span className="insight-value">{money(average, 2)}</span>
                 </div>
                 {largest && (
                   <div className="insight-row">
                     <span className="row-icon row-icon-orange"><Icon name="receipt" size={15} /></span>
-                    <span>Largest receipt</span>
-                    <strong>{money(largest.amount, 2)}<i>{largest.merchant || "Receipt"}</i></strong>
+                    <div className="insight-copy">
+                      <strong>Largest receipt</strong>
+                      <i>{largest.merchant || "Receipt"} · {formatDate(largest.spentOn)}</i>
+                    </div>
+                    <span className="insight-value">{money(largest.amount, 2)}</span>
                   </div>
                 )}
                 {topPayer && topPayer[1] > 0 && (
                   <div className="insight-row">
                     <span className="row-icon row-icon-green"><Icon name="people" size={15} /></span>
-                    <span>Top payer</span>
-                    <strong>{topPayer[0]}<i>{money(topPayer[1], 2)} paid</i></strong>
+                    <div className="insight-copy">
+                      <strong>Top payer</strong>
+                      <i>paid {money(topPayer[1], 2)}</i>
+                    </div>
+                    <span className="insight-value">{topPayer[0]}</span>
                   </div>
                 )}
               </>
-            ) : <div className="insight-row"><span className="row-icon row-icon-gray"><Icon name="receipt" size={15} /></span><span>Nothing recorded yet</span></div>}
+            ) : (
+              <div className="insight-row">
+                <span className="row-icon row-icon-gray"><Icon name="receipt" size={15} /></span>
+                <div className="insight-copy"><strong>No receipts yet</strong></div>
+              </div>
+            )}
           </div>
         </section>
 
@@ -2083,13 +2097,16 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel 
                   <Icon name="arrow" size={14} />
                   <Avatar name={payment.to} size="sm" />
                 </span>
-                <span>{payment.from} pays {payment.to}</span>
-                <strong>{money(payment.amount, 2)}</strong>
+                <div className="insight-copy">
+                  <strong>{payment.from} pays {payment.to}</strong>
+                  <i>suggested payment</i>
+                </div>
+                <span className="insight-value">{money(payment.amount, 2)}</span>
               </div>
             )) : (
               <div className="insight-row">
                 <span className="row-icon row-icon-green"><Icon name="check" size={15} /></span>
-                <span>Everyone is square</span>
+                <div className="insight-copy"><strong>Everyone is square</strong></div>
               </div>
             )}
           </div>
