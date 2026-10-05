@@ -811,30 +811,8 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 
 .guide-body { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 18px 18px calc(30px + env(safe-area-inset-bottom)); }
 .guide-intro { margin: 0 0 18px; color: var(--muted); font-size: .84rem; line-height: 1.45; }
-.guide-installed {
-  display: flex; align-items: center; gap: 7px; margin-bottom: 14px; padding: 11px 13px;
-  color: #1d8a3a; border: 1px solid rgba(52, 199, 89, .35); border-radius: 12px; background: rgba(52, 199, 89, .12);
-  font-size: .78rem; font-weight: 600;
-}
-.guide-installed svg { color: #34c759; }
 
-.guide-section {
-  overflow: hidden; margin-bottom: 14px;
-  border: 1px solid var(--line); border-radius: 16px;
-  background: var(--card);
-}
-.guide-platform { display: flex; align-items: center; gap: 11px; padding: 13px 15px; border-bottom: 1px solid var(--line); }
-.guide-platform-icon { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; color: #fff; border-radius: 10px; background: linear-gradient(180deg, #4da2ff, #0a6fe8); }
-.guide-platform:last-child .guide-platform-icon { background: linear-gradient(180deg, #5ec57a, #2f9e57); }
-.guide-platform-copy { display: grid; gap: 1px; min-width: 0; flex: 1; }
-.guide-platform-copy strong { font-size: .95rem; font-weight: 600; }
-.guide-platform-copy small { color: var(--muted); font-size: .7rem; }
-.guide-badge { padding: 3px 9px; color: var(--blue); border-radius: 99px; background: rgba(0, 122, 255, .1); font-size: .66rem; font-weight: 650; }
 
-.guide-steps { display: grid; gap: 13px; margin: 0; padding: 15px; list-style: none; counter-reset: step; }
-.guide-steps li { display: flex; align-items: flex-start; gap: 11px; }
-.guide-steps p { margin: 1px 0 0; color: var(--ink); font-size: .84rem; line-height: 1.45; }
-.guide-steps b { font-weight: 650; }
 .guide-step-num {
   display: grid; width: 21px; height: 21px; flex: 0 0 auto; margin-top: 1px; place-items: center;
   color: var(--blue); border-radius: 50%; background: rgba(0, 122, 255, .12);
@@ -849,8 +827,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .guide-footnote { margin: 4px 2px 0; color: var(--muted); font-size: .72rem; line-height: 1.4; text-align: center; }
 
 :where(html.dark) .install-guide { background: #000000; }
-:where(html.dark) .guide-platform-icon { background: linear-gradient(180deg, #3d8fe8, #0a5fc4); }
-:where(html.dark) .guide-installed { color: #4cd964; }
+
 @media (prefers-reduced-motion: reduce) {
   .install-guide, .install-guide.closing { animation: none; }
 }
@@ -902,15 +879,11 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 
 /* ================= Cycle detail page ================= */
 .cycle-page .guide-body { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
-.cycle-hero { min-height: 0; padding: 22px; }
-.cycle-hero .balance-meta { text-wrap: balance; }
-.cycle-inactive-chip { margin-left: auto; padding: 4px 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; font-size: .66rem; font-weight: 650; }
 .insight-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; font-size: .84rem; }
 .insight-row + .insight-row { border-top: 1px solid var(--line); }
 .insight-row span { color: var(--muted); }
 .insight-row strong { display: grid; gap: 1px; justify-items: end; text-align: right; font-size: .88rem; font-weight: 600; }
 .insight-row strong i { color: var(--muted); font-size: .68rem; font-style: normal; font-weight: 500; }
-.cycle-page .primary-button { margin-top: 4px; }
 
 /* ================= All Cycles switcher page ================= */
 .cycles-page-row { padding-right: 8px; }
@@ -923,3 +896,31 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .cycle-detail-button:active { opacity: .5; }
 :where(html.dark) .cycle-status-chip.live { color: #4cd964; }
 :where(html.dark) .cycles-page-row.active { background: rgba(10, 132, 255, .12); }
+
+/* ================= Pushed pages: flat grouped lists (settings-native) ================= */
+.push-group { margin: 22px 0 0; }
+.push-group:first-child { margin-top: 2px; }
+.push-group .settings-group-label { margin: 0 2px 8px; text-transform: uppercase; letter-spacing: .04em; font-size: .68rem; }
+
+/* Key/value rows — the detail-page equivalent of settings rows */
+.insight-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 8px 15px; }
+.insight-row + .insight-row, .insight-row + .expense-row, .insight-row + .balance-row,
+.expense-row + .insight-row, .balance-row + .insight-row { border-top: 1px solid var(--line); }
+.insight-row span { color: var(--muted); font-size: .84rem; }
+.insight-row strong { display: grid; gap: 1px; justify-items: end; text-align: right; color: var(--ink); font-size: .9rem; font-weight: 600; }
+.insight-row strong i { color: var(--muted); font-size: .68rem; font-style: normal; font-weight: 500; }
+.insight-row strong .sync-dot { margin-right: 6px; }
+.insight-row.action-row { justify-content: center; color: var(--blue); font-size: .92rem; font-weight: 600; text-align: center; cursor: pointer; }
+.insight-row.action-row:disabled { opacity: .5; cursor: default; }
+.insight-row.action-row:not(:disabled):active { background: rgba(120, 120, 128, .1); }
+:where(html.dark) .insight-row.action-row { color: #64a8ff; }
+
+/* Install guide steps as list rows */
+.guide-step { display: flex; align-items: flex-start; gap: 11px; padding: 12px 15px; }
+.guide-step + .guide-step { border-top: 1px solid var(--line); }
+.guide-step p { margin: 2px 0 0; color: var(--ink); font-size: .84rem; line-height: 1.45; }
+.guide-step b { font-weight: 650; }
+.guide-step .guide-step-num { margin-top: 1px; }
+.installed-row span { display: flex; align-items: center; gap: 7px; color: #1d8a3a; font-size: .84rem; font-weight: 600; }
+.installed-row svg { color: #34c759; flex: 0 0 auto; }
+:where(html.dark) .installed-row span { color: #4cd964; }

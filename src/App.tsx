@@ -1881,32 +1881,24 @@ function InstallGuide({ onClose }: { onClose: () => void }) {
       </header>
       <div className="guide-body">
         {installed && (
-          <div className="guide-installed"><Icon name="check" size={16} />Grocery Ledger is already on this device's Home Screen</div>
+          <div className="settings-list guide-installed-card">
+            <div className="insight-row installed-row"><span><Icon name="check" size={15} />Grocery Ledger is already installed on this device</span></div>
+          </div>
         )}
-        <p className="guide-intro">
-          Install the app for a full-screen experience that opens straight from your Home Screen — no app store required.
-        </p>
         {sections.map((section) => (
-          <section className="guide-section" key={section.id}>
-            <div className="guide-platform">
-              <span className="guide-platform-icon">{section.glyph}</span>
-              <div className="guide-platform-copy">
-                <strong>{section.name}</strong>
-                <small>{section.requires}</small>
-              </div>
-              {section.id === detected && <span className="guide-badge">This device</span>}
-            </div>
-            <ol className="guide-steps">
+          <section className="push-group" key={section.id}>
+            <p className="settings-group-label">{section.name} · {section.requires}</p>
+            <div className="settings-list">
               {section.steps.map((step, index) => (
-                <li key={index}>
+                <div className="guide-step" key={index}>
                   <span className="guide-step-num">{index + 1}</span>
                   {step}
-                </li>
+                </div>
               ))}
-            </ol>
+            </div>
           </section>
         ))}
-        <p className="guide-footnote">Your receipts and settlement cycles stay in sync automatically, installed or not.</p>
+        <p className="guide-footnote">Receipts and settlement cycles stay in sync automatically, installed or not.</p>
       </div>
     </div>
   );
@@ -2000,9 +1992,7 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel 
   const average = entries.length ? summary.total / entries.length : 0;
   const largest = entries.reduce<LedgerEntry | null>((max, entry) => (!max || entry.amount > max.amount ? entry : max), null);
   const topPayer = Object.entries(summary.paidBy).sort(([, a], [, b]) => b - a)[0];
-  const dateRange = cycle.endsOn
-    ? `${cycle.startsOn} – ${cycle.endsOn}`
-    : `Since ${cycle.startsOn}`;
+  const dateRange = cycle.endsOn ? `${cycle.startsOn} – ${cycle.endsOn}` : `${cycle.startsOn} – today`;
   const formatDate = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 
   return (
@@ -2022,66 +2012,55 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel 
         <span className="guide-nav-spacer" aria-hidden="true" />
       </header>
       <div className="guide-body">
-        <section className="balance-card cycle-hero">
-          <span className="balance-ring balance-ring-one" />
-          <span className="balance-ring balance-ring-two" />
-          <div className="card-topline">
-            <strong className="cycle-name">{cycle.name}</strong>
-            <span className="receipt-count">{cycle.endsOn ? "Closed" : "Live"}</span>
-          </div>
-          <div className="balance-value">{money(summary.total, 2)}</div>
-          <p className="balance-meta">
-            {money(summary.share, 2)} each · {entries.length} receipt{entries.length === 1 ? "" : "s"} · {dateRange}
-          </p>
-          <div className="balance-footer">
-            <div className="avatar-stack">
-              {cycle.members.map((member) => <Avatar name={member} size="sm" key={member} />)}
+        <section className="push-group">
+          <p className="settings-group-label">Summary</p>
+          <div className="settings-list">
+            <div className="insight-row"><span>Total spent</span><strong>{money(summary.total, 2)}</strong></div>
+            <div className="insight-row"><span>Each share</span><strong>{money(summary.share, 2)}</strong></div>
+            <div className="insight-row"><span>Receipts</span><strong>{entries.length}</strong></div>
+            <div className="insight-row"><span>Period</span><strong>{dateRange}</strong></div>
+            <div className="insight-row">
+              <span>Status</span>
+              <strong>{cycle.endsOn ? "Closed" : <><i className="sync-dot" />Live</>}</strong>
             </div>
-            {!isActive && <span className="cycle-inactive-chip">Inactive</span>}
           </div>
         </section>
 
-        <section className="section">
-          <div className="section-title"><div><p className="kicker">Insights</p><h2>At a glance</h2></div></div>
-          <div className="list-card">
-            <div className="insight-row"><span>Average per receipt</span><strong>{money(average, 2)}</strong></div>
-            {largest && (
-              <div className="insight-row">
-                <span>Largest receipt</span>
-                <strong>{money(largest.amount, 2)}<i>{largest.merchant || "Receipt"} · {formatDate(largest.spentOn)}</i></strong>
-              </div>
-            )}
-            {topPayer && topPayer[1] > 0 && (
-              <div className="insight-row"><span>Top payer</span><strong>{topPayer[0]}<i>{money(topPayer[1], 2)} paid</i></strong></div>
-            )}
-            {entries.length > 1 && (
-              <div className="insight-row">
-                <span>Period covered</span>
-                <strong>{formatDate(entries[entries.length - 1].spentOn)}<i>to {formatDate(entries[0].spentOn)}</i></strong>
-              </div>
-            )}
-            {entries.length === 0 && <div className="insight-row"><span>No receipts yet</span><strong>—</strong></div>}
+        <section className="push-group">
+          <p className="settings-group-label">Insights</p>
+          <div className="settings-list">
+            {entries.length ? (
+              <>
+                <div className="insight-row"><span>Average receipt</span><strong>{money(average, 2)}</strong></div>
+                {largest && (
+                  <div className="insight-row">
+                    <span>Largest receipt</span>
+                    <strong>{money(largest.amount, 2)}<i>{largest.merchant || "Receipt"} · {formatDate(largest.spentOn)}</i></strong>
+                  </div>
+                )}
+                {topPayer && topPayer[1] > 0 && (
+                  <div className="insight-row"><span>Top payer</span><strong>{topPayer[0]}<i>{money(topPayer[1], 2)} paid</i></strong></div>
+                )}
+              </>
+            ) : <div className="insight-row"><span>Nothing recorded yet</span></div>}
           </div>
         </section>
 
-        <section className="section">
-          <div className="section-title"><div><p className="kicker">Settlement</p><h2>Square everything up</h2></div></div>
-          <div className="transfer-list">
+        <section className="push-group">
+          <p className="settings-group-label">Settlement</p>
+          <div className="settings-list">
             {summary.settlements.length ? summary.settlements.map((payment) => (
-              <div className="transfer-card" key={`${payment.from}-${payment.to}`}>
-                <div className="transfer-avatars"><Avatar name={payment.from} size="sm" /><span><Icon name="arrow" size={14} /></span><Avatar name={payment.to} size="sm" /></div>
-                <div className="transfer-copy"><strong>{payment.from} pays {payment.to}</strong><span>Settles their balance</span></div>
-                <strong>{money(payment.amount)}</strong>
+              <div className="insight-row" key={`${payment.from}-${payment.to}`}>
+                <span>{payment.from} pays {payment.to}</span>
+                <strong>{money(payment.amount, 2)}</strong>
               </div>
-            )) : (
-              <div className="transfer-card"><div className="all-square"><Icon name="check" /><strong>Everyone is square</strong></div></div>
-            )}
+            )) : <div className="insight-row"><span>Everyone is square</span><Icon name="check" size={15} /></div>}
           </div>
         </section>
 
-        <section className="section">
-          <div className="section-title"><div><p className="kicker">Breakdown</p><h2>Member balances</h2></div><span className="subtle">{money(summary.share)} share</span></div>
-          <div className="list-card">
+        <section className="push-group">
+          <p className="settings-group-label">Member balances</p>
+          <div className="settings-list">
             {cycle.members.map((member, index) => (
               <div className="balance-row" key={member}>
                 <Avatar name={member} size="sm" />
@@ -2093,9 +2072,9 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel 
           </div>
         </section>
 
-        <section className="section">
-          <div className="section-title"><div><p className="kicker">Activity</p><h2>All receipts</h2></div><span className="subtle">{entries.length} total</span></div>
-          <div className="list-card">
+        <section className="push-group">
+          <p className="settings-group-label">Receipts</p>
+          <div className="settings-list">
             {entries.length ? entries.map((entry) => (
               <div className="expense-row" key={entry.id}>
                 <Avatar name={entry.payer} size="sm" />
@@ -2103,22 +2082,26 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel 
                   <strong>{entry.merchant || entry.note || "Grocery receipt"}</strong>
                   <span>{entry.payer} · {new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</span>
                 </div>
-                <strong className="expense-amount">{money(entry.amount)}</strong>
+                <strong className="expense-amount">{money(entry.amount, 2)}</strong>
               </div>
             )) : <div className="insight-row"><span>Nothing recorded in this cycle yet</span></div>}
           </div>
         </section>
 
-        {!isActive && (
-          <button className="primary-button" disabled={saving} onClick={onSetActive}>
-            {saving ? "Switching…" : "Set as active cycle"}
-          </button>
-        )}
-        {cycle.endsOn && (
-          <button className="tinted-button" disabled={saving} onClick={() => onReopen(cycle.id)}>
-            {saving ? "Working…" : "Reopen cycle"}
-          </button>
-        )}
+        <section className="push-group">
+          <div className="settings-list">
+            {!isActive && (
+              <button className="insight-row action-row" disabled={saving} onClick={onSetActive}>
+                {saving ? "Switching…" : "Set as Active Cycle"}
+              </button>
+            )}
+            {cycle.endsOn && (
+              <button className="insight-row action-row" disabled={saving} onClick={() => onReopen(cycle.id)}>
+                {saving ? "Working…" : "Reopen Cycle"}
+              </button>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );
