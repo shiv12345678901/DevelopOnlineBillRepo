@@ -73,9 +73,9 @@ const greeting = () => {
   return "Good evening.";
 };
 const money = (value: number, decimals = 0) =>
-  value.toLocaleString("en-AU", {
+  value.toLocaleString("en-IN", {
     style: "currency",
-    currency: "AUD",
+    currency: "INR",
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
@@ -557,7 +557,7 @@ export default function App() {
     const cycleNames = Object.fromEntries(cycles.map((item) => [item.id, item.name]));
     const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
     const rows = [
-      ["Cycle", "Merchant", "Date", "Paid by", "Amount AUD", "Note"],
+      ["Cycle", "Merchant", "Date", "Paid by", "Amount INR", "Note"],
       ...entries.map((entry) => [
         cycleNames[entry.cycleId] ?? "",
         entry.merchant ?? "",
@@ -792,7 +792,7 @@ function HomeView({ cycle, entries, total, share, onCamera, onSettle, onDelete }
               <Avatar name={entry.payer} size="sm" />
               <div className="expense-main">
                 <strong>{entry.merchant || entry.note || "Grocery receipt"}</strong>
-                <span>{entry.payer} · {new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</span>
+                <span>{entry.payer} · {new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
               </div>
               <strong className="expense-amount">{money(entry.amount)}</strong>
               <button className="entry-delete" onClick={() => onDelete(entry)} aria-label={`Delete ${entry.merchant || entry.note || "receipt"} entry`}>
@@ -932,7 +932,7 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
           <div className="settings-row">
             <span className="settings-icon settings-icon-green"><Icon name="settle" size={19} /></span>
             <span className="settings-row-copy"><strong>Currency</strong></span>
-            <span className="settings-row-value">AUD</span>
+            <span className="settings-row-value">INR</span>
           </div>
           <div className="settings-row">
             <span className="settings-icon settings-icon-cyan"><Icon name="receipt" size={19} /></span>

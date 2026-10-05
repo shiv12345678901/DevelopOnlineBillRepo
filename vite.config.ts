@@ -2,14 +2,63 @@ import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
+import { readFileSync } from 'node:fs'
+import { handleOcr } from './api/ocr-handler.mjs'
 
 import siteConfiguration from './.figma/make/site.json'
+
+
+// Loads .env.local into process.env for the dev-server OCR middleware
+// (Vite only exposes VITE_-prefixed vars on its own).
+function loadLocalEnv() {
+  try {
+    const raw = readFileSync(path.resolve(__dirname, '.env.local'), 'utf8')
+    for (const line of raw.split('\n')) {
+      const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
+      if (match && !process.env[match[1]]) process.env[match[1]] = match[2]
+    }
+  } catch {
+    // no .env.local — OCR will report a clear error if called
+  }
+}
+
+/** Dev-only: serves POST /api/ocr so `vite dev` works without Netlify CLI. */
+function ocrDevServer(): Plugin {
+  return {
+    name: 'ocr-dev-server',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/ocr', (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.end(JSON.stringify({ error: 'POST only' }))
+          return
+        }
+        let raw = ''
+        req.on('data', (chunk: Buffer) => { raw += chunk })
+        req.on('end', async () => {
+          try {
+            const body = JSON.parse(raw || '{}')
+            const { status, body: payload } = await handleOcr(body)
+            res.statusCode = status
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify(payload))
+          } catch (err) {
+            res.statusCode = 500
+            res.end(JSON.stringify({ error: (err as Error).message }))
+          }
+        })
+      })
+    },
+  }
+}
 
 
 // Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
   const emitSourcemaps = mode === 'development'
+  loadLocalEnv()
 
   return {
     base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/',
@@ -24,6 +73,7 @@ react(),
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
+      ocrDevServer(),
     ],
     resolve: {
       alias: {
