@@ -229,9 +229,8 @@ button:not(:disabled):active { transform: scale(.97); transition: transform 80ms
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 10px); } }
 
 .home-view > .balance-card { animation: panel-enter .48s cubic-bezier(.2,.82,.25,1) both; }
-.home-view > .payer-section { animation: panel-enter .5s .045s cubic-bezier(.2,.82,.25,1) both; }
-.home-view > .scan-card { animation: panel-enter .5s .09s cubic-bezier(.2,.82,.25,1) both; }
-.home-view > .activity-section { animation: panel-enter .5s .135s cubic-bezier(.2,.82,.25,1) both; }
+.home-view > .scan-card { animation: panel-enter .5s .045s cubic-bezier(.2,.82,.25,1) both; }
+.home-view > .activity-section { animation: panel-enter .5s .09s cubic-bezier(.2,.82,.25,1) both; }
 
 @media (min-width: 720px) {
   body { background: #ececf1; }

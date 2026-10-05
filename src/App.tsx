@@ -298,7 +298,6 @@ export default function App() {
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [payer, setPayer] = useState("Shiva");
   const [pending, setPending] = useState<PendingReceipt[]>([]);
   const [toast, setToast] = useState("");
   const [showNewCycle, setShowNewCycle] = useState(false);
@@ -314,10 +313,6 @@ export default function App() {
     [entries, cycle?.id],
   );
   const summary = useMemo(() => computeSettlements(cycleEntries, cycle?.members ?? []), [cycleEntries, cycle?.members]);
-
-  useEffect(() => {
-    if (cycle && !cycle.members.includes(payer)) setPayer(cycle.members[0] ?? "");
-  }, [cycle, payer]);
 
   const fetchLedger = useCallback(async () => {
     setSyncStatus("loading");
@@ -360,7 +355,7 @@ export default function App() {
       id: `${Date.now()}-${Math.random()}`,
       file,
       preview: URL.createObjectURL(file),
-      payer,
+      payer: "",
       amount: "",
       note: "",
       spentOn: today(),
@@ -392,7 +387,7 @@ export default function App() {
 
   const saveReceipts = async () => {
     if (!cycle) return;
-    const valid = pending.filter((item) => Number(item.amount) > 0);
+    const valid = pending.filter((item) => Number(item.amount) > 0 && item.payer);
     if (!valid.length) return;
     setSyncStatus("saving");
     const input = valid.map((item) => ({
@@ -472,7 +467,6 @@ export default function App() {
       const created = await ledgerRepository.createCycle<Cycle>({ name, members, startsOn, endsOn: null });
       setCycles((current) => [created, ...current]);
       setActiveId(created.id);
-      setPayer(created.members[0]);
       setShowNewCycle(false);
       setSyncStatus("online");
       setTab("home");
@@ -525,8 +519,6 @@ export default function App() {
             entries={cycleEntries}
             total={summary.total}
             share={summary.share}
-            payer={payer}
-            setPayer={setPayer}
             onCamera={() => fileInput.current?.click()}
             onSettle={() => setTab("settle")}
             onDelete={deleteEntry}
@@ -597,13 +589,11 @@ export default function App() {
   );
 }
 
-function HomeView({ cycle, entries, total, share, payer, setPayer, onCamera, onSettle, onDelete }: {
+function HomeView({ cycle, entries, total, share, onCamera, onSettle, onDelete }: {
   cycle: Cycle;
   entries: LedgerEntry[];
   total: number;
   share: number;
-  payer: string;
-  setPayer: (value: string) => void;
   onCamera: () => void;
   onSettle: () => void;
   onDelete: (entry: LedgerEntry) => void;
@@ -624,21 +614,6 @@ function HomeView({ cycle, entries, total, share, payer, setPayer, onCamera, onS
             {cycle.members.map((member) => <Avatar name={member} size="sm" key={member} />)}
           </div>
           <button className="settle-pill" onClick={onSettle}>Settle up <Icon name="arrow" size={18} /></button>
-        </div>
-      </section>
-
-      <section className="section payer-section">
-        <div className="section-title">
-          <h2>Who paid?</h2>
-          <span className="subtle">Tap to switch</span>
-        </div>
-        <div className="payer-strip">
-          {cycle.members.map((member) => (
-            <button key={member} className={`payer-card ${payer === member ? "selected" : ""}`} onClick={() => setPayer(member)}>
-              <span className="avatar-wrap"><Avatar name={member} />{payer === member && <span className="mini-check"><Icon name="check" size={10} /></span>}</span>
-              <span>{member}</span>
-            </button>
-          ))}
         </div>
       </section>
 
@@ -809,7 +784,9 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
   onSave: () => Promise<void>;
   saving: boolean;
 }) {
-  const canSave = receipts.some((receipt) => Number(receipt.amount) > 0);
+  const canSave = receipts.length > 0 && receipts.every(
+    (receipt) => receipt.status === "ready" && Number(receipt.amount) > 0 && receipt.payer,
+  );
   const { sheetRef, dismiss, dragProps } = useSheetGesture(onClose);
   return (
     <div className="sheet-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && dismiss()}>
@@ -828,7 +805,13 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
                 <div className="receipt-fields">
                   <label className="amount-field"><span>Total amount</span><div><b>₹</b><input autoFocus inputMode="decimal" type="number" placeholder="0.00" value={receipt.amount} onChange={(event) => onUpdate(receipt.id, { amount: event.target.value })} /></div></label>
                   <div className="field-grid">
-                    <label><span>Paid by</span><select value={receipt.payer} onChange={(event) => onUpdate(receipt.id, { payer: event.target.value })}>{members.map((member) => <option key={member}>{member}</option>)}</select></label>
+                    <label>
+                      <span>Who paid?</span>
+                      <select value={receipt.payer} onChange={(event) => onUpdate(receipt.id, { payer: event.target.value })}>
+                        <option value="" disabled>Choose a person</option>
+                        {members.map((member) => <option key={member} value={member}>{member}</option>)}
+                      </select>
+                    </label>
                     <label><span>Date</span><input type="date" value={receipt.spentOn} onChange={(event) => onUpdate(receipt.id, { spentOn: event.target.value })} /></label>
                   </div>
                   <label><span>Note <i>optional</i></span><input placeholder="e.g. Weekly shop" value={receipt.note} onChange={(event) => onUpdate(receipt.id, { note: event.target.value })} /></label>
