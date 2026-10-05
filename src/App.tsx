@@ -361,6 +361,7 @@ export default function App() {
   const [themePref, setThemePref] = useState<ThemePref>(() => getThemePref());
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [detailCycleId, setDetailCycleId] = useState<string | null>(null);
+  const [showCyclesPage, setShowCyclesPage] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   // False until the first successful fetch — the initial load shows the
@@ -378,7 +379,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId);
+  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId) || showCyclesPage;
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
 
@@ -953,12 +954,12 @@ export default function App() {
           <SettingsView
             cycles={cycles}
             activeId={activeId}
-            onReopen={reopenCycle}
             onNew={() => setShowNewCycle(true)}
             onRefresh={refreshLedger}
             onExport={exportLedger}
             onInstall={installApp}
             onOpenCycle={setDetailCycleId}
+            onOpenCycles={() => setShowCyclesPage(true)}
             syncStatus={syncStatus}
             themePref={themePref}
             onThemeChange={setThemePref}
@@ -1049,6 +1050,18 @@ export default function App() {
 
       {showInstallGuide && <InstallGuide onClose={() => setShowInstallGuide(false)} />}
 
+      {showCyclesPage && (
+        <CyclesPage
+          cycles={cycles}
+          activeId={activeId}
+          entries={entries}
+          saving={syncStatus === "saving"}
+          onSwitch={selectCycle}
+          onOpenCycle={setDetailCycleId}
+          onClose={() => setShowCyclesPage(false)}
+        />
+      )}
+
       {detailCycleId && (() => {
         const detailCycle = cycles.find((item) => item.id === detailCycleId);
         if (!detailCycle) return null;
@@ -1062,11 +1075,13 @@ export default function App() {
             summary={computeSettlements(detailEntries, detailCycle.members)}
             isActive={detailCycle.id === activeId}
             saving={syncStatus === "saving"}
+            backLabel={showCyclesPage ? "Cycles" : "Settings"}
             onClose={() => setDetailCycleId(null)}
             onSetActive={async () => {
               await selectCycle(detailCycle.id);
               setDetailCycleId(null);
             }}
+            onReopen={reopenCycle}
           />
         );
       })()}
@@ -1557,15 +1572,15 @@ function EditSheet({ entry, members, saving, onClose, onSave }: {
   );
 }
 
-function SettingsView({ cycles, activeId, onReopen, onNew, onRefresh, onExport, onInstall, onOpenCycle, syncStatus, themePref, onThemeChange, lastSyncedAt, isRefreshing }: {
+function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall, onOpenCycle, onOpenCycles, syncStatus, themePref, onThemeChange, lastSyncedAt, isRefreshing }: {
   cycles: Cycle[];
   activeId: string | null;
-  onReopen: (id: string) => void;
   onNew: () => void;
   onRefresh: () => void;
   onExport: () => void;
   onInstall: () => void;
   onOpenCycle: (id: string) => void;
+  onOpenCycles: () => void;
   syncStatus: "loading" | "online" | "saving" | "error";
   themePref: ThemePref;
   onThemeChange: (pref: ThemePref) => void;
@@ -1578,6 +1593,8 @@ function SettingsView({ cycles, activeId, onReopen, onNew, onRefresh, onExport, 
     const timer = window.setInterval(() => setTick((value) => value + 1), 30_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  const activeCycle = cycles.find((item) => item.id === activeId) ?? null;
 
   const busySync = syncStatus === "loading" || isRefreshing;
   const syncChip = busySync
@@ -1626,18 +1643,22 @@ function SettingsView({ cycles, activeId, onReopen, onNew, onRefresh, onExport, 
             <span className="settings-row-copy"><strong>Start New Cycle</strong></span>
             <Icon name="chevron" size={17} />
           </button>
-          {cycles.map((cycle) => (
-            <div className={`settings-row settings-cycle-row ${cycle.id === activeId ? "active" : ""}`} key={cycle.id}>
-              <button className="settings-row-main" onClick={() => onOpenCycle(cycle.id)}>
+          {activeCycle && (
+            <div className="settings-row settings-cycle-row" key={activeCycle.id}>
+              <button className="settings-row-main" onClick={() => onOpenCycle(activeCycle.id)}>
                 <span className="settings-icon settings-icon-blue"><Icon name="calendar" size={19} /></span>
-                <span className="settings-row-copy"><strong>{cycle.name}</strong><small>{cycle.startsOn}{cycle.endsOn ? ` – ${cycle.endsOn}` : " · Live"}</small></span>
+                <span className="settings-row-copy"><strong>{activeCycle.name}</strong><small>{activeCycle.startsOn}{activeCycle.endsOn ? ` – ${activeCycle.endsOn}` : " · Live"}</small></span>
               </button>
-              {cycle.endsOn
-                ? <button className="settings-row-value settings-action-value" onClick={() => onReopen(cycle.id)}>Reopen</button>
-                : <span className="settings-row-value">{cycle.id === activeId ? "Active" : "Open"}</span>}
+              <span className="settings-row-value">Active</span>
               <Icon name="chevron" size={17} />
             </div>
-          ))}
+          )}
+          <button className="settings-row" onClick={onOpenCycles}>
+            <span className="settings-icon settings-icon-indigo"><Icon name="settle" size={19} /></span>
+            <span className="settings-row-copy"><strong>All Cycles</strong></span>
+            <span className="settings-row-value">{cycles.length}</span>
+            <Icon name="chevron" size={17} />
+          </button>
         </div>
       </section>
 
@@ -1891,15 +1912,82 @@ function InstallGuide({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Pushed page: every cycle as an account-style switcher list. */
+function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, onClose }: {
+  cycles: Cycle[];
+  activeId: string | null;
+  entries: LedgerEntry[];
+  saving: boolean;
+  onSwitch: (id: string) => Promise<void>;
+  onOpenCycle: (id: string) => void;
+  onClose: () => void;
+}) {
+  const swipe = useEdgeSwipeBack(onClose);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const countFor = (id: string) => entries.filter((entry) => entry.cycleId === id).length;
+
+  return (
+    <div
+      className="install-guide cycles-page"
+      ref={swipe.ref}
+      onPointerDown={swipe.onPointerDown}
+      onPointerMove={swipe.onPointerMove}
+      onPointerUp={swipe.onPointerUp}
+      onPointerCancel={swipe.onPointerCancel}
+      onClickCapture={swipe.onClickCapture}
+      role="dialog" aria-modal="true" aria-label="All cycles"
+    >
+      <header className="guide-nav">
+        <button className="guide-back" onClick={onClose}><Icon name="chevron" size={20} />Settings</button>
+        <strong>All Cycles</strong>
+        <span className="guide-nav-spacer" aria-hidden="true" />
+      </header>
+      <div className="guide-body">
+        <p className="guide-intro">Tap a cycle to make it the active one everywhere — new receipts land there.</p>
+        <div className="settings-list">
+          {cycles.map((cycle) => {
+            const active = cycle.id === activeId;
+            return (
+              <div className={`settings-row cycles-page-row ${active ? "active" : ""}`} key={cycle.id}>
+                <button className="settings-row-main" disabled={saving} onClick={() => onSwitch(cycle.id)}>
+                  <span className="settings-icon settings-icon-blue"><Icon name="calendar" size={19} /></span>
+                  <span className="settings-row-copy">
+                    <strong>{cycle.name}</strong>
+                    <small>{cycle.endsOn ? `${cycle.startsOn} – ${cycle.endsOn}` : `Since ${cycle.startsOn}`} · {countFor(cycle.id)} receipt{countFor(cycle.id) === 1 ? "" : "s"}</small>
+                  </span>
+                  <span className={`cycle-status-chip ${cycle.endsOn ? "closed" : "live"}`}>{cycle.endsOn ? "Closed" : "Live"}</span>
+                  {active && <span className="cycle-check"><Icon name="check" size={16} /></span>}
+                </button>
+                <button className="cycle-detail-button" onClick={() => onOpenCycle(cycle.id)} aria-label={`Open ${cycle.name} details`}>
+                  <Icon name="chevron" size={17} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <p className="guide-footnote">Closed cycles stay read-only — balances and history remain viewable.</p>
+      </div>
+    </div>
+  );
+}
+
 /** Pushed page: every detail and insight for one cycle, on a single scroll. */
-function CycleDetailPage({ cycle, entries, summary, isActive, saving, onClose, onSetActive }: {
+function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel = "Settings", onClose, onSetActive, onReopen }: {
   cycle: Cycle;
   entries: LedgerEntry[];
   summary: ReturnType<typeof computeSettlements>;
   isActive: boolean;
   saving: boolean;
+  backLabel?: string;
   onClose: () => void;
   onSetActive: () => Promise<void>;
+  onReopen: (id: string) => Promise<void>;
 }) {
   const swipe = useEdgeSwipeBack(onClose);
 
@@ -1929,7 +2017,7 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, onClose, o
       role="dialog" aria-modal="true" aria-label={`${cycle.name} details`}
     >
       <header className="guide-nav">
-        <button className="guide-back" onClick={onClose}><Icon name="chevron" size={20} />Settings</button>
+        <button className="guide-back" onClick={onClose}><Icon name="chevron" size={20} />{backLabel}</button>
         <strong>Cycle details</strong>
         <span className="guide-nav-spacer" aria-hidden="true" />
       </header>
@@ -2024,6 +2112,11 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, onClose, o
         {!isActive && (
           <button className="primary-button" disabled={saving} onClick={onSetActive}>
             {saving ? "Switching…" : "Set as active cycle"}
+          </button>
+        )}
+        {cycle.endsOn && (
+          <button className="tinted-button" disabled={saving} onClick={() => onReopen(cycle.id)}>
+            {saving ? "Working…" : "Reopen cycle"}
           </button>
         )}
       </div>

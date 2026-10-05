@@ -911,3 +911,15 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .insight-row strong { display: grid; gap: 1px; justify-items: end; text-align: right; font-size: .88rem; font-weight: 600; }
 .insight-row strong i { color: var(--muted); font-size: .68rem; font-style: normal; font-weight: 500; }
 .cycle-page .primary-button { margin-top: 4px; }
+
+/* ================= All Cycles switcher page ================= */
+.cycles-page-row { padding-right: 8px; }
+.cycles-page-row.active { background: rgba(0, 122, 255, .05); }
+.cycle-status-chip { padding: 3px 9px; border-radius: 99px; font-size: .66rem; font-weight: 650; }
+.cycle-status-chip.live { color: #1d8a3a; background: rgba(52, 199, 89, .13); }
+.cycle-status-chip.closed { color: var(--muted); background: rgba(120, 120, 128, .12); }
+.cycle-check { display: grid; place-items: center; width: 26px; height: 26px; margin-left: 2px; color: var(--blue); }
+.cycle-detail-button { display: grid; place-items: center; width: 40px; height: 44px; flex: 0 0 auto; color: #a5a9b2; border: 0; background: transparent; cursor: pointer; }
+.cycle-detail-button:active { opacity: .5; }
+:where(html.dark) .cycle-status-chip.live { color: #4cd964; }
+:where(html.dark) .cycles-page-row.active { background: rgba(10, 132, 255, .12); }
