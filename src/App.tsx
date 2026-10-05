@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { ledgerRepository, scanReceipt, uploadReceipt } from "./api";
+import { ledgerRepository, scanReceipt, uploadReceipt, fetchPreferences, savePreferences, type Preferences } from "./api";
 import { ocrOnDevice } from "./receipt-ocr";
 import { applyTheme, getThemePref, watchSystemTheme, type ThemePref } from "./theme";
 import { loadLedgerCache, saveLedgerCache } from "./ledger-cache";
@@ -67,8 +67,19 @@ type IconName =
 
 const GROUP_NAME = "Rockdale Homies";
 const LAST_SYNC_KEY = "rockdale-last-sync";
+const DEVICE_KEY = "rockdale-device-id";
 // A cache younger than this is served without touching the network.
 const CACHE_TTL_MS = 60_000;
+
+/** Stable per-installation id, used as the preferences key in the database. */
+function deviceId(): string {
+  let id = localStorage.getItem(DEVICE_KEY);
+  if (!id) {
+    id = crypto.randomUUID?.() ?? `dev-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(DEVICE_KEY, id);
+  }
+  return id;
+}
 
 /** Compact relative stamp for the Cloud Sync row. */
 function timeAgo(timestamp: number): string {
@@ -359,6 +370,9 @@ export default function App() {
     const stored = Number(localStorage.getItem(LAST_SYNC_KEY));
     return Number.isFinite(stored) && stored > 0 ? stored : null;
   });
+    const [remotePrefs, setRemotePrefs] = useState<Preferences | null>(null);
+  // Guards the close-and-start flow so the confirmed create doesn't re-prompt.
+  const previousCycleCloseConfirmed = useRef(false);
   const [toast, setToast] = useState("");
   const [showNewCycle, setShowNewCycle] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
@@ -473,7 +487,37 @@ export default function App() {
     } else {
       void fetchLedger();
     }
+    // Preferences ride along in the background: the database wins on boot,
+    // like signing into an account.
+    void (async () => {
+      const stored = await fetchPreferences(deviceId());
+      if (!stored) {
+        // First run on this device — seed the row with local state.
+        void savePreferences(deviceId(), { activeCycleId: localStorage.getItem("rockdale-active-cycle"), theme: getThemePref() });
+        return;
+      }
+      setRemotePrefs(stored);
+    })();
   }, [fetchLedger]);
+
+  // Apply the database's preferences once both the cycles and the stored
+  // preferences have arrived.
+  const prefsAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!remotePrefs || !dataReady || prefsAppliedRef.current) return;
+    prefsAppliedRef.current = true;
+    if (remotePrefs.theme !== "auto" && remotePrefs.theme !== getThemePref()) {
+      setThemePref(remotePrefs.theme);
+    }
+    if (remotePrefs.activeCycleId && cycles.some((item) => item.id === remotePrefs.activeCycleId)) {
+      setActiveId((current) => {
+        if (current === remotePrefs.activeCycleId) return current;
+        localStorage.setItem("rockdale-active-cycle", remotePrefs.activeCycleId!);
+        flash(`Switched to ${cycles.find((item) => item.id === remotePrefs.activeCycleId)?.name ?? "saved cycle"}`);
+        return remotePrefs.activeCycleId;
+      });
+    }
+  }, [remotePrefs, dataReady, cycles]);
 
   // Write-through: persist the snapshot whenever it changes, preserving the
   // original savedAt when the data is identical so the TTL is not reset by
@@ -488,6 +532,13 @@ export default function App() {
 
   useEffect(() => {
     applyTheme(themePref);
+  }, [themePref]);
+
+  // Persist theme choices to the database once the remote preference has
+  // been applied, so the choice follows the user across devices.
+  useEffect(() => {
+    if (!prefsAppliedRef.current || bootedRef.current !== true) return;
+    void savePreferences(deviceId(), { theme: themePref });
   }, [themePref]);
 
   useEffect(() => watchSystemTheme(() => applyTheme(getThemePref())), []);
@@ -721,35 +772,77 @@ export default function App() {
     }
   };
 
+  // Switching cycles behaves like changing accounts: the whole app flips
+  // instantly and optimistically, the choice is persisted to the database,
+  // and a failure rolls the switch back.
   const selectCycle = async (id: string) => {
     if (id === activeId) {
       setTab("home");
       return;
     }
+    const previous = activeId;
+    const target = cycles.find((item) => item.id === id);
+    setActiveId(id);
+    localStorage.setItem("rockdale-active-cycle", id);
+    setTab("home");
+    flash(`Switched to ${target?.name ?? "cycle"}`);
     setSyncStatus("saving");
     try {
       await ledgerRepository.setActiveCycle(id);
-      setActiveId(id);
+      void savePreferences(deviceId(), { activeCycleId: id });
       setSyncStatus("online");
       markSynced();
-      setTab("home");
     } catch (error) {
+      setActiveId(previous);
+      localStorage.setItem("rockdale-active-cycle", previous ?? "");
       setSyncStatus("error");
       flash(error instanceof Error ? error.message : "Could not switch cycles.");
     }
   };
 
+  // Starting a cycle while one is live closes the old one first — with its
+  // settlement surfaced, so nothing is silently abandoned.
   const createCycle = async (name: string, members: string[], startsOn: string) => {
+    const previous = cycle && !cycle.endsOn ? cycle : null;
+    if (previous && !previousCycleCloseConfirmed.current) {
+      const outstanding = summary.settlements.reduce((sum, payment) => sum + payment.amount, 0);
+      openConfirm({
+        title: `Close “${previous.name}” first?`,
+        message: outstanding > 0
+          ? `${summary.settlements.length} unresolved payment${summary.settlements.length === 1 ? "" : "s"} totalling ${money(outstanding)} remain in “${previous.name}”. It will close today and become read-only; new receipts land in “${name}”.`
+          : `“${previous.name}” is fully settled. It will close today and become read-only; new receipts land in “${name}”.`,
+        confirmLabel: "Close & start new",
+        action: async () => {
+          previousCycleCloseConfirmed.current = true;
+          try {
+            await createCycle(name, members, startsOn);
+          } finally {
+            previousCycleCloseConfirmed.current = false;
+          }
+        },
+      });
+      return;
+    }
     setSyncStatus("saving");
     try {
       const created = await ledgerRepository.createCycle<Cycle>({ name, members, startsOn, endsOn: null });
       setCycles((current) => [created, ...current]);
       setActiveId(created.id);
+      localStorage.setItem("rockdale-active-cycle", created.id);
+      void savePreferences(deviceId(), { activeCycleId: created.id });
+      if (previous) {
+        try {
+          const closed = await ledgerRepository.updateCycle<Cycle>(previous.id, { endsOn: today() });
+          setCycles((current) => current.map((item) => (item.id === closed.id ? closed : item)));
+        } catch {
+          flash(`${created.name} started — closing “${previous.name}” failed. Close it from its detail page.`);
+        }
+      }
       setShowNewCycle(false);
       setSyncStatus("online");
       markSynced();
       setTab("home");
-      flash("New cycle created");
+      flash(previous ? `Closed ${previous.name} — started ${created.name}` : "New cycle created");
     } catch (error) {
       setSyncStatus("error");
       flash(error instanceof Error ? error.message : "Could not create the cycle.");

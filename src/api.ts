@@ -213,3 +213,46 @@ export async function scanReceipt(imageBase64: string, mimeType: string) {
   if (!response.ok) throw new Error(body.error || `OCR failed (${response.status})`);
   return body as { amount: number | null; merchant: string; confidence: number };
 }
+
+/**
+ * Per-device preferences (active cycle, theme), persisted in the database so
+ * the experience follows the user like an account switch. All functions
+ * degrade quietly when the user_preferences table hasn't been created yet
+ * (see supabase/preferences-setup.sql).
+ */
+
+export type Preferences = {
+  activeCycleId: string | null;
+  theme: "auto" | "light" | "dark";
+};
+
+export async function fetchPreferences(deviceId: string): Promise<Preferences | null> {
+  try {
+    const { data, error } = await supabase
+      .from("user_preferences")
+      .select("active_cycle_id, theme")
+      .eq("id", deviceId)
+      .maybeSingle()
+      .retry(false);
+    if (error || !data) return null;
+    const theme = data.theme === "light" || data.theme === "dark" ? data.theme : "auto";
+    return { activeCycleId: data.active_cycle_id != null ? String(data.active_cycle_id) : null, theme };
+  } catch {
+    return null;
+  }
+}
+
+export async function savePreferences(deviceId: string, patch: Partial<Preferences>): Promise<boolean> {
+  try {
+    const row: Record<string, unknown> = {
+      id: deviceId,
+      updated_at: new Date().toISOString(),
+      ...(patch.activeCycleId !== undefined ? { active_cycle_id: patch.activeCycleId == null ? null : Number(patch.activeCycleId) } : {}),
+      ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
+    };
+    const { error } = await supabase.from("user_preferences").upsert(row);
+    return !error;
+  } catch {
+    return false;
+  }
+}
