@@ -619,3 +619,8 @@ button { -webkit-tap-highlight-color: transparent; }
 
 /* keep content clear of the full-width bar */
 .app-shell { padding-bottom: calc(86px + env(safe-area-inset-bottom)); }
+
+/* swipe stability + premium detail */
+.swipe-content.dragging { box-shadow: 0 12px 32px rgba(15, 23, 42, .2); z-index: 1; }
+.receipt-progress span.ai, .receipt-progress span.device { background: #34c759; }
+.receipt-progress span.manual { background: #ffb340; }

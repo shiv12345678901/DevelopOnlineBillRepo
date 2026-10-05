@@ -337,6 +337,19 @@ export default function App() {
   useEffect(() => {
     if (!defaultPayer && cycle) setDefaultPayer(cycle.members[0] ?? "");
   }, [cycle, defaultPayer]);
+
+  // Per-page scroll memory: leaving a page stores its position, arriving on
+  // one restores it — like a native app's back stack.
+  const scrollMemory = useRef<Partial<Record<Tab, number>>>({});
+  const prevTabRef = useRef<Tab>(tab);
+  useEffect(() => {
+    if (prevTabRef.current !== tab) {
+      scrollMemory.current[prevTabRef.current] = window.scrollY;
+      prevTabRef.current = tab;
+      const saved = scrollMemory.current[tab];
+      requestAnimationFrame(() => window.scrollTo(0, saved ?? 0));
+    }
+  }, [tab]);
   const cycleEntries = useMemo(
     () => entries.filter((entry) => entry.cycleId === cycle?.id).sort((a, b) =>
       b.spentOn.localeCompare(a.spentOn) || b.id.localeCompare(a.id)
@@ -975,17 +988,33 @@ function ReceiptsView({ cycle, entries, summary, onEdit, onDelete }: {
   onDelete: (entry: LedgerEntry) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const requestDelete = (entry: LedgerEntry) => {
+    setOpenId(null);
+    if (window.confirm(`Delete the ${money(entry.amount)} receipt from ${entry.merchant || entry.payer}? This can't be undone.`)) {
+      onDelete(entry);
+    }
+  };
+
+  // Close an open card when the pointer goes down anywhere outside the cards.
+  const onOutsidePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!openId) return;
+    const card = (event.target as HTMLElement).closest?.(".swipe-card");
+    if (!card) setOpenId(null);
+  };
+
   return (
-    <div className="view receipts-view" onClick={() => openId && setOpenId(null)}>
+    <div className="view receipts-view" onPointerDown={onOutsidePointerDown}>
       <section className="people-summary">
         <div className="large-avatar-stack">{cycle.members.map((member) => <Avatar name={member} key={member} />)}</div>
         <h2>{entries.length} receipt{entries.length === 1 ? "" : "s"} this cycle</h2>
-        <p>{cycle.name} · swipe a receipt for actions</p>
+        <p>{cycle.name}</p>
       </section>
       <section className="section">
-        <div className="section-title"><div><p className="kicker">All receipts</p><h2>Swipe to act</h2></div></div>
+        <div className="section-title"><div><p className="kicker">{cycle.name}</p><h2>All receipts</h2></div></div>
         {entries.length ? (
-          <div className="swipe-list">
+          <div className="swipe-list" ref={listRef}>
             {entries.map((entry) => (
               <SwipeCard
                 key={entry.id}
@@ -994,12 +1023,12 @@ function ReceiptsView({ cycle, entries, summary, onEdit, onDelete }: {
                 onOpen={() => setOpenId(entry.id)}
                 onClose={() => setOpenId(null)}
                 onEdit={() => { setOpenId(null); onEdit(entry); }}
-                onDelete={() => { setOpenId(null); onDelete(entry); }}
+                onDelete={() => requestDelete(entry)}
               />
             ))}
           </div>
         ) : (
-          <EmptyState title="No receipts yet" copy="Snap a receipt and it will show up here, ready to swipe." />
+          <EmptyState title="No receipts yet" copy="Snap a receipt and it will show up here." />
         )}
       </section>
       {entries.length > 0 && (
@@ -1026,7 +1055,8 @@ function ReceiptsView({ cycle, entries, summary, onEdit, onDelete }: {
 const SWIPE_ACTIONS_WIDTH = 148;
 
 /** Apple-notification-style swipe: the card slides, and glass action buttons
- *  fade/scale in proportionally underneath it. */
+ *  fade/scale in proportionally underneath it. Stays open until the user
+ *  taps elsewhere, taps the card, or swipes it shut. */
 function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete }: {
   entry: LedgerEntry;
   open: boolean;
@@ -1035,27 +1065,37 @@ function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete }: {
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const [drag, setDrag] = useState(0); // live translation while dragging
-  const gesture = useRef({ active: false, startX: 0, base: 0 });
+  const width = SWIPE_ACTIONS_WIDTH;
+  const [offset, setOffset] = useState(open ? -width : 0);
+  const [dragging, setDragging] = useState(false);
+  const gesture = useRef({ active: false, startX: 0, base: 0, moved: false });
 
-  useEffect(() => { if (open) setDrag(-SWIPE_ACTIONS_WIDTH); else setDrag(0); }, [open]);
+  useEffect(() => { setOffset(open ? -width : 0); }, [open, width]);
+
+  const position = dragging ? offset : open ? -width : offset;
 
   const endDrag = () => {
     if (!gesture.current.active) return;
     gesture.current.active = false;
-    const opened = drag < -SWIPE_ACTIONS_WIDTH / 2 - 12;
-    if (opened) onOpen(); else onClose();
+    setDragging(false);
+    const moved = Math.abs(offset - gesture.current.base) > 6;
+    if (moved && offset < -width / 2 - 12) {
+      onOpen();
+    } else if (!moved && open) {
+      onClose(); // tap on an open card closes it
+    } else if (moved) {
+      onClose();
+    }
+    // snap to whichever state is now current
+    setOffset(open && !moved ? -width : (offset < -width / 2 - 12 && moved ? -width : 0));
   };
-
-  const progress = Math.min(1, Math.max(0, -drag / SWIPE_ACTIONS_WIDTH));
-  const position = open && !gesture.current.active ? -SWIPE_ACTIONS_WIDTH : drag;
 
   return (
     <div className={`swipe-card ${open ? "open" : ""}`}>
-      <div className="swipe-actions" style={{ opacity: progress, transform: `translateX(${(1 - progress) * 26}px)` }}>
+      <div className="swipe-actions" style={{ opacity: Math.min(1, Math.max(0, -position / width)), transform: `translateX(${(1 - Math.min(1, Math.max(0, -position / width))) * 26}px)` }}>
         <button
           className="swipe-action glass-edit"
-          style={{ transform: `scale(${0.7 + progress * 0.3})` }}
+          style={{ transform: `scale(${0.7 + Math.min(1, Math.max(0, -position / width)) * 0.3})` }}
           onClick={(event) => { event.stopPropagation(); onEdit(); }}
           aria-label={`Edit receipt from ${entry.merchant || entry.payer}`}
           tabIndex={open ? 0 : -1}
@@ -1064,7 +1104,7 @@ function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete }: {
         </button>
         <button
           className="swipe-action glass-delete"
-          style={{ transform: `scale(${0.7 + progress * 0.3})` }}
+          style={{ transform: `scale(${0.7 + Math.min(1, Math.max(0, -position / width)) * 0.3})` }}
           onClick={(event) => { event.stopPropagation(); onDelete(); }}
           aria-label={`Delete receipt from ${entry.merchant || entry.payer}`}
           tabIndex={open ? 0 : -1}
@@ -1073,19 +1113,26 @@ function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete }: {
         </button>
       </div>
       <div
-        className="swipe-content"
-        style={{ transform: `translate3d(${position}px, 0, 0)`, transition: gesture.current.active ? "none" : "transform .38s cubic-bezier(.32,.72,0,1)" }}
+        className={`swipe-content ${dragging ? "dragging" : ""}`}
+        style={{ transform: `translate3d(${position}px, 0, 0)`, transition: dragging ? "none" : "transform .4s cubic-bezier(.32,.72,0,1)" }}
         onPointerDown={(event) => {
-          gesture.current = { active: true, startX: event.clientX, base: open ? -SWIPE_ACTIONS_WIDTH : 0 };
+          gesture.current = { active: true, startX: event.clientX, base: open ? -width : offset, moved: false };
+          setDragging(true);
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
           if (!gesture.current.active) return;
           const raw = gesture.current.base + event.clientX - gesture.current.startX;
-          setDrag(Math.max(-SWIPE_ACTIONS_WIDTH - 40, Math.min(0, raw)));
+          if (Math.abs(raw - gesture.current.base) > 6) gesture.current.moved = true;
+          setOffset(Math.max(-width - 40, Math.min(0, raw)));
         }}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onClick={(event) => {
+          // Suppress the click that follows a drag; taps on an open card
+          // close it, taps on a closed card do nothing.
+          if (gesture.current.moved) event.stopPropagation();
+        }}
       >
         <Avatar name={entry.payer} size="sm" />
         <div className="expense-main">
