@@ -65,6 +65,31 @@ type IconName =
   | "refresh";
 
 const GROUP_NAME = "Rockdale Homies";
+const LAST_SYNC_KEY = "rockdale-last-sync";
+
+/** Compact relative stamp for the Cloud Sync row. */
+function timeAgo(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 45) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const date = new Date(timestamp);
+  return `${date.toLocaleDateString(undefined, { day: "numeric", month: "short" })}, ${date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+}
+
+/** iOS activity indicator: eight blades fading in sequence. */
+function Spinner({ size = 16 }: { size?: number }) {
+  return (
+    <span className="ios-spinner" style={{ width: size, height: size }} aria-hidden="true">
+      {Array.from({ length: 8 }, (_, i) => (
+        <i key={i} style={{ transform: `rotate(${i * 45}deg)`, animationDelay: `${(i / 8) * -0.9}s` }} />
+      ))}
+    </span>
+  );
+}
+
 const DEFAULT_MEMBERS = ["Shiva", "Arjun", "Arpan", "Swasti"];
 const AVATARS: Record<string, { initials: string; color: string }> = {
   Shiva: { initials: "SH", color: "#cfff57" },
@@ -321,12 +346,21 @@ export default function App() {
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [themePref, setThemePref] = useState<ThemePref>(() => getThemePref());
   const [showInstallGuide, setShowInstallGuide] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  // False until the first successful fetch — the initial load shows the
+  // full-screen data states; later refreshes never blank the page.
+  const [dataReady, setDataReady] = useState(false);
+  const [lastSync, setLastSync] = useState<number | null>(() => {
+    const stored = Number(localStorage.getItem(LAST_SYNC_KEY));
+    return Number.isFinite(stored) && stored > 0 ? stored : null;
+  });
   const [toast, setToast] = useState("");
   const [showNewCycle, setShowNewCycle] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide;
+  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError);
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
 
@@ -368,26 +402,47 @@ export default function App() {
   );
   const summary = useMemo(() => computeSettlements(cycleEntries, cycle?.members ?? []), [cycleEntries, cycle?.members]);
 
-  const fetchLedger = useCallback(async (retries = 2) => {
-    setSyncStatus("loading");
-    setLoadError("");
+  const markSynced = useCallback(() => {
+    const at = Date.now();
+    setLastSync(at);
+    try { localStorage.setItem(LAST_SYNC_KEY, String(at)); } catch { /* private mode */ }
+  }, []);
+
+  const fetchLedger = useCallback(async (retries = 2): Promise<string | null> => {
     try {
       const snapshot = await ledgerRepository.fetch<Cycle, LedgerEntry>();
       setCycles(snapshot.cycles);
       setEntries(snapshot.entries);
       setActiveId(snapshot.activeId);
       setSyncStatus("online");
+      setLoadError("");
+      markSynced();
+      setDataReady(true);
+      return null;
     } catch (error) {
       // Dev-server reloads and flaky connections abort in-flight fetches;
-      // retry quietly before showing the error screen.
+      // retry quietly before surfacing the problem.
       if (retries > 0) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
         return fetchLedger(retries - 1);
       }
-      setLoadError(error instanceof Error ? error.message : "Could not load the ledger.");
+      const message = error instanceof Error ? error.message : "Could not load the ledger.";
+      setLoadError(message);
       setSyncStatus("error");
+      return message;
     }
   }, []);
+
+  /** Manual refresh: fade the page, spin the row, then report any failure. */
+  const refreshLedger = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const error = await fetchLedger();
+      if (error) setSyncError(error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchLedger]);
 
   useEffect(() => {
     fetchLedger();
@@ -559,6 +614,7 @@ export default function App() {
       pending.forEach((item) => URL.revokeObjectURL(item.preview));
       setPending([]);
       setSyncStatus("online");
+      markSynced();
       flash(`${created.length} receipt${created.length === 1 ? "" : "s"} added`);
       setTab("home");
     } catch (error) {
@@ -579,6 +635,7 @@ export default function App() {
       const updated = await ledgerRepository.updateEntry<LedgerEntry>(id, patch);
       setEntries((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
       setSyncStatus("online");
+      markSynced();
       setEditingEntry(null);
       flash("Receipt updated");
     } catch (error) {
@@ -604,6 +661,7 @@ export default function App() {
       const updated = await ledgerRepository.updateCycle<Cycle>(cycle.id, { endsOn: today() });
       setCycles((current) => current.map((item) => item.id === updated.id ? updated : item));
       setSyncStatus("online");
+      markSynced();
       flash("Cycle closed and locked");
     } catch (error) {
       setSyncStatus("error");
@@ -617,6 +675,7 @@ export default function App() {
       const updated = await ledgerRepository.updateCycle<Cycle>(id, { endsOn: null });
       setCycles((current) => current.map((item) => item.id === updated.id ? updated : item));
       setSyncStatus("online");
+      markSynced();
       flash("Cycle reopened");
     } catch (error) {
       setSyncStatus("error");
@@ -634,6 +693,7 @@ export default function App() {
       await ledgerRepository.setActiveCycle(id);
       setActiveId(id);
       setSyncStatus("online");
+      markSynced();
       setTab("home");
     } catch (error) {
       setSyncStatus("error");
@@ -649,6 +709,7 @@ export default function App() {
       setActiveId(created.id);
       setShowNewCycle(false);
       setSyncStatus("online");
+      markSynced();
       setTab("home");
       flash("New cycle created");
     } catch (error) {
@@ -663,6 +724,7 @@ export default function App() {
       await ledgerRepository.deleteEntry(entry.id);
       setEntries((current) => current.filter((item) => item.id !== entry.id));
       setSyncStatus("online");
+      markSynced();
       flash("Entry deleted");
     } catch (error) {
       setSyncStatus("error");
@@ -726,12 +788,14 @@ export default function App() {
         )}
       </header>
 
-      <main className="content">
+      <main className={`content ${refreshing ? "content-refreshing" : ""}`}>
         <div className="screen-transition" key={`${tab}-${activeId}`}>
-        {syncStatus === "loading" ? (
-          <DataState title="Loading your ledger" copy="Fetching the latest cycles and receipts from Supabase." />
-        ) : loadError ? (
-          <DataState title="Couldn’t load your ledger" copy={loadError} action={fetchLedger} actionLabel="Try again" />
+        {!dataReady ? (
+          loadError ? (
+            <DataState title="Couldn’t load your ledger" copy={loadError} action={fetchLedger} actionLabel="Try again" />
+          ) : (
+            <DataState title="Loading your ledger" copy="Fetching the latest cycles and receipts from Supabase." />
+          )
         ) : !cycle ? (
           <EmptyState title="No active cycle" copy="Create a cycle to start tracking shared groceries." action={() => setShowNewCycle(true)} />
         ) : tab === "home" ? (
@@ -761,12 +825,14 @@ export default function App() {
             onSelect={selectCycle}
             onReopen={reopenCycle}
             onNew={() => setShowNewCycle(true)}
-            onRefresh={fetchLedger}
+            onRefresh={refreshLedger}
             onExport={exportLedger}
             onInstall={installApp}
             syncStatus={syncStatus}
             themePref={themePref}
             onThemeChange={setThemePref}
+            lastSyncedAt={lastSync}
+            isRefreshing={refreshing}
           />
         )}
         </div>
@@ -851,6 +917,20 @@ export default function App() {
       )}
 
       {showInstallGuide && <InstallGuide onClose={() => setShowInstallGuide(false)} />}
+
+      {syncError && (
+        <ConfirmSheet
+          tone="neutral"
+          title="Sync problem"
+          message={`${syncError.replace(/^TypeError:\s*/, "").replace(/\.$/, "")}. Check your internet connection, then try again. Last successful sync: ${lastSync ? timeAgo(lastSync) : "never"}.`}
+          confirmLabel="Try again"
+          onClose={() => setSyncError(null)}
+          onConfirm={async () => {
+            setSyncError(null);
+            await refreshLedger();
+          }}
+        />
+      )}
 
       {toast && <div className="toast"><Icon name="check" size={17} />{toast}</div>}
     </div>
@@ -1225,10 +1305,11 @@ function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete, onExpandIma
 }
 
 /** In-app confirmation sheet — replaces native confirm() dialogs. */
-function ConfirmSheet({ title, message, confirmLabel, onClose, onConfirm }: {
+function ConfirmSheet({ title, message, confirmLabel, tone = "danger", onClose, onConfirm }: {
   title: string;
   message: string;
   confirmLabel: string;
+  tone?: "danger" | "neutral";
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
 }) {
@@ -1242,7 +1323,7 @@ function ConfirmSheet({ title, message, confirmLabel, onClose, onConfirm }: {
         <div className="sheet-drag-region" aria-hidden="true" {...dragProps}><div className="sheet-handle" /></div>
         <h2 className="confirm-title">{title}</h2>
         <p className="confirm-message">{message}</p>
-        <button className="danger-button" disabled={busy} onClick={async () => { setBusy(true); await onConfirm(); }}>
+        <button className={tone === "danger" ? "danger-button" : "tinted-button"} disabled={busy} onClick={async () => { setBusy(true); await onConfirm(); }}>
           {busy ? "Working…" : confirmLabel}
         </button>
         <button className="cancel-button" disabled={busy} onClick={cancel}>Cancel</button>
@@ -1323,7 +1404,7 @@ function EditSheet({ entry, members, saving, onClose, onSave }: {
   );
 }
 
-function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, onExport, onInstall, syncStatus, themePref, onThemeChange }: {
+function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, onExport, onInstall, syncStatus, themePref, onThemeChange, lastSyncedAt, isRefreshing }: {
   cycles: Cycle[];
   activeId: string | null;
   onSelect: (id: string) => void;
@@ -1335,7 +1416,25 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
   syncStatus: "loading" | "online" | "saving" | "error";
   themePref: ThemePref;
   onThemeChange: (pref: ThemePref) => void;
+  lastSyncedAt: number | null;
+  isRefreshing: boolean;
 }) {
+  // Re-render every half minute so "Synced 2 mins ago" stays truthful.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((value) => value + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const busySync = syncStatus === "loading" || isRefreshing;
+  const syncChip = busySync
+    ? <><Spinner size={14} />{syncStatus === "saving" ? "Saving…" : "Syncing…"}</>
+    : syncStatus === "saving"
+      ? <><Spinner size={14} />Saving…</>
+      : syncStatus === "error"
+        ? <><i className="sync-dot warn" />Offline</>
+        : <><i className="sync-dot" />Connected</>;
+
   return (
     <div className="view settings-view">
       <section className="settings-group">
@@ -1420,11 +1519,12 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
         <div className="settings-list">
           <button className="settings-row" onClick={onRefresh}>
             <span className="settings-icon settings-icon-green"><Icon name="refresh" size={19} /></span>
-            <span className="settings-row-copy"><strong>Cloud Sync</strong><small>Refresh records from Supabase</small></span>
-            <span className={`settings-row-value sync-${syncStatus}`}>
-              {syncStatus === "online" ? "Connected" : syncStatus === "saving" ? "Saving…" : syncStatus === "loading" ? "Loading…" : "Attention"}
+            <span className="settings-row-copy">
+              <strong>Cloud Sync</strong>
+              <small>{lastSyncedAt ? `Synced ${timeAgo(lastSyncedAt)}` : "Not synced yet"}</small>
             </span>
-            <Icon name="chevron" size={17} />
+            <span className={`settings-row-value sync-value sync-${syncStatus}`}>{syncChip}</span>
+            {!busySync && <Icon name="chevron" size={17} />}
           </button>
           <button className="settings-row" onClick={onExport}>
             <span className="settings-icon settings-icon-orange"><Icon name="receipt" size={19} /></span>

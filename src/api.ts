@@ -74,15 +74,20 @@ const toEntry = (row: Record<string, unknown>) => ({
 export const ledgerRepository = {
   async fetch<Cycle, Entry>(): Promise<LedgerSnapshot<Cycle, Entry>> {
     const [cyclesRes, entriesRes] = await Promise.all([
+      // .retry(false): the app layer owns retry policy (quiet retries on
+      // initial load, a visible error dialog on manual refresh) — without
+      // this, postgrest-js adds its own 1s/2s/4s backoff on top.
       supabase
         .from("settlement_cycles")
         .select("*")
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false })
+        .retry(false),
       supabase
         .from("grocery_ledger")
         .select("*")
         .order("spent_on", { ascending: false })
-        .order("id", { ascending: false }),
+        .order("id", { ascending: false })
+        .retry(false),
     ]);
     if (cyclesRes.error) throw new Error(cyclesRes.error.message);
     if (entriesRes.error) throw new Error(entriesRes.error.message);
