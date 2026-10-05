@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { ledgerRepository, scanReceipt } from "./api";
+import { ocrOnDevice } from "./receipt-ocr";
 
 type Tab = "home" | "settle" | "camera" | "people" | "settings";
 
@@ -35,6 +36,7 @@ type PendingReceipt = {
   spentOn: string;
   status: "cropping" | "scanning" | "ready";
   confidence: number;
+  engine: "ai" | "device" | "manual";
   crop: { x: number; y: number; width: number; height: number };
   processedImageBase64: string;
 };
@@ -73,9 +75,9 @@ const greeting = () => {
   return "Good evening.";
 };
 const money = (value: number, decimals = 0) =>
-  value.toLocaleString("en-IN", {
+  value.toLocaleString("en-AU", {
     style: "currency",
-    currency: "INR",
+    currency: "AUD",
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
@@ -402,6 +404,7 @@ export default function App() {
       spentOn: today(),
       status: "cropping" as const,
       confidence: 0,
+      engine: "ai" as const,
       crop: { x: 0.03, y: 0.03, width: 0.94, height: 0.94 },
       processedImageBase64: "",
     }));
@@ -414,24 +417,63 @@ export default function App() {
     setPending((current) => current.map((receipt) =>
       receipt.id === id ? { ...receipt, status: "scanning" } : receipt
     ));
+    const image = await resizeReceipt(item.file, item.crop);
+    const apply = (patch: Partial<PendingReceipt>) => setPending((current) => current.map((receipt) =>
+      receipt.id === id ? { ...receipt, ...patch } : receipt
+    ));
+
+    // 1. AI vision (Gemini) — best read for photos and screenshots.
+    let ai: { amount: number | null; merchant: string; confidence: number } | null = null;
     try {
-      const image = await resizeReceipt(item.file, item.crop);
       const result = await scanReceipt(image.imageBase64, image.mimeType);
-      setPending((current) => current.map((receipt) => receipt.id === id ? {
-        ...receipt,
-        amount: result.amount === null ? "" : String(result.amount),
-        merchant: result.merchant || "",
-        confidence: result.confidence,
+      if (result.amount !== null && result.confidence >= 0.35) {
+        ai = { amount: result.amount, merchant: result.merchant || "", confidence: result.confidence };
+      }
+    } catch {
+      // AI unavailable — fall through to on-device OCR.
+    }
+
+    // 2. On-device OCR (Tesseract.js) — kicks in whenever the AI read is
+    //    missing or too unsure to trust.
+    let device: Awaited<ReturnType<typeof ocrOnDevice>> | null = null;
+    if (!ai) {
+      apply({ engine: "device" }); // shows "on-device" while it works
+      try {
+        const result = await ocrOnDevice(image.imageBase64);
+        if (result.amount !== null) device = result;
+      } catch {
+        // both engines failed — manual entry below
+      }
+    }
+
+    // 3. Review state: best available read, or an empty form for manual entry.
+    if (ai) {
+      apply({
+        amount: String(ai.amount),
+        merchant: ai.merchant,
+        confidence: ai.confidence,
+        engine: "ai",
         processedImageBase64: image.imageBase64,
         status: "ready",
-      } : receipt));
-    } catch (error) {
-      setPending((current) => current.map((receipt) => receipt.id === id ? {
-        ...receipt,
-        confidence: 0,
+      });
+    } else if (device) {
+      apply({
+        amount: String(device.amount),
+        merchant: device.merchant,
+        confidence: device.confidence,
+        engine: "device",
+        processedImageBase64: image.imageBase64,
         status: "ready",
-      } : receipt));
-      setToast(error instanceof Error ? `${error.message} Enter the details manually.` : "Couldn’t read the receipt — enter the details manually");
+      });
+    } else {
+      apply({
+        amount: "",
+        confidence: 0,
+        engine: "manual",
+        processedImageBase64: image.imageBase64,
+        status: "ready",
+      });
+      setToast("Couldn't read the receipt automatically. Type the total to continue.");
       window.setTimeout(() => setToast(""), 3200);
     }
   };
@@ -557,7 +599,7 @@ export default function App() {
     const cycleNames = Object.fromEntries(cycles.map((item) => [item.id, item.name]));
     const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
     const rows = [
-      ["Cycle", "Merchant", "Date", "Paid by", "Amount INR", "Note"],
+      ["Cycle", "Merchant", "Date", "Paid by", "Amount AUD", "Note"],
       ...entries.map((entry) => [
         cycleNames[entry.cycleId] ?? "",
         entry.merchant ?? "",
@@ -792,7 +834,7 @@ function HomeView({ cycle, entries, total, share, onCamera, onSettle, onDelete }
               <Avatar name={entry.payer} size="sm" />
               <div className="expense-main">
                 <strong>{entry.merchant || entry.note || "Grocery receipt"}</strong>
-                <span>{entry.payer} · {new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                <span>{entry.payer} · {new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</span>
               </div>
               <strong className="expense-amount">{money(entry.amount)}</strong>
               <button className="entry-delete" onClick={() => onDelete(entry)} aria-label={`Delete ${entry.merchant || entry.note || "receipt"} entry`}>
@@ -932,7 +974,7 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
           <div className="settings-row">
             <span className="settings-icon settings-icon-green"><Icon name="settle" size={19} /></span>
             <span className="settings-row-copy"><strong>Currency</strong></span>
-            <span className="settings-row-value">INR</span>
+            <span className="settings-row-value">AUD</span>
           </div>
           <div className="settings-row">
             <span className="settings-icon settings-icon-cyan"><Icon name="receipt" size={19} /></span>
@@ -1035,7 +1077,7 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
               ) : (
                 <div className="receipt-preview">
                   <img src={receipt.preview} alt="Uploaded receipt" />
-                  {receipt.status === "scanning" && <span className="scanning"><Icon name="receipt" />Reading receipt…</span>}
+                  {receipt.status === "scanning" && <span className="scanning"><Icon name="receipt" />{receipt.engine === "device" ? "Reading on-device…" : "Reading receipt…"}</span>}
                 </div>
               )}
               <button className="remove-receipt" onClick={() => onRemove(receipt.id)} aria-label={`Remove receipt ${index + 1}`}><Icon name="trash" size={16} /></button>
@@ -1057,8 +1099,10 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
                   <p className="ai-note">
                     <Icon name="check" size={14} />
                     {receipt.confidence > 0
-                      ? `Total found · ${Math.round(receipt.confidence * 100)}% confidence — please confirm`
-                      : "Enter the printed total before saving"}
+                      ? `Total found via ${receipt.engine === "device" ? "on-device scan" : "AI"} · ${Math.round(receipt.confidence * 100)}% confidence, please confirm`
+                      : receipt.engine === "manual"
+                        ? "Auto-read failed. Type the total to continue."
+                        : "Enter the printed total before saving"}
                   </p>
                 </div>
               )}
