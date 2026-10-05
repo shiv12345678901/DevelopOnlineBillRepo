@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { loadLedger, saveLedger, scanReceipt } from "./api";
+import { ledgerRepository, scanReceipt } from "./api";
 
 type Tab = "home" | "settle" | "camera" | "people" | "settings";
 
 type Cycle = {
-  id: number;
+  id: string;
   name: string;
   members: string[];
   startsOn: string;
@@ -12,8 +12,8 @@ type Cycle = {
 };
 
 type LedgerEntry = {
-  id: number;
-  cycleId: number;
+  id: string;
+  cycleId: string;
   payer: string;
   amount: number;
   note: string;
@@ -58,32 +58,6 @@ const AVATARS: Record<string, { initials: string; color: string }> = {
   Arpan: { initials: "AP", color: "#79d6ef" },
   Swasti: { initials: "SW", color: "#cba3f4" },
 };
-
-const initialCycles: Cycle[] = [
-  {
-    id: 1,
-    name: "Sample: March groceries",
-    members: DEFAULT_MEMBERS,
-    startsOn: "2025-03-01",
-    endsOn: null,
-  },
-  {
-    id: 2,
-    name: "Sample: February groceries",
-    members: DEFAULT_MEMBERS,
-    startsOn: "2025-02-01",
-    endsOn: "2025-02-28",
-  },
-];
-
-const initialEntries: LedgerEntry[] = [
-  { id: 1, cycleId: 1, payer: "Shiva", amount: 1840, note: "Weekly shop", spentOn: "2025-03-18", confidence: 0.96 },
-  { id: 2, cycleId: 1, payer: "Arjun", amount: 760, note: "Fresh produce", spentOn: "2025-03-16", confidence: 0.93 },
-  { id: 3, cycleId: 1, payer: "Swasti", amount: 1240, note: "Pantry restock", spentOn: "2025-03-12", confidence: 0.98 },
-  { id: 4, cycleId: 1, payer: "Shiva", amount: 486, note: "Milk and bread", spentOn: "2025-03-09", confidence: 0.9 },
-  { id: 5, cycleId: 1, payer: "Arpan", amount: 924, note: "Costco run", spentOn: "2025-03-05", confidence: 0.95 },
-  { id: 6, cycleId: 2, payer: "Arjun", amount: 3410, note: "Month total", spentOn: "2025-02-25", confidence: 0.94 },
-];
 
 const today = () => new Date().toISOString().slice(0, 10);
 const greeting = () => {
@@ -160,19 +134,6 @@ function computeSettlements(entries: LedgerEntry[], members: string[]) {
     if (creditors[creditor].amount <= 0.005) creditor++;
   }
   return { paidBy, total, share, net, settlements };
-}
-
-function useStoredState<T>(key: string, initial: T) {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const stored = localStorage.getItem(key);
-      return stored ? JSON.parse(stored) : initial;
-    } catch {
-      return initial;
-    }
-  });
-  useEffect(() => localStorage.setItem(key, JSON.stringify(value)), [key, value]);
-  return [value, setValue] as const;
 }
 
 function translateYOf(element: HTMLElement) {
@@ -323,7 +284,6 @@ function useSheetGesture(onClose: () => void) {
   return {
     sheetRef,
     dismiss,
-    dismissWith,
     dragProps: {
       onPointerDown,
       onPointerMove,
@@ -335,21 +295,22 @@ function useSheetGesture(onClose: () => void) {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("home");
-  const [cycles, setCycles] = useStoredState<Cycle[]>("ledger-cycles", initialCycles);
-  const [entries, setEntries] = useStoredState<LedgerEntry[]>("ledger-entries", initialEntries);
-  const [activeId, setActiveId] = useStoredState<number>("ledger-active", 1);
+  const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [entries, setEntries] = useState<LedgerEntry[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [payer, setPayer] = useState("Shiva");
   const [pending, setPending] = useState<PendingReceipt[]>([]);
   const [toast, setToast] = useState("");
   const [showNewCycle, setShowNewCycle] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<"connecting" | "online" | "saving" | "offline">("connecting");
+  const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
+  const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const cloudHydrated = useRef(false);
-  const saveTimer = useRef<number | null>(null);
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
   const cycleEntries = useMemo(
-    () => entries.filter((entry) => entry.cycleId === cycle?.id).sort((a, b) => b.spentOn.localeCompare(a.spentOn) || b.id - a.id),
+    () => entries.filter((entry) => entry.cycleId === cycle?.id).sort((a, b) =>
+      b.spentOn.localeCompare(a.spentOn) || b.id.localeCompare(a.id)
+    ),
     [entries, cycle?.id],
   );
   const summary = useMemo(() => computeSettlements(cycleEntries, cycle?.members ?? []), [cycleEntries, cycle?.members]);
@@ -358,52 +319,24 @@ export default function App() {
     if (cycle && !cycle.members.includes(payer)) setPayer(cycle.members[0] ?? "");
   }, [cycle, payer]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const connect = async () => {
-      try {
-        const state = await loadLedger<Cycle, LedgerEntry>();
-        if (cancelled) return;
-        if (state) {
-          setCycles(state.cycles);
-          setEntries(state.entries);
-          setActiveId(state.activeId);
-        } else {
-          await saveLedger({ cycles, entries, activeId });
-        }
-        cloudHydrated.current = true;
-        setSyncStatus("online");
-      } catch {
-        if (!cancelled) {
-          cloudHydrated.current = true;
-          setSyncStatus("offline");
-          setToast("Cloud unavailable — changes stay on this device");
-          window.setTimeout(() => setToast(""), 3200);
-        }
-      }
-    };
-    connect();
-    return () => { cancelled = true; };
-    // Initial connection intentionally uses the locally persisted snapshot.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fetchLedger = useCallback(async () => {
+    setSyncStatus("loading");
+    setLoadError("");
+    try {
+      const snapshot = await ledgerRepository.fetch<Cycle, LedgerEntry>();
+      setCycles(snapshot.cycles);
+      setEntries(snapshot.entries);
+      setActiveId(snapshot.activeId);
+      setSyncStatus("online");
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Could not load the ledger.");
+      setSyncStatus("error");
+    }
   }, []);
 
   useEffect(() => {
-    if (!cloudHydrated.current) return;
-    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
-    setSyncStatus("saving");
-    saveTimer.current = window.setTimeout(async () => {
-      try {
-        await saveLedger({ cycles, entries, activeId });
-        setSyncStatus("online");
-      } catch {
-        setSyncStatus("offline");
-      }
-    }, 350);
-    return () => {
-      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
-    };
-  }, [cycles, entries, activeId]);
+    fetchLedger();
+  }, [fetchLedger]);
 
   const flash = (message: string) => {
     setToast(message);
@@ -457,12 +390,12 @@ export default function App() {
     });
   };
 
-  const saveReceipts = () => {
+  const saveReceipts = async () => {
     if (!cycle) return;
     const valid = pending.filter((item) => Number(item.amount) > 0);
     if (!valid.length) return;
-    const nextEntries = valid.map((item, index) => ({
-      id: Date.now() + index,
+    setSyncStatus("saving");
+    const input = valid.map((item) => ({
       cycleId: cycle.id,
       payer: item.payer,
       amount: Number(item.amount),
@@ -470,11 +403,18 @@ export default function App() {
       spentOn: item.spentOn,
       confidence: item.confidence,
     }));
-    setEntries((current) => [...current, ...nextEntries]);
-    pending.forEach((item) => URL.revokeObjectURL(item.preview));
-    setPending([]);
-    flash(`${valid.length} receipt${valid.length === 1 ? "" : "s"} added`);
-    setTab("home");
+    try {
+      const created = await ledgerRepository.createEntries<LedgerEntry>(input);
+      setEntries((current) => [...created, ...current]);
+      pending.forEach((item) => URL.revokeObjectURL(item.preview));
+      setPending([]);
+      setSyncStatus("online");
+      flash(`${created.length} receipt${created.length === 1 ? "" : "s"} added`);
+      setTab("home");
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "Could not save the receipts.");
+    }
   };
 
   const closePending = () => {
@@ -482,15 +422,79 @@ export default function App() {
     setPending([]);
   };
 
-  const closeCycle = () => {
+  const closeCycle = async () => {
     if (!cycle) return;
-    setCycles((current) => current.map((item) => item.id === cycle.id ? { ...item, endsOn: today() } : item));
-    flash("Cycle closed and locked");
+    setSyncStatus("saving");
+    try {
+      const updated = await ledgerRepository.updateCycle<Cycle>(cycle.id, { endsOn: today() });
+      setCycles((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setSyncStatus("online");
+      flash("Cycle closed and locked");
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "Could not close the cycle.");
+    }
   };
 
-  const reopenCycle = (id: number) => {
-    setCycles((current) => current.map((item) => item.id === id ? { ...item, endsOn: null } : item));
-    flash("Cycle reopened");
+  const reopenCycle = async (id: string) => {
+    setSyncStatus("saving");
+    try {
+      const updated = await ledgerRepository.updateCycle<Cycle>(id, { endsOn: null });
+      setCycles((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setSyncStatus("online");
+      flash("Cycle reopened");
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "Could not reopen the cycle.");
+    }
+  };
+
+  const selectCycle = async (id: string) => {
+    if (id === activeId) {
+      setTab("home");
+      return;
+    }
+    setSyncStatus("saving");
+    try {
+      await ledgerRepository.setActiveCycle(id);
+      setActiveId(id);
+      setSyncStatus("online");
+      setTab("home");
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "Could not switch cycles.");
+    }
+  };
+
+  const createCycle = async (name: string, members: string[], startsOn: string) => {
+    setSyncStatus("saving");
+    try {
+      const created = await ledgerRepository.createCycle<Cycle>({ name, members, startsOn, endsOn: null });
+      setCycles((current) => [created, ...current]);
+      setActiveId(created.id);
+      setPayer(created.members[0]);
+      setShowNewCycle(false);
+      setSyncStatus("online");
+      setTab("home");
+      flash("New cycle created");
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "Could not create the cycle.");
+    }
+  };
+
+  const deleteEntry = async (entry: LedgerEntry) => {
+    if (!window.confirm(`Delete ${money(entry.amount)} paid by ${entry.payer}? This cannot be undone.`)) return;
+    setSyncStatus("saving");
+    try {
+      await ledgerRepository.deleteEntry(entry.id);
+      setEntries((current) => current.filter((item) => item.id !== entry.id));
+      setSyncStatus("online");
+      flash("Entry deleted");
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "Could not delete the entry.");
+    }
   };
 
   const title = tab === "home" ? greeting() : tab === "settle" ? "Settle up" : tab === "people" ? "People" : "Settings";
@@ -509,7 +513,11 @@ export default function App() {
 
       <main className="content">
         <div className="screen-transition" key={`${tab}-${activeId}`}>
-        {!cycle ? (
+        {syncStatus === "loading" ? (
+          <DataState title="Loading your ledger" copy="Fetching the latest cycles and receipts from Supabase." />
+        ) : loadError ? (
+          <DataState title="Couldn’t load your ledger" copy={loadError} action={fetchLedger} actionLabel="Try again" />
+        ) : !cycle ? (
           <EmptyState title="No active cycle" copy="Create a cycle to start tracking shared groceries." action={() => setShowNewCycle(true)} />
         ) : tab === "home" ? (
           <HomeView
@@ -521,6 +529,7 @@ export default function App() {
             setPayer={setPayer}
             onCamera={() => fileInput.current?.click()}
             onSettle={() => setTab("settle")}
+            onDelete={deleteEntry}
           />
         ) : tab === "settle" ? (
           <SettleView cycle={cycle} summary={summary} entries={cycleEntries} onClose={closeCycle} />
@@ -530,15 +539,10 @@ export default function App() {
           <SettingsView
             cycles={cycles}
             activeId={activeId}
-            onSelect={(id) => { setActiveId(id); setTab("home"); }}
+            onSelect={selectCycle}
             onReopen={reopenCycle}
             onNew={() => setShowNewCycle(true)}
-            onReset={() => {
-              setCycles(initialCycles);
-              setEntries(initialEntries);
-              setActiveId(1);
-              flash("Demo data restored");
-            }}
+            onRefresh={fetchLedger}
             syncStatus={syncStatus}
           />
         )}
@@ -576,21 +580,15 @@ export default function App() {
           })}
           onClose={closePending}
           onSave={saveReceipts}
+          saving={syncStatus === "saving"}
         />
       )}
 
       {showNewCycle && (
         <NewCycleSheet
           onClose={() => setShowNewCycle(false)}
-          onCreate={(name, members, startsOn) => {
-            const created = { id: Date.now(), name, members, startsOn, endsOn: null };
-            setCycles((current) => [created, ...current]);
-            setActiveId(created.id);
-            setPayer(members[0]);
-            setShowNewCycle(false);
-            setTab("home");
-            flash("New cycle created");
-          }}
+          onCreate={createCycle}
+          saving={syncStatus === "saving"}
         />
       )}
 
@@ -599,7 +597,7 @@ export default function App() {
   );
 }
 
-function HomeView({ cycle, entries, total, share, payer, setPayer, onCamera, onSettle }: {
+function HomeView({ cycle, entries, total, share, payer, setPayer, onCamera, onSettle, onDelete }: {
   cycle: Cycle;
   entries: LedgerEntry[];
   total: number;
@@ -608,6 +606,7 @@ function HomeView({ cycle, entries, total, share, payer, setPayer, onCamera, onS
   setPayer: (value: string) => void;
   onCamera: () => void;
   onSettle: () => void;
+  onDelete: (entry: LedgerEntry) => void;
 }) {
   return (
     <div className="view home-view">
@@ -665,6 +664,9 @@ function HomeView({ cycle, entries, total, share, payer, setPayer, onCamera, onS
                 <span>{entry.payer} · {new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</span>
               </div>
               <strong className="expense-amount">{money(entry.amount)}</strong>
+              <button className="entry-delete" onClick={() => onDelete(entry)} aria-label={`Delete ${entry.note || "receipt"} entry`}>
+                <Icon name="trash" size={16} />
+              </button>
               {index < Math.min(entries.length, 4) - 1 && <span className="row-divider" />}
             </div>
           )) : <div className="empty-inline"><Icon name="receipt" /><span>No receipts yet</span></div>}
@@ -752,14 +754,14 @@ function PeopleView({ cycle, entries, summary }: {
   );
 }
 
-function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onReset, syncStatus }: {
+function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, syncStatus }: {
   cycles: Cycle[];
-  activeId: number;
-  onSelect: (id: number) => void;
-  onReopen: (id: number) => void;
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onReopen: (id: string) => void;
   onNew: () => void;
-  onReset: () => void;
-  syncStatus: "connecting" | "online" | "saving" | "offline";
+  onRefresh: () => void;
+  syncStatus: "loading" | "online" | "saving" | "error";
 }) {
   return (
     <div className="view settings-view">
@@ -788,26 +790,27 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onReset, sy
           <div>
             <span>Cloud sync</span>
             <strong className={`sync-state sync-${syncStatus}`}>
-              {syncStatus === "online" ? "Connected" : syncStatus === "saving" ? "Saving…" : syncStatus === "connecting" ? "Connecting…" : "Offline"}
+              {syncStatus === "online" ? "Connected" : syncStatus === "saving" ? "Saving…" : syncStatus === "loading" ? "Loading…" : "Needs attention"}
             </strong>
           </div>
-          <button onClick={onReset}><Icon name="refresh" size={18} /><span><strong>Restore demo data</strong><small>Reset this preview on this device</small></span></button>
+          <button onClick={onRefresh}><Icon name="refresh" size={18} /><span><strong>Refresh from Supabase</strong><small>Fetch the latest server records</small></span></button>
         </div>
       </section>
     </div>
   );
 }
 
-function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave }: {
+function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, saving }: {
   receipts: PendingReceipt[];
   members: string[];
   onUpdate: (id: string, update: Partial<PendingReceipt>) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
-  onSave: () => void;
+  onSave: () => Promise<void>;
+  saving: boolean;
 }) {
   const canSave = receipts.some((receipt) => Number(receipt.amount) > 0);
-  const { sheetRef, dismiss, dismissWith, dragProps } = useSheetGesture(onClose);
+  const { sheetRef, dismiss, dragProps } = useSheetGesture(onClose);
   return (
     <div className="sheet-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && dismiss()}>
       <div className="bottom-sheet" ref={sheetRef} role="dialog" aria-modal="true" aria-label="Review receipts">
@@ -840,21 +843,22 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave }
             </div>
           ))}
         </div>
-        <button className="primary-button" disabled={!canSave} onClick={() => dismissWith(onSave)}>Add to ledger</button>
+        <button className="primary-button" disabled={!canSave || saving} onClick={onSave}>{saving ? "Saving…" : "Add to ledger"}</button>
       </div>
     </div>
   );
 }
 
-function NewCycleSheet({ onClose, onCreate }: {
+function NewCycleSheet({ onClose, onCreate, saving }: {
   onClose: () => void;
-  onCreate: (name: string, members: string[], startsOn: string) => void;
+  onCreate: (name: string, members: string[], startsOn: string) => Promise<void>;
+  saving: boolean;
 }) {
   const [name, setName] = useState("");
   const [members, setMembers] = useState(DEFAULT_MEMBERS.join(", "));
   const [startsOn, setStartsOn] = useState(today());
   const parsedMembers = members.split(",").map((member) => member.trim()).filter(Boolean);
-  const { sheetRef, dismiss, dismissWith, dragProps } = useSheetGesture(onClose);
+  const { sheetRef, dismiss, dragProps } = useSheetGesture(onClose);
   return (
     <div className="sheet-backdrop" onPointerDown={(event) => event.target === event.currentTarget && dismiss()}>
       <div className="bottom-sheet compact-sheet" ref={sheetRef} role="dialog" aria-modal="true" aria-label="Create cycle">
@@ -865,7 +869,7 @@ function NewCycleSheet({ onClose, onCreate }: {
           <label><span>Members <i>comma-separated</i></span><input value={members} onChange={(event) => setMembers(event.target.value)} /></label>
           <label><span>Start date</span><input type="date" value={startsOn} onChange={(event) => setStartsOn(event.target.value)} /></label>
         </div>
-        <button className="primary-button" disabled={!name.trim() || !parsedMembers.length} onClick={() => dismissWith(() => onCreate(name.trim(), parsedMembers, startsOn))}>Create cycle</button>
+        <button className="primary-button" disabled={!name.trim() || !parsedMembers.length || saving} onClick={() => onCreate(name.trim(), parsedMembers, startsOn)}>{saving ? "Creating…" : "Create cycle"}</button>
       </div>
     </div>
   );
@@ -873,4 +877,20 @@ function NewCycleSheet({ onClose, onCreate }: {
 
 function EmptyState({ title, copy, action }: { title: string; copy: string; action: () => void }) {
   return <div className="empty-state"><span><Icon name="receipt" size={28} /></span><h2>{title}</h2><p>{copy}</p><button className="primary-button" onClick={action}>Create a cycle</button></div>;
+}
+
+function DataState({ title, copy, action, actionLabel }: {
+  title: string;
+  copy: string;
+  action?: () => void;
+  actionLabel?: string;
+}) {
+  return (
+    <div className="empty-state data-state" role={action ? "alert" : "status"}>
+      <span><Icon name={action ? "refresh" : "receipt"} size={28} /></span>
+      <h2>{title}</h2>
+      <p>{copy}</p>
+      {action && <button className="primary-button" onClick={action}>{actionLabel}</button>}
+    </div>
+  );
 }

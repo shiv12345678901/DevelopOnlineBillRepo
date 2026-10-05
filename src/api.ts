@@ -1,9 +1,9 @@
 import { projectId, publicAnonKey } from "../utils/supabase/info";
 
-export type CloudLedgerState<Cycle, Entry> = {
+export type LedgerSnapshot<Cycle, Entry> = {
   cycles: Cycle[];
   entries: Entry[];
-  activeId: number;
+  activeId: string | null;
 };
 
 const serverUrl = `https://${projectId}.supabase.co/functions/v1/make-server-3d31521b`;
@@ -25,17 +25,48 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export async function loadLedger<Cycle, Entry>() {
-  const body = await request<{ state: CloudLedgerState<Cycle, Entry> | null }>("/ledger");
-  return body.state;
-}
+export const ledgerRepository = {
+  async fetch<Cycle, Entry>() {
+    return request<LedgerSnapshot<Cycle, Entry>>("/ledger");
+  },
 
-export async function saveLedger<Cycle, Entry>(state: CloudLedgerState<Cycle, Entry>) {
-  await request<{ ok: true }>("/ledger", {
-    method: "PUT",
-    body: JSON.stringify(state),
-  });
-}
+  async createCycle<Cycle>(input: Omit<Cycle, "id">) {
+    const body = await request<{ cycle: Cycle }>("/cycles", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    return body.cycle;
+  },
+
+  async updateCycle<Cycle>(id: string, update: Partial<Cycle>) {
+    const body = await request<{ cycle: Cycle }>(`/cycles/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(update),
+    });
+    return body.cycle;
+  },
+
+  async setActiveCycle(id: string | null) {
+    await request<{ ok: true }>("/ledger/active", {
+      method: "PUT",
+      body: JSON.stringify({ activeId: id }),
+    });
+  },
+
+  async createEntries<Entry>(entries: Array<Omit<Entry, "id">>) {
+    const body = await request<{ entries: Entry[] }>("/entries", {
+      method: "POST",
+      body: JSON.stringify({ entries }),
+    });
+    return body.entries;
+  },
+
+  async deleteEntry(id: string) {
+    await request<{ ok: true }>(`/entries/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  },
+};
 
 export async function scanReceipt(imageBase64: string, mimeType: string) {
   return request<{ amount: number | null; confidence: number }>("/ocr", {
