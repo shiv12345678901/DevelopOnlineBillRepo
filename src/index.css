@@ -780,3 +780,72 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .cancel-button:not(:disabled):active { transform: scale(.98); }
 :where(html.dark) .confirm-sheet { background: rgba(28, 28, 30, .98); border-color: rgba(255, 255, 255, .08); }
 :where(html.dark) .cancel-button { background: #3a3a3c; color: #ffffff; }
+
+/* ================= Add to Home Screen guide (iOS push page) ================= */
+.install-guide {
+  position: fixed; z-index: 46; inset: 0;
+  display: flex; flex-direction: column;
+  background: #f2f2f7;
+  animation: guide-push-in .3s cubic-bezier(.32, .72, 0, 1) both;
+}
+.install-guide.closing { animation: guide-push-out .26s cubic-bezier(.55, 0, .85, .45) both; }
+@keyframes guide-push-in { from { transform: translate3d(100%, 0, 0); } to { transform: translate3d(0, 0, 0); } }
+@keyframes guide-push-out { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(100%, 0, 0); } }
+
+.guide-nav {
+  position: relative; display: flex; flex-shrink: 0; align-items: center; justify-content: space-between;
+  padding: max(14px, env(safe-area-inset-top)) 12px 10px;
+  border-bottom: 1px solid var(--line);
+  background: inherit;
+}
+.guide-nav strong { font-size: 1.02rem; font-weight: 650; letter-spacing: -.01em; }
+.guide-back { display: flex; align-items: center; gap: 1px; min-height: 44px; padding: 0 8px 0 2px; color: var(--blue); border: 0; background: transparent; font-size: .95rem; font-weight: 500; }
+.guide-back svg { transform: rotate(180deg); }
+.guide-back:active { opacity: .5; }
+.guide-nav-spacer { width: 74px; }
+
+.guide-body { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 18px 18px calc(30px + env(safe-area-inset-bottom)); }
+.guide-intro { margin: 0 0 18px; color: var(--muted); font-size: .84rem; line-height: 1.45; }
+.guide-installed {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 14px; padding: 11px 13px;
+  color: #1d8a3a; border: 1px solid rgba(52, 199, 89, .35); border-radius: 12px; background: rgba(52, 199, 89, .12);
+  font-size: .78rem; font-weight: 600;
+}
+.guide-installed svg { color: #34c759; }
+
+.guide-section {
+  overflow: hidden; margin-bottom: 14px;
+  border: 1px solid var(--line); border-radius: 16px;
+  background: var(--card);
+}
+.guide-platform { display: flex; align-items: center; gap: 11px; padding: 13px 15px; border-bottom: 1px solid var(--line); }
+.guide-platform-icon { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; color: #fff; border-radius: 10px; background: linear-gradient(180deg, #4da2ff, #0a6fe8); }
+.guide-platform:last-child .guide-platform-icon { background: linear-gradient(180deg, #5ec57a, #2f9e57); }
+.guide-platform-copy { display: grid; gap: 1px; min-width: 0; flex: 1; }
+.guide-platform-copy strong { font-size: .95rem; font-weight: 600; }
+.guide-platform-copy small { color: var(--muted); font-size: .7rem; }
+.guide-badge { padding: 3px 9px; color: var(--blue); border-radius: 99px; background: rgba(0, 122, 255, .1); font-size: .66rem; font-weight: 650; }
+
+.guide-steps { display: grid; gap: 13px; margin: 0; padding: 15px; list-style: none; counter-reset: step; }
+.guide-steps li { display: flex; align-items: flex-start; gap: 11px; }
+.guide-steps p { margin: 1px 0 0; color: var(--ink); font-size: .84rem; line-height: 1.45; }
+.guide-steps b { font-weight: 650; }
+.guide-step-num {
+  display: grid; width: 21px; height: 21px; flex: 0 0 auto; margin-top: 1px; place-items: center;
+  color: var(--blue); border-radius: 50%; background: rgba(0, 122, 255, .12);
+  font-size: .68rem; font-weight: 700;
+}
+.guide-glyph { display: inline-grid; width: 21px; height: 21px; place-items: center; margin: 0 1px; vertical-align: -4px; border: 1px solid var(--line); border-radius: 5px; background: rgba(120, 120, 128, .08); color: var(--ink); }
+.guide-glyph svg { width: 13px; height: 13px; }
+.guide-key {
+  display: inline-block; padding: 0 7px; border: 1px solid var(--line); border-radius: 7px;
+  background: rgba(120, 120, 128, .08); font-size: .78rem; font-weight: 600; line-height: 1.5;
+}
+.guide-footnote { margin: 4px 2px 0; color: var(--muted); font-size: .72rem; line-height: 1.4; text-align: center; }
+
+:where(html.dark) .install-guide { background: #000000; }
+:where(html.dark) .guide-platform-icon { background: linear-gradient(180deg, #3d8fe8, #0a5fc4); }
+:where(html.dark) .guide-installed { color: #4cd964; }
+@media (prefers-reduced-motion: reduce) {
+  .install-guide, .install-guide.closing { animation: none; }
+}

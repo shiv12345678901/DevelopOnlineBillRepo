@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { ledgerRepository, scanReceipt, uploadReceipt } from "./api";
 import { ocrOnDevice } from "./receipt-ocr";
 import { applyTheme, getThemePref, watchSystemTheme, type ThemePref } from "./theme";
@@ -320,12 +320,13 @@ export default function App() {
   const [editingEntry, setEditingEntry] = useState<LedgerEntry | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [themePref, setThemePref] = useState<ThemePref>(() => getThemePref());
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [toast, setToast] = useState("");
   const [showNewCycle, setShowNewCycle] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest);
+  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide;
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
 
@@ -693,10 +694,7 @@ export default function App() {
     flash("Ledger exported");
   };
 
-  const installApp = () => {
-    const standalone = window.matchMedia("(display-mode: standalone)").matches;
-    flash(standalone ? "Grocery Ledger is already installed" : "On iPhone: tap Share, then Add to Home Screen");
-  };
+  const installApp = () => setShowInstallGuide(true);
 
   const title = tab === "home" ? greeting() : tab === "settle" ? "Settle up" : tab === "receipts" ? "Receipts" : "Settings";
 
@@ -837,6 +835,8 @@ export default function App() {
           saving={syncStatus === "saving"}
         />
       )}
+
+      {showInstallGuide && <InstallGuide onClose={() => setShowInstallGuide(false)} />}
 
       {toast && <div className="toast"><Icon name="check" size={17} />{toast}</div>}
     </div>
@@ -1419,11 +1419,118 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
           </button>
           <button className="settings-row" onClick={onInstall}>
             <span className="settings-icon settings-icon-blue"><Icon name="home" size={19} /></span>
-            <span className="settings-row-copy"><strong>Add to Home Screen</strong><small>Install Grocery Ledger on iPhone</small></span>
+            <span className="settings-row-copy"><strong>Add to Home Screen</strong><small>Step-by-step install guide</small></span>
             <Icon name="chevron" size={17} />
           </button>
         </div>
       </section>
+    </div>
+  );
+}
+
+const SHARE_GLYPH = (
+  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 14.5V3.5" /><path d="M8.25 7.25 12 3.5l3.75 3.75" />
+    <path d="M7.5 10.5H7a3 3 0 0 0-3 3v4a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-4a3 3 0 0 0-3-3h-.5" />
+  </svg>
+);
+
+const MENU_GLYPH = (
+  <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+    <circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" />
+  </svg>
+);
+
+type GuidePlatform = {
+  id: "ios" | "android";
+  name: string;
+  requires: string;
+  glyph: ReactNode;
+  steps: ReactNode[];
+};
+
+const INSTALL_GUIDE_SECTIONS: GuidePlatform[] = [
+  {
+    id: "ios",
+    name: "iPhone & iPad",
+    requires: "Uses the Safari app",
+    glyph: SHARE_GLYPH,
+    steps: [
+      <><p>Open this site in <b>Safari</b>. Chrome on iPhone cannot install apps.</p></>,
+      <><p>Tap the <b>Share</b> button <span className="guide-glyph">{SHARE_GLYPH}</span> in the toolbar.</p></>,
+      <><p>Scroll down and tap <span className="guide-key">Add to Home Screen</span>.</p></>,
+      <><p>Name it if you like, then tap <span className="guide-key">Add</span>. The icon lands on your Home Screen.</p></>,
+    ],
+  },
+  {
+    id: "android",
+    name: "Android",
+    requires: "Uses the Chrome app",
+    glyph: MENU_GLYPH,
+    steps: [
+      <><p>Open this site in <b>Chrome</b>.</p></>,
+      <><p>Tap the <b>menu</b> <span className="guide-glyph">{MENU_GLYPH}</span> at the top right.</p></>,
+      <><p>Tap <span className="guide-key">Add to Home screen</span> — on newer phones it appears as <span className="guide-key">Install app</span>.</p></>,
+      <><p>Confirm with <span className="guide-key">Add</span> or <span className="guide-key">Install</span>. The icon lands on your Home Screen.</p></>,
+    ],
+  },
+];
+
+/** Full-screen push page: how to install the app on iOS and Android. */
+function InstallGuide({ onClose }: { onClose: () => void }) {
+  const [closing, setClosing] = useState(false);
+  const installed = useMemo(() => window.matchMedia("(display-mode: standalone)").matches, []);
+  const detected = useMemo(() => (/android/i.test(navigator.userAgent) ? "android" : "ios"), []);
+
+  const close = useCallback(() => {
+    setClosing(true);
+    window.setTimeout(onClose, 250);
+  }, [onClose]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [close]);
+
+  const sections = [...INSTALL_GUIDE_SECTIONS].sort((a) => (a.id === detected ? -1 : 1));
+
+  return (
+    <div className={`install-guide ${closing ? "closing" : ""}`} role="dialog" aria-modal="true" aria-label="Add to Home Screen guide">
+      <header className="guide-nav">
+        <button className="guide-back" onClick={close}><Icon name="chevron" size={20} />Settings</button>
+        <strong>Add to Home Screen</strong>
+        <span className="guide-nav-spacer" aria-hidden="true" />
+      </header>
+      <div className="guide-body">
+        {installed && (
+          <div className="guide-installed"><Icon name="check" size={16} />Grocery Ledger is already on this device's Home Screen</div>
+        )}
+        <p className="guide-intro">
+          Install the app for a full-screen experience that opens straight from your Home Screen — no app store required.
+        </p>
+        {sections.map((section) => (
+          <section className="guide-section" key={section.id}>
+            <div className="guide-platform">
+              <span className="guide-platform-icon">{section.glyph}</span>
+              <div className="guide-platform-copy">
+                <strong>{section.name}</strong>
+                <small>{section.requires}</small>
+              </div>
+              {section.id === detected && <span className="guide-badge">This device</span>}
+            </div>
+            <ol className="guide-steps">
+              {section.steps.map((step, index) => (
+                <li key={index}>
+                  <span className="guide-step-num">{index + 1}</span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+          </section>
+        ))}
+        <p className="guide-footnote">Your receipts and settlement cycles stay in sync automatically, installed or not.</p>
+      </div>
     </div>
   );
 }
