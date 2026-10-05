@@ -81,7 +81,7 @@ const money = (value: number, decimals = 0) =>
     maximumFractionDigits: decimals,
   });
 
-async function resizeReceipt(file: File, maxSide = 1600) {
+async function resizeReceipt(file: File, maxSide = 1600, quality = 0.84) {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
@@ -89,7 +89,7 @@ async function resizeReceipt(file: File, maxSide = 1600) {
   canvas.height = Math.round(bitmap.height * scale);
   canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.84);
+  const dataUrl = canvas.toDataURL("image/jpeg", quality);
   return { imageBase64: dataUrl.split(",")[1], mimeType: "image/jpeg" };
 }
 
@@ -448,6 +448,8 @@ export default function App() {
 
     try {
       const image = await resizeReceipt(item.file);
+      // A smaller copy kept in the database so the receipt stays viewable.
+      const stored = await resizeReceipt(item.file, 900, 0.72);
 
       // 1. AI vision (Gemini).
       let ai: { amount: number; merchant: string; confidence: number } | null = null;
@@ -503,8 +505,8 @@ export default function App() {
           note: "",
           spentOn: today(),
           confidence: read.confidence,
-          receiptImageBase64: image.imageBase64,
-          receiptMimeType: "image/jpeg",
+          receiptImageBase64: stored.imageBase64,
+          receiptMimeType: stored.mimeType,
         }]);
         setEntries((current) => [...created, ...current]);
         setPending((current) => current.filter((receipt) => receipt.id !== item.id));
@@ -988,6 +990,7 @@ function ReceiptsView({ cycle, entries, summary, onEdit, onDelete }: {
   onDelete: (entry: LedgerEntry) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const requestDelete = (entry: LedgerEntry) => {
@@ -1024,11 +1027,15 @@ function ReceiptsView({ cycle, entries, summary, onEdit, onDelete }: {
                 onClose={() => setOpenId(null)}
                 onEdit={() => { setOpenId(null); onEdit(entry); }}
                 onDelete={() => requestDelete(entry)}
+                onExpandImage={(url) => setLightbox(url)}
               />
             ))}
           </div>
         ) : (
           <EmptyState title="No receipts yet" copy="Snap a receipt and it will show up here." />
+        )}
+        {lightbox && (
+          <ReceiptLightbox url={lightbox} alt="Saved receipt" onClose={() => setLightbox(null)} />
         )}
       </section>
       {entries.length > 0 && (
@@ -1056,23 +1063,27 @@ const SWIPE_ACTIONS_WIDTH = 148;
 
 /** Apple-notification-style swipe: the card slides, and glass action buttons
  *  fade/scale in proportionally underneath it. Stays open until the user
- *  taps elsewhere, taps the card, or swipes it shut. */
-function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete }: {
+ *  taps elsewhere, taps the card, or swipes it shut. Tapping a closed card
+ *  expands it to show the stored receipt image and details. */
+function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete, onExpandImage }: {
   entry: LedgerEntry;
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onExpandImage: (url: string) => void;
 }) {
   const width = SWIPE_ACTIONS_WIDTH;
   const [offset, setOffset] = useState(open ? -width : 0);
   const [dragging, setDragging] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const gesture = useRef({ active: false, startX: 0, base: 0, moved: false });
 
   useEffect(() => { setOffset(open ? -width : 0); }, [open, width]);
 
   const position = dragging ? offset : open ? -width : offset;
+  const progress = Math.min(1, Math.max(0, -position / width));
 
   const endDrag = () => {
     if (!gesture.current.active) return;
@@ -1083,19 +1094,20 @@ function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete }: {
       onOpen();
     } else if (!moved && open) {
       onClose(); // tap on an open card closes it
+    } else if (!moved && !open) {
+      setExpanded((value) => !value); // tap toggles the details
     } else if (moved) {
       onClose();
     }
-    // snap to whichever state is now current
-    setOffset(open && !moved ? -width : (offset < -width / 2 - 12 && moved ? -width : 0));
+    setOffset(moved && offset < -width / 2 - 12 ? -width : open && !moved ? -width : 0);
   };
 
   return (
-    <div className={`swipe-card ${open ? "open" : ""}`}>
-      <div className="swipe-actions" style={{ opacity: Math.min(1, Math.max(0, -position / width)), transform: `translateX(${(1 - Math.min(1, Math.max(0, -position / width))) * 26}px)` }}>
+    <div className={`swipe-card ${open ? "open" : ""} ${expanded ? "expanded" : ""}`}>
+      <div className="swipe-actions" style={{ opacity: progress, transform: `translateX(${(1 - progress) * 26}px)` }}>
         <button
           className="swipe-action glass-edit"
-          style={{ transform: `scale(${0.7 + Math.min(1, Math.max(0, -position / width)) * 0.3})` }}
+          style={{ transform: `scale(${0.7 + progress * 0.3})` }}
           onClick={(event) => { event.stopPropagation(); onEdit(); }}
           aria-label={`Edit receipt from ${entry.merchant || entry.payer}`}
           tabIndex={open ? 0 : -1}
@@ -1104,7 +1116,7 @@ function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete }: {
         </button>
         <button
           className="swipe-action glass-delete"
-          style={{ transform: `scale(${0.7 + Math.min(1, Math.max(0, -position / width)) * 0.3})` }}
+          style={{ transform: `scale(${0.7 + progress * 0.3})` }}
           onClick={(event) => { event.stopPropagation(); onDelete(); }}
           aria-label={`Delete receipt from ${entry.merchant || entry.payer}`}
           tabIndex={open ? 0 : -1}
@@ -1130,17 +1142,57 @@ function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete }: {
         onPointerCancel={endDrag}
         onClick={(event) => {
           // Suppress the click that follows a drag; taps on an open card
-          // close it, taps on a closed card do nothing.
+          // close it, taps on a closed card expand the details.
           if (gesture.current.moved) event.stopPropagation();
         }}
       >
-        <Avatar name={entry.payer} size="sm" />
-        <div className="expense-main">
-          <strong>{entry.merchant || entry.note || "Grocery receipt"}</strong>
-          <span>{entry.payer} · {new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</span>
+        <div className="swipe-row">
+          <Avatar name={entry.payer} size="sm" />
+          <div className="expense-main">
+            <strong>{entry.merchant || entry.note || "Grocery receipt"}</strong>
+            <span>{entry.payer} · {new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</span>
+          </div>
+          <strong className="expense-amount">{money(entry.amount)}</strong>
         </div>
-        <strong className="expense-amount">{money(entry.amount)}</strong>
+        {expanded && (
+          <div className="swipe-expanded" onClick={(event) => event.stopPropagation()}>
+            {entry.receiptUrl ? (
+              <button
+                className="receipt-thumb-button"
+                onClick={(event) => { event.stopPropagation(); onExpandImage(entry.receiptUrl!); }}
+                aria-label="View receipt full size"
+              >
+                <img src={entry.receiptUrl} alt={`Receipt from ${entry.merchant || entry.payer}`} />
+                <span className="expand-hint">Tap to enlarge</span>
+              </button>
+            ) : (
+              <div className="receipt-thumb-placeholder"><Icon name="receipt" size={20} /> No image stored for this receipt</div>
+            )}
+            <dl className="expanded-details">
+              <div><dt>Merchant</dt><dd>{entry.merchant || "—"}</dd></div>
+              <div><dt>Paid by</dt><dd>{entry.payer}</dd></div>
+              <div><dt>Date</dt><dd>{new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}</dd></div>
+              {entry.note && <div><dt>Note</dt><dd>{entry.note}</dd></div>}
+              {entry.confidence > 0 && <div><dt>Read by</dt><dd>{entry.confidence >= 0.75 ? "AI" : "OCR"} · {Math.round(entry.confidence * 100)}%</dd></div>}
+            </dl>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** Fullscreen receipt viewer. */
+function ReceiptLightbox({ url, alt, onClose }: { url: string; alt: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+  return (
+    <div className="lightbox-backdrop" role="dialog" aria-modal="true" aria-label={alt} onClick={onClose}>
+      <button className="lightbox-close" onClick={onClose} aria-label="Close viewer"><Icon name="close" size={20} /></button>
+      <img src={url} alt={alt} onClick={(event) => event.stopPropagation()} />
     </div>
   );
 }

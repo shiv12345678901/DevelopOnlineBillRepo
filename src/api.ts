@@ -42,6 +42,7 @@ const toEntry = (row: Record<string, unknown>) => ({
   note: (row.note as string | null) ?? "",
   spentOn: String(row.spent_on),
   confidence: Number(row.ai_confidence ?? 0),
+  receiptUrl: (row.receipt_image as string | null) ?? undefined,
 });
 
 export const ledgerRepository = {
@@ -112,13 +113,23 @@ export const ledgerRepository = {
       note: (e.note as string) || null,
       ai_confidence: e.confidence ?? null,
       spent_on: e.spentOn,
+      receipt_image: e.receiptImageBase64
+        ? `data:${e.receiptMimeType || "image/jpeg"};base64,${e.receiptImageBase64}`
+        : null,
     }));
     let result = await supabase.from("grocery_ledger").insert(rows).select();
-    // Table without the merchant column yet: retry without it.
+    // Table without the receipt_image column yet: retry without it.
+    if (result.error && /receipt_image/i.test(result.error.message)) {
+      result = await supabase
+        .from("grocery_ledger")
+        .insert(rows.map(({ receipt_image, ...rest }) => { void receipt_image; return rest; }))
+        .select();
+    }
+    // Table without the merchant column either: strip both and retry.
     if (result.error && /merchant/i.test(result.error.message)) {
       result = await supabase
         .from("grocery_ledger")
-        .insert(rows.map(({ merchant, ...rest }) => { void merchant; return rest; }))
+        .insert(rows.map(({ merchant, receipt_image, ...rest }) => { void merchant; void receipt_image; return rest; }))
         .select();
     }
     if (result.error) throw new Error(result.error.message);
@@ -140,14 +151,25 @@ export const ledgerRepository = {
     if ("merchant" in update) patch.merchant = update.merchant || null;
     if ("note" in update) patch.note = update.note || null;
     if ("spentOn" in update) patch.spent_on = update.spentOn;
-    const { data, error } = await supabase
+    let result = await supabase
       .from("grocery_ledger")
       .update(patch)
       .eq("id", Number(id))
       .select()
       .single();
-    if (error) throw new Error(error.message);
-    return toEntry(data) as unknown as Entry;
+    // Table without the merchant column yet: retry without it.
+    if (result.error && /merchant/i.test(result.error.message)) {
+      const { merchant, ...rest } = patch;
+      void merchant;
+      result = await supabase
+        .from("grocery_ledger")
+        .update(rest)
+        .eq("id", Number(id))
+        .select()
+        .single();
+    }
+    if (result.error) throw new Error(result.error.message);
+    return toEntry(result.data) as unknown as Entry;
   },
 };
 

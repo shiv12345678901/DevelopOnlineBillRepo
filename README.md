@@ -82,3 +82,6 @@ the serverless function in `netlify/functions/`.
 - Free-tier Gemini requests may be used by Google to improve their products;
   the on-device fallback keeps working even if the key is removed entirely.
 - Low-confidence totals are flagged for manual confirmation before saving.
+
+-- Receipt images (run once in Supabase SQL Editor)
+alter table grocery_ledger add column if not exists receipt_image text;
