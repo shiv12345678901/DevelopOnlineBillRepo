@@ -4,6 +4,13 @@ import { ocrOnDevice } from "./receipt-ocr";
 
 type Tab = "home" | "settle" | "camera" | "receipts" | "settings";
 
+type ConfirmRequest = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  action: () => void | Promise<void>;
+};
+
 type Cycle = {
   id: string;
   name: string;
@@ -311,12 +318,13 @@ export default function App() {
   const [defaultPayer, setDefaultPayer] = useState("");
   const [sheetExit, setSheetExit] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LedgerEntry | null>(null);
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [toast, setToast] = useState("");
   const [showNewCycle, setShowNewCycle] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry);
+  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest);
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
 
@@ -404,6 +412,8 @@ export default function App() {
     setToast(message);
     window.setTimeout(() => setToast(""), 2400);
   };
+
+  const openConfirm = (request: ConfirmRequest) => setConfirmRequest(request);
 
   const selectTab = (next: Tab) => {
     if (next === "camera") {
@@ -588,15 +598,17 @@ export default function App() {
     }
   };
 
-  const closeCycle = async () => {
+  const closeCycle = async (options?: { skipConfirm?: boolean }) => {
     if (!cycle) return;
-    if (summary.settlements.length > 0) {
+    if (!options?.skipConfirm && summary.settlements.length > 0) {
       const outstanding = summary.settlements.reduce((sum, payment) => sum + payment.amount, 0);
-      const confirmed = window.confirm(
-        `${summary.settlements.length} unresolved payment${summary.settlements.length === 1 ? "" : "s"} ` +
-        `totalling ${money(outstanding)} remain. Closing prevents new receipts, but balances stay visible. Close anyway?`,
-      );
-      if (!confirmed) return;
+      openConfirm({
+        title: "Close this cycle?",
+        message: `${summary.settlements.length} unresolved payment${summary.settlements.length === 1 ? "" : "s"} totalling ${money(outstanding)} remain. Closing prevents new receipts, but balances stay visible.`,
+        confirmLabel: "Close cycle",
+        action: () => closeCycle({ skipConfirm: true }),
+      });
+      return;
     }
     setSyncStatus("saving");
     try {
@@ -657,7 +669,6 @@ export default function App() {
   };
 
   const deleteEntry = async (entry: LedgerEntry) => {
-    if (!window.confirm(`Delete ${money(entry.amount)} paid by ${entry.payer}? This cannot be undone.`)) return;
     setSyncStatus("saving");
     try {
       await ledgerRepository.deleteEntry(entry.id);
@@ -741,6 +752,7 @@ export default function App() {
             summary={summary}
             onEdit={(entry) => setEditingEntry(entry)}
             onDelete={deleteEntry}
+            onConfirmRequest={openConfirm}
           />
         ) : (
           <SettingsView
@@ -811,6 +823,20 @@ export default function App() {
           saving={syncStatus === "saving"}
           onClose={() => setEditingEntry(null)}
           onSave={(patch) => updateEntry(editingEntry.id, patch)}
+        />
+      )}
+
+      {confirmRequest && (
+        <ConfirmSheet
+          title={confirmRequest.title}
+          message={confirmRequest.message}
+          confirmLabel={confirmRequest.confirmLabel}
+          onClose={() => setConfirmRequest(null)}
+          onConfirm={async () => {
+            const action = confirmRequest.action;
+            setConfirmRequest(null);
+            await action();
+          }}
         />
       )}
 
@@ -990,12 +1016,13 @@ function SettleView({ cycle, summary, entries, onClose }: {
   );
 }
 
-function ReceiptsView({ cycle, entries, summary, onEdit, onDelete }: {
+function ReceiptsView({ cycle, entries, summary, onEdit, onDelete, onConfirmRequest }: {
   cycle: Cycle;
   entries: LedgerEntry[];
   summary: ReturnType<typeof computeSettlements>;
   onEdit: (entry: LedgerEntry) => void;
-  onDelete: (entry: LedgerEntry) => void;
+  onDelete: (entry: LedgerEntry) => void | Promise<void>;
+  onConfirmRequest: (request: ConfirmRequest) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -1003,9 +1030,12 @@ function ReceiptsView({ cycle, entries, summary, onEdit, onDelete }: {
 
   const requestDelete = (entry: LedgerEntry) => {
     setOpenId(null);
-    if (window.confirm(`Delete the ${money(entry.amount)} receipt from ${entry.merchant || entry.payer}? This can't be undone.`)) {
-      onDelete(entry);
-    }
+    onConfirmRequest({
+      title: "Delete receipt?",
+      message: `The ${money(entry.amount)} receipt from ${entry.merchant || entry.payer} will be permanently removed.`,
+      confirmLabel: "Delete",
+      action: () => onDelete(entry),
+    });
   };
 
   // Close an open card when the pointer goes down anywhere outside the cards.
@@ -1185,6 +1215,31 @@ function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete, onExpandIma
             </dl>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** In-app confirmation sheet — replaces native confirm() dialogs. */
+function ConfirmSheet({ title, message, confirmLabel, onClose, onConfirm }: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="sheet-backdrop confirm-backdrop" role="alertdialog" aria-modal="true" aria-label={title}
+      onPointerDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
+      <div className="bottom-sheet confirm-sheet" role="document">
+        <div className="sheet-drag-region" aria-hidden="true"><div className="sheet-handle" /></div>
+        <h2 className="confirm-title">{title}</h2>
+        <p className="confirm-message">{message}</p>
+        <button className="danger-button" disabled={busy} onClick={async () => { setBusy(true); await onConfirm(); }}>
+          {busy ? "Working…" : confirmLabel}
+        </button>
+        <button className="cancel-button" disabled={busy} onClick={onClose}>Cancel</button>
       </div>
     </div>
   );
