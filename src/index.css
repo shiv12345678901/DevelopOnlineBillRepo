@@ -761,25 +761,30 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
   margin: 0 auto; padding: 8px 18px max(24px, env(safe-area-inset-bottom));
   border-radius: 24px 24px 0 0; text-align: center;
 }
-.confirm-title { margin: 10px 0 6px; font-size: 1.15rem; font-weight: 710; letter-spacing: -.02em; }
-.confirm-message { margin: 0 0 18px; color: var(--muted); font-size: 13.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.confirm-title { margin: 10px 0 6px; font-size: 1.06rem; font-weight: 660; letter-spacing: -.015em; }
+.confirm-message { margin: 0 0 20px; color: var(--muted); font-size: 13.5px; line-height: 1.47; overflow-wrap: anywhere; }
+/* Apple's tinted destructive button: red as ink on a translucent fill,
+   never a saturated block — the color signals, it doesn't shout. */
 .danger-button {
   display: flex; width: 100%; min-height: 50px; align-items: center; justify-content: center;
-  color: #fff; border: 0; border-radius: 14px; background: #ff3b30;
-  font: inherit; font-size: 16px; font-weight: 700; cursor: pointer;
-  transition: transform .12s ease, filter .18s ease;
+  color: #ff453a; border: 0; border-radius: 13px; background: rgba(255, 59, 48, .12);
+  font: inherit; font-size: 16.5px; font-weight: 600; letter-spacing: -.01em; cursor: pointer;
+  transition: transform .12s ease, background .18s ease;
 }
-.danger-button:not(:disabled):active { transform: scale(.98); filter: brightness(1.08); }
+.danger-button:not(:disabled):active { transform: scale(.98); background: rgba(255, 59, 48, .2); }
 .danger-button:disabled { opacity: .55; }
 .cancel-button {
-  display: flex; width: 100%; min-height: 48px; margin-top: 10px; align-items: center; justify-content: center;
-  color: var(--ink); border: 0; border-radius: 14px; background: #e9e9eb;
-  font: inherit; font-size: 16px; font-weight: 600; cursor: pointer;
-  transition: transform .12s ease;
+  display: flex; width: 100%; min-height: 50px; margin-top: 10px; align-items: center; justify-content: center;
+  color: var(--ink); border: 0; border-radius: 13px; background: rgba(120, 120, 128, .16);
+  font: inherit; font-size: 16.5px; font-weight: 600; letter-spacing: -.01em; cursor: pointer;
+  transition: transform .12s ease, background .18s ease;
 }
-.cancel-button:not(:disabled):active { transform: scale(.98); }
+.cancel-button:not(:disabled):active { transform: scale(.98); background: rgba(120, 120, 128, .24); }
 :where(html.dark) .confirm-sheet { background: rgba(28, 28, 30, .98); border-color: rgba(255, 255, 255, .08); }
-:where(html.dark) .cancel-button { background: #3a3a3c; color: #ffffff; }
+:where(html.dark) .danger-button { color: #ff6961; background: rgba(255, 69, 58, .16); }
+:where(html.dark) .danger-button:not(:disabled):active { background: rgba(255, 69, 58, .26); }
+:where(html.dark) .cancel-button { background: #2c2c2e; color: #f2f2f7; }
+:where(html.dark) .cancel-button:not(:disabled):active { background: #3a3a3c; }
 
 /* ================= Add to Home Screen guide (iOS push page) ================= */
 .install-guide {
