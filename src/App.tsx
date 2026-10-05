@@ -586,7 +586,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className={`topbar topbar-${tab}`}>
+      <header className="topbar">
         <div>
           <p className="eyebrow">{tab === "home" ? "Home household" : GROUP_NAME}</p>
           <h1>{title}</h1>
@@ -987,18 +987,45 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
   const canSave = receipts.length > 0 && receipts.every(
     (receipt) => receipt.status === "ready" && Number(receipt.amount) > 0 && receipt.payer,
   );
+  const cropping = receipts.filter((receipt) => receipt.status === "cropping").length;
+  const scanning = receipts.filter((receipt) => receipt.status === "scanning").length;
+  const ready = receipts.filter((receipt) => receipt.status === "ready").length;
+  const phaseTitle = cropping > 0
+    ? "Frame your receipt"
+    : scanning > 0
+      ? "Reading receipt"
+      : "Confirm the details";
+  const completionHint = cropping > 0
+    ? `${cropping} receipt${cropping === 1 ? "" : "s"} still need cropping`
+    : scanning > 0
+      ? "Keep this sheet open while recognition finishes"
+      : canSave
+        ? "Everything is ready to save"
+        : "Confirm an amount and payer for every receipt";
   const { sheetRef, dismiss, dragProps } = useSheetGesture(onClose);
   return (
-    <div className="sheet-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && dismiss()}>
-      <div className="bottom-sheet" ref={sheetRef} role="dialog" aria-modal="true" aria-label="Review receipts">
+    <div className="sheet-backdrop receipt-sheet-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && dismiss()}>
+      <div className="bottom-sheet receipt-sheet" ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="receipt-sheet-title">
         <div className="sheet-drag-region" aria-hidden="true" {...dragProps}><div className="sheet-handle" /></div>
-        <div className="sheet-header">
-          <div><p className="kicker">Receipt upload</p><h2>Review the expense</h2></div>
-          <button className="icon-button" onClick={dismiss} aria-label="Close receipt review"><Icon name="close" size={20} /></button>
+        <div className="sheet-header receipt-sheet-header">
+          <div>
+            <p className="receipt-sheet-context">Receipt review · {receipts.length} item{receipts.length === 1 ? "" : "s"}</p>
+            <h2 id="receipt-sheet-title">{phaseTitle}</h2>
+          </div>
+          <button className="icon-button receipt-sheet-close" onClick={dismiss} aria-label="Cancel receipt review"><Icon name="close" size={18} /></button>
         </div>
-        <div className="receipt-editor-list">
+        <div className="receipt-progress" aria-label={`${ready} of ${receipts.length} receipts reviewed`}>
           {receipts.map((receipt) => (
+            <span className={receipt.status === "ready" ? "complete" : receipt.status} key={`progress-${receipt.id}`} />
+          ))}
+        </div>
+        <div className="receipt-editor-list" aria-live="polite">
+          {receipts.map((receipt, index) => (
             <div className="receipt-editor" key={receipt.id}>
+              <div className="receipt-item-heading">
+                <span>Receipt {index + 1}</span>
+                <span>{receipt.status === "cropping" ? "Crop" : receipt.status === "scanning" ? "Reading…" : "Review"}</span>
+              </div>
               {receipt.status === "cropping" ? (
                 <CropEditor
                   receipt={receipt}
@@ -1011,7 +1038,7 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
                   {receipt.status === "scanning" && <span className="scanning"><Icon name="receipt" />Reading receipt…</span>}
                 </div>
               )}
-              <button className="remove-receipt" onClick={() => onRemove(receipt.id)}><Icon name="trash" size={17} /></button>
+              <button className="remove-receipt" onClick={() => onRemove(receipt.id)} aria-label={`Remove receipt ${index + 1}`}><Icon name="trash" size={16} /></button>
               {receipt.status === "ready" && (
                 <div className="receipt-fields">
                   <label className="amount-field"><span>Total amount</span><div><b>$</b><input autoFocus inputMode="decimal" type="number" placeholder="0.00" value={receipt.amount} onChange={(event) => onUpdate(receipt.id, { amount: event.target.value })} /></div></label>
@@ -1038,7 +1065,12 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
             </div>
           ))}
         </div>
-        <button className="primary-button" disabled={!canSave || saving} onClick={onSave}>{saving ? "Saving…" : "Add to ledger"}</button>
+        <div className="receipt-sheet-actions">
+          <p className={canSave ? "ready" : ""}><Icon name={canSave ? "check" : "receipt"} size={15} />{completionHint}</p>
+          <button className="primary-button" disabled={!canSave || saving} onClick={onSave}>
+            {saving ? "Saving…" : `Save ${receipts.length} receipt${receipts.length === 1 ? "" : "s"}`}
+          </button>
+        </div>
       </div>
     </div>
   );
