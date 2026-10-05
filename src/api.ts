@@ -71,30 +71,51 @@ const toEntry = (row: Record<string, unknown>) => ({
     : ((row.receipt_image as string | null) ?? undefined),
 });
 
+/**
+ * PostgREST caps unpaginated responses (Supabase default: 1000 rows) — past
+ * that, older rows silently disappear. Walk the table with range windows
+ * until a short page marks the end. buildPage() must return a FRESH query
+ * builder for every page; builders are single-use.
+ */
+const PAGE_SIZE = 1000;
+
+async function fetchAllRows<T>(buildPage: () => { range(from: number, to: number): PromiseLike<{ data: T[] | null; error: { message: string } | null }> }): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await buildPage().range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const chunk = data ?? [];
+    rows.push(...chunk);
+    if (chunk.length < PAGE_SIZE) return rows;
+  }
+}
+
 export const ledgerRepository = {
   async fetch<Cycle, Entry>(): Promise<LedgerSnapshot<Cycle, Entry>> {
-    const [cyclesRes, entriesRes] = await Promise.all([
+    const [cyclesRows, entriesRows] = await Promise.all([
       // .retry(false): the app layer owns retry policy (quiet retries on
       // initial load, a visible error dialog on manual refresh) — without
       // this, postgrest-js adds its own 1s/2s/4s backoff on top.
-      supabase
-        .from("settlement_cycles")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .retry(false),
-      supabase
-        .from("grocery_ledger")
-        .select("*")
-        .order("spent_on", { ascending: false })
-        .order("id", { ascending: false })
-        .retry(false),
+      fetchAllRows<any>(() =>
+        supabase
+          .from("settlement_cycles")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .retry(false),
+      ),
+      fetchAllRows<any>(() =>
+        supabase
+          .from("grocery_ledger")
+          .select("*")
+          .order("spent_on", { ascending: false })
+          .order("id", { ascending: false })
+          .retry(false),
+      ),
     ]);
-    if (cyclesRes.error) throw new Error(cyclesRes.error.message);
-    if (entriesRes.error) throw new Error(entriesRes.error.message);
 
     return {
-      cycles: (cyclesRes.data ?? []).map(toCycle) as unknown as Cycle[],
-      entries: (entriesRes.data ?? []).map(toEntry) as unknown as Entry[],
+      cycles: (cyclesRows ?? []).map(toCycle) as unknown as Cycle[],
+      entries: (entriesRows ?? []).map(toEntry) as unknown as Entry[],
       activeId: localStorage.getItem(ACTIVE_KEY),
     };
   },
