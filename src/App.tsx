@@ -1974,6 +1974,13 @@ function InstallGuide({ onClose }: { onClose: () => void }) {
 }
 
 /** Pushed page: every cycle as an account-style switcher list. */
+const CYCLE_TINTS = [
+  { bg: "rgba(0, 122, 255, .12)", fg: "#007aff" },
+  { bg: "rgba(94, 92, 230, .12)", fg: "#5856d6" },
+  { bg: "rgba(50, 173, 230, .12)", fg: "#32ade6" },
+  { bg: "rgba(255, 159, 10, .14)", fg: "#ff9f0a" },
+];
+
 function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, onClose }: {
   cycles: Cycle[];
   activeId: string | null;
@@ -2010,36 +2017,47 @@ function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, 
         <span className="guide-nav-spacer" aria-hidden="true" />
       </header>
       <div className="guide-body">
-        <header className="push-title">
-          <h1>Cycles</h1>
-          <p>{cycles.length} total · tap one to switch everywhere</p>
+        <header className="cycles-head">
+          <span className="cycles-head-tile"><Icon name="refresh" size={30} /></span>
+          <div className="push-title">
+            <h1>Cycles</h1>
+            <p>{cycles.length} total · Tap one to switch everywhere</p>
+          </div>
         </header>
         <section className="push-group">
-          <div className="settings-list">
-            {cycles.map((cycle) => {
+          <div className="settings-list cycles-list">
+            {cycles.map((cycle, index) => {
               const active = cycle.id === activeId;
+              const tint = CYCLE_TINTS[index % CYCLE_TINTS.length];
               const range = cycle.endsOn ? `${formatDay(cycle.startsOn)} – ${formatDay(cycle.endsOn)}` : `${formatDay(cycle.startsOn)} – today`;
               const count = countFor(cycle.id);
               return (
-                <div className={`settings-row cycles-page-row ${active ? "active" : ""}`} key={cycle.id}>
-                  <button className="settings-row-main" disabled={saving} onClick={() => onSwitch(cycle.id)}>
-                    <span className={`row-icon ${cycle.endsOn ? "row-icon-gray" : "row-icon-blue"}`}><Icon name="calendar" size={16} /></span>
+                <div className={`cycles-page-row ${active ? "active" : ""}`} key={cycle.id}>
+                  <button className="cycles-row-main" disabled={saving} onClick={() => onSwitch(cycle.id)}>
+                    <span
+                      className="cycle-tile"
+                      style={active ? undefined : { background: tint.bg, color: tint.fg }}
+                    >
+                      <Icon name="calendar" size={24} />
+                    </span>
                     <span className="insight-copy">
                       <strong>{cycle.name}</strong>
                       <i>{range} · {count} receipt{count === 1 ? "" : "s"}</i>
                     </span>
-                    <span className={`cycle-status-chip ${cycle.endsOn ? "closed" : "live"}`}>{cycle.endsOn ? "Closed" : "Live"}</span>
-                    {active && <span className="cycle-check"><Icon name="check" size={16} /></span>}
+                    <span className={`cycle-status-chip ${cycle.endsOn ? "closed" : "live"}`}>
+                      <i className="chip-dot" />{cycle.endsOn ? "Closed" : "Live"}
+                    </span>
+                    {active && <span className="cycle-check"><Icon name="check" size={20} /></span>}
                   </button>
                   <button className="cycle-detail-button" onClick={() => onOpenCycle(cycle.id)} aria-label={`Open ${cycle.name} details`}>
-                    <Icon name="chevron" size={17} />
+                    <Icon name="chevron" size={18} />
                   </button>
                 </div>
               );
             })}
           </div>
         </section>
-        <p className="guide-footnote">Closed cycles stay read-only — balances and history remain viewable.</p>
+        <p className="guide-footnote with-icon"><Icon name="refresh" size={15} />Closed cycles stay read-only — balances and history remain viewable.</p>
       </div>
     </div>
   );
