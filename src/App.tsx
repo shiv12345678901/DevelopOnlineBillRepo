@@ -339,7 +339,7 @@ export default function App() {
   );
   const summary = useMemo(() => computeSettlements(cycleEntries, cycle?.members ?? []), [cycleEntries, cycle?.members]);
 
-  const fetchLedger = useCallback(async () => {
+  const fetchLedger = useCallback(async (retries = 2) => {
     setSyncStatus("loading");
     setLoadError("");
     try {
@@ -349,6 +349,12 @@ export default function App() {
       setActiveId(snapshot.activeId);
       setSyncStatus("online");
     } catch (error) {
+      // Dev-server reloads and flaky connections abort in-flight fetches;
+      // retry quietly before showing the error screen.
+      if (retries > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return fetchLedger(retries - 1);
+      }
       setLoadError(error instanceof Error ? error.message : "Could not load the ledger.");
       setSyncStatus("error");
     }
