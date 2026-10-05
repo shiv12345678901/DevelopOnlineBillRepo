@@ -879,11 +879,6 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 
 /* ================= Cycle detail page ================= */
 .cycle-page .guide-body { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
-.insight-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; font-size: .84rem; }
-.insight-row + .insight-row { border-top: 1px solid var(--line); }
-.insight-row span { color: var(--muted); }
-.insight-row strong { display: grid; gap: 1px; justify-items: end; text-align: right; font-size: .88rem; font-weight: 600; }
-.insight-row strong i { color: var(--muted); font-size: .68rem; font-style: normal; font-weight: 500; }
 
 /* ================= All Cycles switcher page ================= */
 .cycles-page-row { padding-right: 8px; }
@@ -907,7 +902,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .insight-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 15px; }
 .insight-row + .insight-row, .insight-row + .expense-row, .insight-row + .balance-row,
 .expense-row + .insight-row, .balance-row + .insight-row { border-top: 1px solid var(--line); }
-.insight-copy { flex: 1; display: grid; gap: 1px; min-width: 0; }
+.insight-copy { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .insight-copy strong { overflow: hidden; color: var(--ink); font-size: .92rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .insight-copy i { overflow: hidden; color: var(--muted); font-size: .72rem; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .insight-value { flex: 0 0 auto; color: var(--ink); font-size: 1rem; font-weight: 650; font-variant-numeric: tabular-nums; }
