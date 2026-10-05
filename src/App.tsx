@@ -16,9 +16,12 @@ type LedgerEntry = {
   cycleId: string;
   payer: string;
   amount: number;
+  merchant?: string;
   note: string;
   spentOn: string;
   confidence: number;
+  receiptPath?: string;
+  receiptUrl?: string;
 };
 
 type PendingReceipt = {
@@ -27,10 +30,13 @@ type PendingReceipt = {
   preview: string;
   payer: string;
   amount: string;
+  merchant: string;
   note: string;
   spentOn: string;
-  status: "scanning" | "ready";
+  status: "cropping" | "scanning" | "ready";
   confidence: number;
+  crop: { x: number; y: number; width: number; height: number };
+  processedImageBase64: string;
 };
 
 type IconName =
@@ -67,18 +73,34 @@ const greeting = () => {
   return "Good evening.";
 };
 const money = (value: number, decimals = 0) =>
-  `₹${value.toLocaleString("en-IN", {
+  value.toLocaleString("en-AU", {
+    style: "currency",
+    currency: "AUD",
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  })}`;
+  });
 
-async function resizeReceipt(file: File, maxSide = 1600) {
+async function resizeReceipt(file: File, crop: PendingReceipt["crop"], maxSide = 1600) {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const sourceX = Math.round(bitmap.width * crop.x);
+  const sourceY = Math.round(bitmap.height * crop.y);
+  const sourceWidth = Math.round(bitmap.width * crop.width);
+  const sourceHeight = Math.round(bitmap.height * crop.height);
+  const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  canvas.width = Math.round(sourceWidth * scale);
+  canvas.height = Math.round(sourceHeight * scale);
+  canvas.getContext("2d")?.drawImage(
+    bitmap,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
   bitmap.close();
   const dataUrl = canvas.toDataURL("image/jpeg", 0.84);
   return { imageBase64: dataUrl.split(",")[1], mimeType: "image/jpeg" };
@@ -304,6 +326,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
+  const overlayOpen = pending.length > 0 || showNewCycle;
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
   const cycleEntries = useMemo(
@@ -333,6 +356,23 @@ export default function App() {
     fetchLedger();
   }, [fetchLedger]);
 
+  useEffect(() => {
+    if (!overlayOpen) return;
+    const scrollY = window.scrollY;
+    const body = document.body;
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+    body.style.overflow = "hidden";
+    return () => {
+      body.style.position = "";
+      body.style.top = "";
+      body.style.width = "";
+      body.style.overflow = "";
+      window.scrollTo(0, scrollY);
+    };
+  }, [overlayOpen]);
+
   const flash = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2400);
@@ -357,32 +397,43 @@ export default function App() {
       preview: URL.createObjectURL(file),
       payer: "",
       amount: "",
+      merchant: "",
       note: "",
       spentOn: today(),
-      status: "scanning" as const,
+      status: "cropping" as const,
       confidence: 0,
+      crop: { x: 0.03, y: 0.03, width: 0.94, height: 0.94 },
+      processedImageBase64: "",
     }));
     setPending(next);
-    next.forEach(async (item) => {
-      try {
-        const image = await resizeReceipt(item.file);
-        const result = await scanReceipt(image.imageBase64, image.mimeType);
-        setPending((current) => current.map((receipt) => receipt.id === item.id ? {
-          ...receipt,
-          amount: result.amount === null ? "" : String(result.amount),
-          confidence: result.confidence,
-          status: "ready",
-        } : receipt));
-      } catch {
-        setPending((current) => current.map((receipt) => receipt.id === item.id ? {
-          ...receipt,
-          confidence: 0,
-          status: "ready",
-        } : receipt));
-        setToast("Couldn’t read the total — enter it manually");
-        window.setTimeout(() => setToast(""), 3200);
-      }
-    });
+  };
+
+  const readReceipt = async (id: string) => {
+    const item = pending.find((receipt) => receipt.id === id);
+    if (!item) return;
+    setPending((current) => current.map((receipt) =>
+      receipt.id === id ? { ...receipt, status: "scanning" } : receipt
+    ));
+    try {
+      const image = await resizeReceipt(item.file, item.crop);
+      const result = await scanReceipt(image.imageBase64, image.mimeType);
+      setPending((current) => current.map((receipt) => receipt.id === id ? {
+        ...receipt,
+        amount: result.amount === null ? "" : String(result.amount),
+        merchant: result.merchant || "",
+        confidence: result.confidence,
+        processedImageBase64: image.imageBase64,
+        status: "ready",
+      } : receipt));
+    } catch (error) {
+      setPending((current) => current.map((receipt) => receipt.id === id ? {
+        ...receipt,
+        confidence: 0,
+        status: "ready",
+      } : receipt));
+      setToast(error instanceof Error ? `${error.message} Enter the details manually.` : "Couldn’t read the receipt — enter the details manually");
+      window.setTimeout(() => setToast(""), 3200);
+    }
   };
 
   const saveReceipts = async () => {
@@ -394,9 +445,12 @@ export default function App() {
       cycleId: cycle.id,
       payer: item.payer,
       amount: Number(item.amount),
+      merchant: item.merchant.trim(),
       note: item.note.trim(),
       spentOn: item.spentOn,
       confidence: item.confidence,
+      receiptImageBase64: item.processedImageBase64,
+      receiptMimeType: "image/jpeg",
     }));
     try {
       const created = await ledgerRepository.createEntries<LedgerEntry>(input);
@@ -419,6 +473,14 @@ export default function App() {
 
   const closeCycle = async () => {
     if (!cycle) return;
+    if (summary.settlements.length > 0) {
+      const outstanding = summary.settlements.reduce((sum, payment) => sum + payment.amount, 0);
+      const confirmed = window.confirm(
+        `${summary.settlements.length} unresolved payment${summary.settlements.length === 1 ? "" : "s"} ` +
+        `totalling ${money(outstanding)} remain. Closing prevents new receipts, but balances stay visible. Close anyway?`,
+      );
+      if (!confirmed) return;
+    }
     setSyncStatus("saving");
     try {
       const updated = await ledgerRepository.updateCycle<Cycle>(cycle.id, { endsOn: today() });
@@ -491,18 +553,49 @@ export default function App() {
     }
   };
 
+  const exportLedger = () => {
+    const cycleNames = Object.fromEntries(cycles.map((item) => [item.id, item.name]));
+    const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const rows = [
+      ["Cycle", "Merchant", "Date", "Paid by", "Amount AUD", "Note"],
+      ...entries.map((entry) => [
+        cycleNames[entry.cycleId] ?? "",
+        entry.merchant ?? "",
+        entry.spentOn,
+        entry.payer,
+        entry.amount.toFixed(2),
+        entry.note,
+      ]),
+    ];
+    const csv = rows.map((row) => row.map(escape).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `grocery-ledger-${today()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    flash("Ledger exported");
+  };
+
+  const installApp = () => {
+    const standalone = window.matchMedia("(display-mode: standalone)").matches;
+    flash(standalone ? "Grocery Ledger is already installed" : "On iPhone: tap Share, then Add to Home Screen");
+  };
+
   const title = tab === "home" ? greeting() : tab === "settle" ? "Settle up" : tab === "people" ? "People" : "Settings";
 
   return (
     <div className="app-shell">
-      <header className="topbar">
+      <header className={`topbar topbar-${tab}`}>
         <div>
           <p className="eyebrow">{tab === "home" ? "Home household" : GROUP_NAME}</p>
           <h1>{title}</h1>
         </div>
-        <button className="profile-button more-button" onClick={() => setTab("settings")} aria-label="Open settings">
-          <span>•••</span>
-        </button>
+        {tab !== "settings" && (
+          <button className="profile-button more-button" onClick={() => setTab("settings")} aria-label="Open settings">
+            <span>•••</span>
+          </button>
+        )}
       </header>
 
       <main className="content">
@@ -535,6 +628,8 @@ export default function App() {
             onReopen={reopenCycle}
             onNew={() => setShowNewCycle(true)}
             onRefresh={fetchLedger}
+            onExport={exportLedger}
+            onInstall={installApp}
             syncStatus={syncStatus}
           />
         )}
@@ -573,6 +668,7 @@ export default function App() {
           onClose={closePending}
           onSave={saveReceipts}
           saving={syncStatus === "saving"}
+          onScan={readReceipt}
         />
       )}
 
@@ -598,13 +694,37 @@ function HomeView({ cycle, entries, total, share, onCamera, onSettle, onDelete }
   onSettle: () => void;
   onDelete: (entry: LedgerEntry) => void;
 }) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [memberFilter, setMemberFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
+  const [merchantFilter, setMerchantFilter] = useState("");
+  const [minimumAmount, setMinimumAmount] = useState("");
+  const [maximumAmount, setMaximumAmount] = useState("");
+  const hasFilters = Boolean(memberFilter || dateFilter || merchantFilter || minimumAmount || maximumAmount);
+  const filteredEntries = useMemo(() => entries.filter((entry) => {
+    if (memberFilter && entry.payer !== memberFilter) return false;
+    if (dateFilter && entry.spentOn !== dateFilter) return false;
+    if (merchantFilter && !(entry.merchant ?? "").toLowerCase().includes(merchantFilter.toLowerCase())) return false;
+    if (minimumAmount && entry.amount < Number(minimumAmount)) return false;
+    if (maximumAmount && entry.amount > Number(maximumAmount)) return false;
+    return true;
+  }), [entries, memberFilter, dateFilter, merchantFilter, minimumAmount, maximumAmount]);
+
+  const clearFilters = () => {
+    setMemberFilter("");
+    setDateFilter("");
+    setMerchantFilter("");
+    setMinimumAmount("");
+    setMaximumAmount("");
+  };
+
   return (
     <div className="view home-view">
       <section className="balance-card">
         <span className="balance-ring balance-ring-one" />
         <span className="balance-ring balance-ring-two" />
         <div className="card-topline">
-          <strong className="cycle-name">{cycle.name.replace("Sample: ", "")}</strong>
+          <strong className="cycle-name">{cycle.name}</strong>
           <span className="receipt-count">{cycle.endsOn ? "Closed" : "Live"}</span>
         </div>
         <div className="balance-value">{money(total, 2)}</div>
@@ -625,26 +745,62 @@ function HomeView({ cycle, entries, total, share, onCamera, onSettle, onDelete }
         </button>
       )}
 
+      {entries.some((entry) => entry.receiptUrl) && (
+        <section className="section gallery-section">
+          <div className="section-title">
+            <div><p className="kicker">Receipts</p><h2>Receipt gallery</h2></div>
+            <span className="subtle">{entries.filter((entry) => entry.receiptUrl).length} saved</span>
+          </div>
+          <div className="receipt-gallery">
+            {entries.filter((entry) => entry.receiptUrl).map((entry) => (
+              <a
+                className="gallery-item"
+                href={entry.receiptUrl}
+                target="_blank"
+                rel="noreferrer"
+                key={entry.id}
+                aria-label={`Open receipt from ${entry.merchant || entry.payer}`}
+              >
+                <img src={entry.receiptUrl} alt={entry.merchant ? `Receipt from ${entry.merchant}` : `Receipt paid by ${entry.payer}`} />
+                <span><strong>{entry.merchant || "Receipt"}</strong><small>{money(entry.amount)}</small></span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="section activity-section">
         <div className="section-title">
           <div><p className="kicker">Activity</p><h2>Recent expenses</h2></div>
-          <span className="subtle">{entries.length} total</span>
+          <button className={`filter-toggle ${hasFilters ? "active" : ""}`} onClick={() => setFiltersOpen((open) => !open)}>
+            {hasFilters ? `${filteredEntries.length} matches` : "Filter"}
+          </button>
         </div>
+        {filtersOpen && (
+          <div className="filter-panel">
+            <label><span>Member</span><select value={memberFilter} onChange={(event) => setMemberFilter(event.target.value)}><option value="">Everyone</option>{cycle.members.map((member) => <option key={member}>{member}</option>)}</select></label>
+            <label><span>Date</span><input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} /></label>
+            <label className="merchant-filter"><span>Merchant</span><input value={merchantFilter} onChange={(event) => setMerchantFilter(event.target.value)} placeholder="Search merchant" /></label>
+            <label><span>Minimum</span><input type="number" inputMode="decimal" min="0" placeholder="$0" value={minimumAmount} onChange={(event) => setMinimumAmount(event.target.value)} /></label>
+            <label><span>Maximum</span><input type="number" inputMode="decimal" min="0" placeholder="Any" value={maximumAmount} onChange={(event) => setMaximumAmount(event.target.value)} /></label>
+            {hasFilters && <button className="filter-clear" onClick={clearFilters}>Clear filters</button>}
+          </div>
+        )}
         <div className="list-card">
-          {entries.length ? entries.slice(0, 4).map((entry, index) => (
+          {filteredEntries.length ? filteredEntries.slice(0, hasFilters ? 50 : 4).map((entry, index, visible) => (
             <div className="expense-row" key={entry.id}>
               <Avatar name={entry.payer} size="sm" />
               <div className="expense-main">
-                <strong>{entry.note || "Grocery receipt"}</strong>
+                <strong>{entry.merchant || entry.note || "Grocery receipt"}</strong>
                 <span>{entry.payer} · {new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</span>
               </div>
               <strong className="expense-amount">{money(entry.amount)}</strong>
-              <button className="entry-delete" onClick={() => onDelete(entry)} aria-label={`Delete ${entry.note || "receipt"} entry`}>
+              <button className="entry-delete" onClick={() => onDelete(entry)} aria-label={`Delete ${entry.merchant || entry.note || "receipt"} entry`}>
                 <Icon name="trash" size={16} />
               </button>
-              {index < Math.min(entries.length, 4) - 1 && <span className="row-divider" />}
+              {index < visible.length - 1 && <span className="row-divider" />}
             </div>
-          )) : <div className="empty-inline"><Icon name="receipt" /><span>No receipts yet</span></div>}
+          )) : <div className="empty-inline"><Icon name="receipt" /><span>{hasFilters ? "No expenses match these filters" : "No receipts yet"}</span></div>}
         </div>
       </section>
     </div>
@@ -729,59 +885,103 @@ function PeopleView({ cycle, entries, summary }: {
   );
 }
 
-function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, syncStatus }: {
+function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, onExport, onInstall, syncStatus }: {
   cycles: Cycle[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onReopen: (id: string) => void;
   onNew: () => void;
   onRefresh: () => void;
+  onExport: () => void;
+  onInstall: () => void;
   syncStatus: "loading" | "online" | "saving" | "error";
 }) {
   return (
     <div className="view settings-view">
-      <button className="new-cycle-button" onClick={onNew}><span><Icon name="plus" /></span><div><strong>Start a new cycle</strong><small>Create a fresh shared ledger</small></div></button>
-      <section className="section">
-        <div className="section-title"><div><p className="kicker">Ledger history</p><h2>Your cycles</h2></div></div>
-        <div className="cycle-list">
+      <section className="settings-group">
+        <p className="settings-group-label">Cycles</p>
+        <div className="settings-list">
+          <button className="settings-row" onClick={onNew}>
+            <span className="settings-icon settings-icon-green"><Icon name="plus" size={20} /></span>
+            <span className="settings-row-copy"><strong>Start New Cycle</strong><small>Create a fresh shared ledger</small></span>
+            <Icon name="chevron" size={17} />
+          </button>
           {cycles.map((cycle) => (
-            <div className={`cycle-item ${cycle.id === activeId ? "active" : ""}`} key={cycle.id}>
-              <button className="cycle-main" onClick={() => onSelect(cycle.id)}>
-                <span className="cycle-calendar"><Icon name="calendar" size={20} /></span>
-                <span className="cycle-copy"><strong>{cycle.name}</strong><small>{cycle.startsOn} {cycle.endsOn ? `– ${cycle.endsOn}` : "· Live"}</small></span>
+            <div className={`settings-row settings-cycle-row ${cycle.id === activeId ? "active" : ""}`} key={cycle.id}>
+              <button className="settings-row-main" onClick={() => onSelect(cycle.id)}>
+                <span className="settings-icon settings-icon-blue"><Icon name="calendar" size={19} /></span>
+                <span className="settings-row-copy"><strong>{cycle.name}</strong><small>{cycle.startsOn}{cycle.endsOn ? ` – ${cycle.endsOn}` : " · Live"}</small></span>
               </button>
               {cycle.endsOn
-                ? <button className="reopen" onClick={() => onReopen(cycle.id)}>Reopen</button>
-                : <span className="active-pill">Active</span>}
+                ? <button className="settings-row-value settings-action-value" onClick={() => onReopen(cycle.id)}>Reopen</button>
+                : <span className="settings-row-value">{cycle.id === activeId ? "Active" : "Open"}</span>}
+              <Icon name="chevron" size={17} />
             </div>
           ))}
         </div>
       </section>
-      <section className="section">
-        <div className="section-title"><div><p className="kicker">Workspace</p><h2>About this group</h2></div></div>
-        <div className="settings-card">
-          <div><span>Group name</span><strong>{GROUP_NAME}</strong></div>
-          <div><span>Currency</span><strong>INR (₹)</strong></div>
-          <div>
-            <span>Cloud sync</span>
-            <strong className={`sync-state sync-${syncStatus}`}>
-              {syncStatus === "online" ? "Connected" : syncStatus === "saving" ? "Saving…" : syncStatus === "loading" ? "Loading…" : "Needs attention"}
-            </strong>
+
+      <section className="settings-group">
+        <p className="settings-group-label">Household</p>
+        <div className="settings-list">
+          <div className="settings-row">
+            <span className="settings-icon settings-icon-orange"><Icon name="people" size={19} /></span>
+            <span className="settings-row-copy"><strong>Household</strong></span>
+            <span className="settings-row-value">{GROUP_NAME}</span>
           </div>
-          <button onClick={onRefresh}><Icon name="refresh" size={18} /><span><strong>Refresh from Supabase</strong><small>Fetch the latest server records</small></span></button>
+          <div className="settings-row">
+            <span className="settings-icon settings-icon-green"><Icon name="settle" size={19} /></span>
+            <span className="settings-row-copy"><strong>Currency</strong></span>
+            <span className="settings-row-value">AUD</span>
+          </div>
+          <div className="settings-row">
+            <span className="settings-icon settings-icon-cyan"><Icon name="receipt" size={19} /></span>
+            <span className="settings-row-copy"><strong>Receipt Storage</strong></span>
+            <span className="settings-row-value">Private</span>
+          </div>
+          <div className="settings-row">
+            <span className="settings-icon settings-icon-blue"><Icon name="camera" size={19} /></span>
+            <span className="settings-row-copy"><strong>Receipt Recognition</strong></span>
+            <span className="settings-row-value">Gemini</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="settings-group">
+        <p className="settings-group-label">Data &amp; App</p>
+        <div className="settings-list">
+          <button className="settings-row" onClick={onRefresh}>
+            <span className="settings-icon settings-icon-green"><Icon name="refresh" size={19} /></span>
+            <span className="settings-row-copy"><strong>Cloud Sync</strong><small>Refresh records from Supabase</small></span>
+            <span className={`settings-row-value sync-${syncStatus}`}>
+              {syncStatus === "online" ? "Connected" : syncStatus === "saving" ? "Saving…" : syncStatus === "loading" ? "Loading…" : "Attention"}
+            </span>
+            <Icon name="chevron" size={17} />
+          </button>
+          <button className="settings-row" onClick={onExport}>
+            <span className="settings-icon settings-icon-orange"><Icon name="receipt" size={19} /></span>
+            <span className="settings-row-copy"><strong>Export Ledger</strong><small>Download expenses as CSV</small></span>
+            <Icon name="chevron" size={17} />
+          </button>
+          <button className="settings-row" onClick={onInstall}>
+            <span className="settings-icon settings-icon-blue"><Icon name="home" size={19} /></span>
+            <span className="settings-row-copy"><strong>Add to Home Screen</strong><small>Install Grocery Ledger on iPhone</small></span>
+            <Icon name="chevron" size={17} />
+          </button>
         </div>
       </section>
     </div>
   );
 }
 
-function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, saving }: {
+function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, onScan, saving }: {
   receipts: PendingReceipt[];
   members: string[];
   onUpdate: (id: string, update: Partial<PendingReceipt>) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
   onSave: () => Promise<void>;
+  onScan: (id: string) => Promise<void>;
   saving: boolean;
 }) {
   const canSave = receipts.length > 0 && receipts.every(
@@ -799,11 +999,23 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
         <div className="receipt-editor-list">
           {receipts.map((receipt) => (
             <div className="receipt-editor" key={receipt.id}>
-              <div className="receipt-preview"><img src={receipt.preview} alt="Uploaded receipt" />{receipt.status === "scanning" && <span className="scanning"><Icon name="receipt" />Reading receipt…</span>}</div>
+              {receipt.status === "cropping" ? (
+                <CropEditor
+                  receipt={receipt}
+                  onChange={(crop) => onUpdate(receipt.id, { crop })}
+                  onScan={() => onScan(receipt.id)}
+                />
+              ) : (
+                <div className="receipt-preview">
+                  <img src={receipt.preview} alt="Uploaded receipt" />
+                  {receipt.status === "scanning" && <span className="scanning"><Icon name="receipt" />Reading receipt…</span>}
+                </div>
+              )}
               <button className="remove-receipt" onClick={() => onRemove(receipt.id)}><Icon name="trash" size={17} /></button>
               {receipt.status === "ready" && (
                 <div className="receipt-fields">
-                  <label className="amount-field"><span>Total amount</span><div><b>₹</b><input autoFocus inputMode="decimal" type="number" placeholder="0.00" value={receipt.amount} onChange={(event) => onUpdate(receipt.id, { amount: event.target.value })} /></div></label>
+                  <label className="amount-field"><span>Total amount</span><div><b>$</b><input autoFocus inputMode="decimal" type="number" placeholder="0.00" value={receipt.amount} onChange={(event) => onUpdate(receipt.id, { amount: event.target.value })} /></div></label>
+                  <label><span>Merchant</span><input placeholder="Store or merchant" value={receipt.merchant} onChange={(event) => onUpdate(receipt.id, { merchant: event.target.value })} /></label>
                   <div className="field-grid">
                     <label>
                       <span>Who paid?</span>
@@ -828,6 +1040,81 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
         </div>
         <button className="primary-button" disabled={!canSave || saving} onClick={onSave}>{saving ? "Saving…" : "Add to ledger"}</button>
       </div>
+    </div>
+  );
+}
+
+function CropEditor({ receipt, onChange, onScan }: {
+  receipt: PendingReceipt;
+  onChange: (crop: PendingReceipt["crop"]) => void;
+  onScan: () => void;
+}) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{
+    corner: "tl" | "tr" | "bl" | "br";
+    startX: number;
+    startY: number;
+    crop: PendingReceipt["crop"];
+  } | null>(null);
+  const minimum = 0.16;
+
+  const startDrag = (corner: "tl" | "tr" | "bl" | "br", event: ReactPointerEvent<HTMLButtonElement>) => {
+    drag.current = { corner, startX: event.clientX, startY: event.clientY, crop: receipt.crop };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!drag.current || !stageRef.current) return;
+    const bounds = stageRef.current.getBoundingClientRect();
+    const dx = (event.clientX - drag.current.startX) / bounds.width;
+    const dy = (event.clientY - drag.current.startY) / bounds.height;
+    const start = drag.current.crop;
+    let { x, y, width, height } = start;
+    if (drag.current.corner.includes("l")) {
+      const right = start.x + start.width;
+      x = Math.max(0, Math.min(right - minimum, start.x + dx));
+      width = right - x;
+    } else {
+      width = Math.max(minimum, Math.min(1 - start.x, start.width + dx));
+    }
+    if (drag.current.corner.includes("t")) {
+      const bottom = start.y + start.height;
+      y = Math.max(0, Math.min(bottom - minimum, start.y + dy));
+      height = bottom - y;
+    } else {
+      height = Math.max(minimum, Math.min(1 - start.y, start.height + dy));
+    }
+    onChange({ x, y, width, height });
+  };
+
+  return (
+    <div className="crop-editor">
+      <p>Drag the corners around the receipt</p>
+      <div className="crop-stage" ref={stageRef}>
+        <img src={receipt.preview} alt="Receipt ready to crop" />
+        <div
+          className="crop-box"
+          style={{
+            left: `${receipt.crop.x * 100}%`,
+            top: `${receipt.crop.y * 100}%`,
+            width: `${receipt.crop.width * 100}%`,
+            height: `${receipt.crop.height * 100}%`,
+          }}
+        >
+          {(["tl", "tr", "bl", "br"] as const).map((corner) => (
+            <button
+              key={corner}
+              className={`crop-handle crop-${corner}`}
+              aria-label={`Adjust ${corner} crop corner`}
+              onPointerDown={(event) => startDrag(corner, event)}
+              onPointerMove={moveDrag}
+              onPointerUp={() => { drag.current = null; }}
+              onPointerCancel={() => { drag.current = null; }}
+            />
+          ))}
+        </div>
+      </div>
+      <button className="crop-confirm" onClick={onScan}>Crop and read receipt</button>
     </div>
   );
 }

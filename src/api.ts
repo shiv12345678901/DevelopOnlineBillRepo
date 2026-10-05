@@ -69,7 +69,7 @@ export const ledgerRepository = {
 };
 
 export async function scanReceipt(imageBase64: string, mimeType: string) {
-  return request<{ amount: number | null; confidence: number }>("/ocr", {
+  return request<{ amount: number | null; merchant: string; confidence: number }>("/ocr", {
     method: "POST",
     body: JSON.stringify({ imageBase64, mimeType }),
   });
