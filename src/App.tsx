@@ -1209,17 +1209,19 @@ function ConfirmSheet({ title, message, confirmLabel, onClose, onConfirm }: {
   onConfirm: () => void | Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
+  const { sheetRef, dismiss, dragProps } = useSheetGesture(onClose);
+  const cancel = () => { if (!busy) dismiss(); };
   return (
     <div className="sheet-backdrop confirm-backdrop" role="alertdialog" aria-modal="true" aria-label={title}
-      onPointerDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
-      <div className="bottom-sheet confirm-sheet" role="document">
-        <div className="sheet-drag-region" aria-hidden="true"><div className="sheet-handle" /></div>
+      onPointerDown={(event) => event.target === event.currentTarget && !busy && dismiss()}>
+      <div className="bottom-sheet confirm-sheet" ref={sheetRef} role="document">
+        <div className="sheet-drag-region" aria-hidden="true" {...dragProps}><div className="sheet-handle" /></div>
         <h2 className="confirm-title">{title}</h2>
         <p className="confirm-message">{message}</p>
         <button className="danger-button" disabled={busy} onClick={async () => { setBusy(true); await onConfirm(); }}>
           {busy ? "Working…" : confirmLabel}
         </button>
-        <button className="cancel-button" disabled={busy} onClick={onClose}>Cancel</button>
+        <button className="cancel-button" disabled={busy} onClick={cancel}>Cancel</button>
       </div>
     </div>
   );
@@ -1255,11 +1257,12 @@ function EditSheet({ entry, members, saving, onClose, onSave }: {
   const [spentOn, setSpentOn] = useState(entry.spentOn);
   const amountRef = useRef<HTMLInputElement>(null);
   const valid = Number(amount) > 0 && Boolean(payer);
+  const { sheetRef, dismiss, dragProps } = useSheetGesture(onClose);
 
   return (
-    <div className="sheet-backdrop receipt-sheet-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="bottom-sheet receipt-sheet compact-sheet" role="dialog" aria-modal="true" aria-label="Edit receipt">
-        <div className="sheet-drag-region" aria-hidden="true"><div className="sheet-handle" /></div>
+    <div className="sheet-backdrop receipt-sheet-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && dismiss()}>
+      <div className="bottom-sheet receipt-sheet compact-sheet" ref={sheetRef} role="dialog" aria-modal="true" aria-label="Edit receipt">
+        <div className="sheet-drag-region" aria-hidden="true" {...dragProps}><div className="sheet-handle" /></div>
         <div className="sheet-header receipt-sheet-header">
           <div>
             <p className="receipt-sheet-context">Edit receipt</p>
