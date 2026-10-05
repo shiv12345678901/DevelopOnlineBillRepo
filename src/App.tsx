@@ -1479,7 +1479,7 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
         <div className="settings-list">
           <div className="settings-row">
             <span className="settings-icon settings-icon-indigo"><Icon name="settle" size={19} /></span>
-            <span className="settings-row-copy"><strong>Theme</strong><small>Light, dark, or match your system</small></span>
+            <span className="settings-row-copy"><strong>Theme</strong></span>
           </div>
           <div className="theme-segmented" role="radiogroup" aria-label="Theme">
             {([
@@ -1507,7 +1507,7 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
         <div className="settings-list">
           <button className="settings-row" onClick={onNew}>
             <span className="settings-icon settings-icon-green"><Icon name="plus" size={20} /></span>
-            <span className="settings-row-copy"><strong>Start New Cycle</strong><small>Create a fresh shared ledger</small></span>
+            <span className="settings-row-copy"><strong>Start New Cycle</strong></span>
             <Icon name="chevron" size={17} />
           </button>
           {cycles.map((cycle) => (
@@ -1565,12 +1565,12 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
           </button>
           <button className="settings-row" onClick={onExport}>
             <span className="settings-icon settings-icon-orange"><Icon name="receipt" size={19} /></span>
-            <span className="settings-row-copy"><strong>Export Ledger</strong><small>Download expenses as CSV</small></span>
+            <span className="settings-row-copy"><strong>Export Ledger</strong></span>
             <Icon name="chevron" size={17} />
           </button>
           <button className="settings-row" onClick={onInstall}>
             <span className="settings-icon settings-icon-blue"><Icon name="home" size={19} /></span>
-            <span className="settings-row-copy"><strong>Add to Home Screen</strong><small>Step-by-step install guide</small></span>
+            <span className="settings-row-copy"><strong>Add to Home Screen</strong></span>
             <Icon name="chevron" size={17} />
           </button>
         </div>
