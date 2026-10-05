@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { ledgerRepository, scanReceipt } from "./api";
 import { ocrOnDevice } from "./receipt-ocr";
 
-type Tab = "home" | "settle" | "camera" | "people" | "settings";
+type Tab = "home" | "settle" | "camera" | "receipts" | "settings";
 
 type Cycle = {
   id: string;
@@ -310,12 +310,13 @@ export default function App() {
   const [pending, setPending] = useState<PendingReceipt[]>([]);
   const [defaultPayer, setDefaultPayer] = useState("");
   const [sheetExit, setSheetExit] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<LedgerEntry | null>(null);
   const [toast, setToast] = useState("");
   const [showNewCycle, setShowNewCycle] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit;
+  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry);
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
 
@@ -554,6 +555,20 @@ export default function App() {
     setPending([]);
   };
 
+  const updateEntry = async (id: string, patch: { payer: string; amount: number; merchant: string; note: string; spentOn: string }) => {
+    setSyncStatus("saving");
+    try {
+      const updated = await ledgerRepository.updateEntry<LedgerEntry>(id, patch);
+      setEntries((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
+      setSyncStatus("online");
+      setEditingEntry(null);
+      flash("Receipt updated");
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "Could not update the receipt.");
+    }
+  };
+
   const closeCycle = async () => {
     if (!cycle) return;
     if (summary.settlements.length > 0) {
@@ -665,7 +680,7 @@ export default function App() {
     flash(standalone ? "Grocery Ledger is already installed" : "On iPhone: tap Share, then Add to Home Screen");
   };
 
-  const title = tab === "home" ? greeting() : tab === "settle" ? "Settle up" : tab === "people" ? "People" : "Settings";
+  const title = tab === "home" ? greeting() : tab === "settle" ? "Settle up" : tab === "receipts" ? "Receipts" : "Settings";
 
   return (
     <div className="app-shell">
@@ -697,12 +712,17 @@ export default function App() {
             share={summary.share}
             onCamera={() => fileInput.current?.click()}
             onSettle={() => setTab("settle")}
-            onDelete={deleteEntry}
           />
         ) : tab === "settle" ? (
           <SettleView cycle={cycle} summary={summary} entries={cycleEntries} onClose={closeCycle} />
-        ) : tab === "people" ? (
-          <PeopleView cycle={cycle} entries={cycleEntries} summary={summary} />
+        ) : tab === "receipts" ? (
+          <ReceiptsView
+            cycle={cycle}
+            entries={cycleEntries}
+            summary={summary}
+            onEdit={(entry) => setEditingEntry(entry)}
+            onDelete={deleteEntry}
+          />
         ) : (
           <SettingsView
             cycles={cycles}
@@ -720,15 +740,15 @@ export default function App() {
       </main>
 
       <nav className="tabbar" aria-label="Primary navigation">
-        {(["home", "settle", "camera", "people", "settings"] as Tab[]).map((item) => (
+        {(["home", "settle", "camera", "receipts", "settings"] as Tab[]).map((item) => (
           <button
             key={item}
             className={`tab-button ${tab === item ? "active" : ""} ${item === "camera" ? "camera-button" : ""}`}
             onClick={() => selectTab(item)}
             aria-label={item === "camera" ? "Add receipt" : undefined}
           >
-            <span className="tab-icon"><Icon name={item} size={item === "camera" ? 25 : 21} /></span>
-            <span className={item === "camera" ? "camera-label" : ""}>{item === "settle" ? "Settle" : item[0].toUpperCase() + item.slice(1)}</span>
+            <span className="tab-icon"><Icon name={item === "receipts" ? "receipt" : item} size={item === "camera" ? 25 : 21} /></span>
+            <span className={item === "camera" ? "camera-label" : ""}>{item === "settle" ? "Settle" : item === "receipts" ? "Receipts" : item[0].toUpperCase() + item.slice(1)}</span>
           </button>
         ))}
       </nav>
@@ -761,6 +781,16 @@ export default function App() {
         />
       )}
 
+      {editingEntry && (
+        <EditSheet
+          entry={editingEntry}
+          members={cycle?.members ?? []}
+          saving={syncStatus === "saving"}
+          onClose={() => setEditingEntry(null)}
+          onSave={(patch) => updateEntry(editingEntry.id, patch)}
+        />
+      )}
+
       {showNewCycle && (
         <NewCycleSheet
           onClose={() => setShowNewCycle(false)}
@@ -774,14 +804,13 @@ export default function App() {
   );
 }
 
-function HomeView({ cycle, entries, total, share, onCamera, onSettle, onDelete }: {
+function HomeView({ cycle, entries, total, share, onCamera, onSettle }: {
   cycle: Cycle;
   entries: LedgerEntry[];
   total: number;
   share: number;
   onCamera: () => void;
   onSettle: () => void;
-  onDelete: (entry: LedgerEntry) => void;
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [memberFilter, setMemberFilter] = useState("");
@@ -876,7 +905,7 @@ function HomeView({ cycle, entries, total, share, onCamera, onSettle, onDelete }
           </div>
         )}
         <div className="list-card">
-          {filteredEntries.length ? filteredEntries.slice(0, hasFilters ? 50 : 4).map((entry, index, visible) => (
+          {filteredEntries.length ? filteredEntries.slice(0, hasFilters ? 50 : 5).map((entry, index, visible) => (
             <div className="expense-row" key={entry.id}>
               <Avatar name={entry.payer} size="sm" />
               <div className="expense-main">
@@ -884,13 +913,11 @@ function HomeView({ cycle, entries, total, share, onCamera, onSettle, onDelete }
                 <span>{entry.payer} · {new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</span>
               </div>
               <strong className="expense-amount">{money(entry.amount)}</strong>
-              <button className="entry-delete" onClick={() => onDelete(entry)} aria-label={`Delete ${entry.merchant || entry.note || "receipt"} entry`}>
-                <Icon name="trash" size={16} />
-              </button>
               {index < visible.length - 1 && <span className="row-divider" />}
             </div>
           )) : <div className="empty-inline"><Icon name="receipt" /><span>{hasFilters ? "No expenses match these filters" : "No receipts yet"}</span></div>}
         </div>
+        {!hasFilters && entries.length > 5 && <p className="recent-hint">Showing 5 most recent · swipe them in the Receipts tab</p>}
       </section>
     </div>
   );
@@ -940,36 +967,189 @@ function SettleView({ cycle, summary, entries, onClose }: {
   );
 }
 
-function PeopleView({ cycle, entries, summary }: {
+function ReceiptsView({ cycle, entries, summary, onEdit, onDelete }: {
   cycle: Cycle;
   entries: LedgerEntry[];
   summary: ReturnType<typeof computeSettlements>;
+  onEdit: (entry: LedgerEntry) => void;
+  onDelete: (entry: LedgerEntry) => void;
 }) {
+  const [openId, setOpenId] = useState<string | null>(null);
   return (
-    <div className="view people-view">
+    <div className="view receipts-view" onClick={() => openId && setOpenId(null)}>
       <section className="people-summary">
         <div className="large-avatar-stack">{cycle.members.map((member) => <Avatar name={member} key={member} />)}</div>
-        <h2>{cycle.members.length} people sharing</h2>
-        <p>{cycle.name}</p>
+        <h2>{entries.length} receipt{entries.length === 1 ? "" : "s"} this cycle</h2>
+        <p>{cycle.name} · swipe a receipt for actions</p>
       </section>
       <section className="section">
-        <div className="section-title"><div><p className="kicker">Household</p><h2>Group members</h2></div></div>
-        <div className="people-list">
-          {cycle.members.map((member) => {
-            const count = entries.filter((entry) => entry.payer === member).length;
-            return (
+        <div className="section-title"><div><p className="kicker">All receipts</p><h2>Swipe to act</h2></div></div>
+        {entries.length ? (
+          <div className="swipe-list">
+            {entries.map((entry) => (
+              <SwipeCard
+                key={entry.id}
+                entry={entry}
+                open={openId === entry.id}
+                onOpen={() => setOpenId(entry.id)}
+                onClose={() => setOpenId(null)}
+                onEdit={() => { setOpenId(null); onEdit(entry); }}
+                onDelete={() => { setOpenId(null); onDelete(entry); }}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No receipts yet" copy="Snap a receipt and it will show up here, ready to swipe." />
+        )}
+      </section>
+      {entries.length > 0 && (
+        <section className="section">
+          <div className="section-title"><div><p className="kicker">Household</p><h2>Balances</h2></div></div>
+          <div className="people-list">
+            {cycle.members.map((member) => (
               <div className="person-card" key={member}>
                 <Avatar name={member} size="lg" />
-                <div className="person-copy"><strong>{member}{member === "Shiva" && <span className="you-pill">You</span>}</strong><span>{count} receipt{count === 1 ? "" : "s"} · paid {money(summary.paidBy[member])}</span></div>
+                <div className="person-copy"><strong>{member}</strong><span>paid {money(summary.paidBy[member])}</span></div>
                 <div className={`balance-chip ${summary.net[member] >= 0 ? "owed" : "owes"}`}>
                   <span>{summary.net[member] >= 0 ? "gets back" : "owes"}</span>
                   <strong>{money(Math.abs(summary.net[member]))}</strong>
                 </div>
               </div>
-            );
-          })}
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+const SWIPE_ACTIONS_WIDTH = 148;
+
+/** Apple-notification-style swipe: the card slides, and glass action buttons
+ *  fade/scale in proportionally underneath it. */
+function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete }: {
+  entry: LedgerEntry;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [drag, setDrag] = useState(0); // live translation while dragging
+  const gesture = useRef({ active: false, startX: 0, base: 0 });
+
+  useEffect(() => { if (open) setDrag(-SWIPE_ACTIONS_WIDTH); else setDrag(0); }, [open]);
+
+  const endDrag = () => {
+    if (!gesture.current.active) return;
+    gesture.current.active = false;
+    const opened = drag < -SWIPE_ACTIONS_WIDTH / 2 - 12;
+    if (opened) onOpen(); else onClose();
+  };
+
+  const progress = Math.min(1, Math.max(0, -drag / SWIPE_ACTIONS_WIDTH));
+  const position = open && !gesture.current.active ? -SWIPE_ACTIONS_WIDTH : drag;
+
+  return (
+    <div className={`swipe-card ${open ? "open" : ""}`}>
+      <div className="swipe-actions" style={{ opacity: progress, transform: `translateX(${(1 - progress) * 26}px)` }}>
+        <button
+          className="swipe-action glass-edit"
+          style={{ transform: `scale(${0.7 + progress * 0.3})` }}
+          onClick={(event) => { event.stopPropagation(); onEdit(); }}
+          aria-label={`Edit receipt from ${entry.merchant || entry.payer}`}
+          tabIndex={open ? 0 : -1}
+        >
+          <Icon name="plus" size={17} /> Edit
+        </button>
+        <button
+          className="swipe-action glass-delete"
+          style={{ transform: `scale(${0.7 + progress * 0.3})` }}
+          onClick={(event) => { event.stopPropagation(); onDelete(); }}
+          aria-label={`Delete receipt from ${entry.merchant || entry.payer}`}
+          tabIndex={open ? 0 : -1}
+        >
+          <Icon name="trash" size={17} /> Delete
+        </button>
+      </div>
+      <div
+        className="swipe-content"
+        style={{ transform: `translate3d(${position}px, 0, 0)`, transition: gesture.current.active ? "none" : "transform .38s cubic-bezier(.32,.72,0,1)" }}
+        onPointerDown={(event) => {
+          gesture.current = { active: true, startX: event.clientX, base: open ? -SWIPE_ACTIONS_WIDTH : 0 };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          if (!gesture.current.active) return;
+          const raw = gesture.current.base + event.clientX - gesture.current.startX;
+          setDrag(Math.max(-SWIPE_ACTIONS_WIDTH - 40, Math.min(0, raw)));
+        }}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <Avatar name={entry.payer} size="sm" />
+        <div className="expense-main">
+          <strong>{entry.merchant || entry.note || "Grocery receipt"}</strong>
+          <span>{entry.payer} · {new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</span>
         </div>
-      </section>
+        <strong className="expense-amount">{money(entry.amount)}</strong>
+      </div>
+    </div>
+  );
+}
+
+/** Edit sheet: the receipt's saved details, pre-filled and saveable. */
+function EditSheet({ entry, members, saving, onClose, onSave }: {
+  entry: LedgerEntry;
+  members: string[];
+  saving: boolean;
+  onClose: () => void;
+  onSave: (patch: { payer: string; amount: number; merchant: string; note: string; spentOn: string }) => Promise<void>;
+}) {
+  const [payer, setPayer] = useState(entry.payer);
+  const [amount, setAmount] = useState(String(entry.amount));
+  const [merchant, setMerchant] = useState(entry.merchant ?? "");
+  const [note, setNote] = useState(entry.note ?? "");
+  const [spentOn, setSpentOn] = useState(entry.spentOn);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const valid = Number(amount) > 0 && Boolean(payer);
+
+  return (
+    <div className="sheet-backdrop receipt-sheet-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="bottom-sheet receipt-sheet compact-sheet" role="dialog" aria-modal="true" aria-label="Edit receipt">
+        <div className="sheet-drag-region" aria-hidden="true"><div className="sheet-handle" /></div>
+        <div className="sheet-header receipt-sheet-header">
+          <div>
+            <p className="receipt-sheet-context">Edit receipt</p>
+            <h2>{entry.merchant || "Grocery receipt"}</h2>
+          </div>
+          <button className="icon-button receipt-sheet-close" onClick={onClose} aria-label="Close editor"><Icon name="close" size={18} /></button>
+        </div>
+        <div className="receipt-fields">
+          <label className="amount-field"><span>Total amount</span><div><b>$</b><input ref={amountRef} inputMode="decimal" type="number" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} /></div></label>
+          <label><span>Merchant</span><input placeholder="Store or merchant" value={merchant} onChange={(event) => setMerchant(event.target.value)} /></label>
+          <div className="field-grid">
+            <label>
+              <span>Who paid?</span>
+              <select value={payer} onChange={(event) => setPayer(event.target.value)}>
+                {members.map((member) => <option key={member} value={member}>{member}</option>)}
+              </select>
+            </label>
+            <label><span>Date</span><input type="date" value={spentOn} onChange={(event) => setSpentOn(event.target.value)} /></label>
+          </div>
+          <label><span>Note <i>optional</i></span><input placeholder="e.g. Weekly shop" value={note} onChange={(event) => setNote(event.target.value)} /></label>
+        </div>
+        <button
+          className="primary-button"
+          disabled={!valid || saving}
+          onClick={async () => {
+            if (!valid) { amountRef.current?.focus(); return; }
+            await onSave({ payer, amount: Number(amount), merchant: merchant.trim(), note: note.trim(), spentOn });
+          }}
+        >
+          {saving ? "Saving…" : "Save changes"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1212,8 +1392,8 @@ function NewCycleSheet({ onClose, onCreate, saving }: {
   );
 }
 
-function EmptyState({ title, copy, action }: { title: string; copy: string; action: () => void }) {
-  return <div className="empty-state"><span><Icon name="receipt" size={28} /></span><h2>{title}</h2><p>{copy}</p><button className="primary-button" onClick={action}>Create a cycle</button></div>;
+function EmptyState({ title, copy, action, actionLabel }: { title: string; copy: string; action?: () => void; actionLabel?: string }) {
+  return <div className="empty-state"><span><Icon name="receipt" size={28} /></span><h2>{title}</h2><p>{copy}</p>{action && <button className="primary-button" onClick={action}>{actionLabel ?? "Create a cycle"}</button>}</div>;
 }
 
 function DataState({ title, copy, action, actionLabel }: {

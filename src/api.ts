@@ -132,6 +132,23 @@ export const ledgerRepository = {
       .eq("id", Number(id));
     if (error) throw new Error(error.message);
   },
+
+  async updateEntry<Entry>(id: string, update: Record<string, unknown>) {
+    const patch: Record<string, unknown> = {};
+    if ("payer" in update) patch.payer = update.payer;
+    if ("amount" in update) patch.amount = update.amount;
+    if ("merchant" in update) patch.merchant = update.merchant || null;
+    if ("note" in update) patch.note = update.note || null;
+    if ("spentOn" in update) patch.spent_on = update.spentOn;
+    const { data, error } = await supabase
+      .from("grocery_ledger")
+      .update(patch)
+      .eq("id", Number(id))
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return toEntry(data) as unknown as Entry;
+  },
 };
 
 export async function scanReceipt(imageBase64: string, mimeType: string) {
