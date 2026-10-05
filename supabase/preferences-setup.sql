@@ -6,8 +6,12 @@ create table if not exists user_preferences (
   id text primary key,                          -- device id (uuid, generated app-side)
   active_cycle_id bigint,                       -- references settlement_cycles(id) logically
   theme text not null default 'auto',           -- 'auto' | 'light' | 'dark'
+  household_name text,                          -- display name, falls back to the app default
   updated_at timestamptz not null default now()
 );
+
+-- Safe to re-run if the table predates this column.
+alter table user_preferences add column if not exists household_name text;
 
 alter table user_preferences enable row level security;
 

@@ -968,3 +968,12 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 @media (prefers-reduced-motion: reduce) {
   .guide-body > * { animation: none; }
 }
+
+/* Edit sheet text field */
+.edit-field {
+  width: 100%; min-height: 48px; margin: 0 0 12px; padding: 0 14px;
+  color: var(--ink); border: 1px solid var(--line); border-radius: 12px;
+  background: var(--card); font-size: 16px; font-weight: 500;
+}
+.edit-field:focus-visible { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0, 122, 255, .13); }
+:where(html.dark) .edit-field { background: #2c2c2e; border-color: #48484a; }

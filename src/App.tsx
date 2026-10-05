@@ -367,6 +367,8 @@ export default function App() {
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [detailCycleId, setDetailCycleId] = useState<string | null>(null);
   const [showCyclesPage, setShowCyclesPage] = useState(false);
+  const [household, setHousehold] = useState<string>(() => localStorage.getItem("rockdale-household") || GROUP_NAME);
+  const [editHousehold, setEditHousehold] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   // False until the first successful fetch — the initial load shows the
@@ -384,7 +386,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId) || showCyclesPage;
+  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId) || showCyclesPage || editHousehold;
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
 
@@ -515,6 +517,10 @@ export default function App() {
     if (remotePrefs.theme !== "auto" && remotePrefs.theme !== getThemePref()) {
       setThemePref(remotePrefs.theme);
     }
+    if (remotePrefs.householdName && remotePrefs.householdName !== household) {
+      setHousehold(remotePrefs.householdName);
+      localStorage.setItem("rockdale-household", remotePrefs.householdName);
+    }
     if (remotePrefs.activeCycleId && cycles.some((item) => item.id === remotePrefs.activeCycleId)) {
       setActiveId((current) => {
         if (current === remotePrefs.activeCycleId) return current;
@@ -523,6 +529,9 @@ export default function App() {
         return remotePrefs.activeCycleId;
       });
     }
+    // The saved household is the identity this page renders; it changes only
+    // through the edit sheet, so depending on it here would re-run needlessly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remotePrefs, dataReady, cycles]);
 
   // Write-through: persist the snapshot whenever it changes, preserving the
@@ -915,7 +924,7 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">{tab === "home" ? "Home household" : GROUP_NAME}</p>
+          <p className="eyebrow">{tab === "home" ? "Home household" : household}</p>
           <h1>{title}</h1>
         </div>
         {tab !== "settings" && (
@@ -965,6 +974,8 @@ export default function App() {
             onInstall={installApp}
             onOpenCycle={setDetailCycleId}
             onOpenCycles={() => setShowCyclesPage(true)}
+            onEditHousehold={() => setEditHousehold(true)}
+            household={household}
             syncStatus={syncStatus}
             themePref={themePref}
             onThemeChange={setThemePref}
@@ -1064,6 +1075,22 @@ export default function App() {
           onSwitch={selectCycle}
           onOpenCycle={setDetailCycleId}
           onClose={() => setShowCyclesPage(false)}
+        />
+      )}
+
+      {editHousehold && (
+        <TextEditSheet
+          title="Household name"
+          value={household}
+          saving={syncStatus === "saving"}
+          onClose={() => setEditHousehold(false)}
+          onSave={async (next) => {
+            setHousehold(next);
+            localStorage.setItem("rockdale-household", next);
+            void savePreferences(deviceId(), { householdName: next });
+            setEditHousehold(false);
+            flash("Household updated");
+          }}
         />
       )}
 
@@ -1505,6 +1532,47 @@ function ConfirmSheet({ title, message, confirmLabel, tone = "danger", onClose, 
   );
 }
 
+/** Bottom sheet for editing a single text value (e.g. the household name). */
+function TextEditSheet({ title, value, saving, onClose, onSave }: {
+  title: string;
+  value: string;
+  saving: boolean;
+  onClose: () => void;
+  onSave: (next: string) => void | Promise<void>;
+}) {
+  const [draft, setDraft] = useState(value);
+  const { sheetRef, dismiss, dragProps } = useSheetGesture(onClose);
+  const trimmed = draft.trim();
+  const dirty = Boolean(trimmed) && trimmed !== value.trim();
+
+  const commit = async () => {
+    if (!dirty || saving) return;
+    await onSave(trimmed);
+  };
+
+  return (
+    <div className="sheet-backdrop confirm-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && !saving && dismiss()}>
+      <div className="bottom-sheet confirm-sheet" ref={sheetRef} role="dialog" aria-modal="true" aria-label={title}>
+        <div className="sheet-drag-region" aria-hidden="true" {...dragProps}><div className="sheet-handle" /></div>
+        <h2 className="confirm-title">{title}</h2>
+        <input
+          className="edit-field"
+          autoFocus
+          value={draft}
+          maxLength={40}
+          disabled={saving}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter") void commit(); }}
+        />
+        <button className="tinted-button" disabled={!dirty || saving} onClick={() => void commit()}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button className="cancel-button" disabled={saving} onClick={() => { if (!saving) dismiss(); }}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 /** Fullscreen receipt viewer. */
 function ReceiptLightbox({ url, alt, onClose }: { url: string; alt: string; onClose: () => void }) {
   useEffect(() => {
@@ -1577,7 +1645,7 @@ function EditSheet({ entry, members, saving, onClose, onSave }: {
   );
 }
 
-function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall, onOpenCycle, onOpenCycles, syncStatus, themePref, onThemeChange, lastSyncedAt, isRefreshing }: {
+function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall, onOpenCycle, onOpenCycles, onEditHousehold, household, syncStatus, themePref, onThemeChange, lastSyncedAt, isRefreshing }: {
   cycles: Cycle[];
   activeId: string | null;
   onNew: () => void;
@@ -1586,6 +1654,8 @@ function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall,
   onInstall: () => void;
   onOpenCycle: (id: string) => void;
   onOpenCycles: () => void;
+  onEditHousehold: () => void;
+  household: string;
   syncStatus: "loading" | "online" | "saving" | "error";
   themePref: ThemePref;
   onThemeChange: (pref: ThemePref) => void;
@@ -1670,25 +1740,16 @@ function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall,
       <section className="settings-group">
         <p className="settings-group-label">Household</p>
         <div className="settings-list">
-          <div className="settings-row">
+          <button className="settings-row" onClick={onEditHousehold}>
             <span className="settings-icon settings-icon-orange"><Icon name="people" size={19} /></span>
             <span className="settings-row-copy"><strong>Household</strong></span>
-            <span className="settings-row-value">{GROUP_NAME}</span>
-          </div>
+            <span className="settings-row-value">{household}</span>
+            <Icon name="chevron" size={17} />
+          </button>
           <div className="settings-row">
             <span className="settings-icon settings-icon-green"><Icon name="settle" size={19} /></span>
             <span className="settings-row-copy"><strong>Currency</strong></span>
             <span className="settings-row-value">AUD</span>
-          </div>
-          <div className="settings-row">
-            <span className="settings-icon settings-icon-cyan"><Icon name="receipt" size={19} /></span>
-            <span className="settings-row-copy"><strong>Receipt Storage</strong></span>
-            <span className="settings-row-value">Private</span>
-          </div>
-          <div className="settings-row">
-            <span className="settings-icon settings-icon-blue"><Icon name="camera" size={19} /></span>
-            <span className="settings-row-copy"><strong>Receipt Recognition</strong></span>
-            <span className="settings-row-value">Gemini</span>
           </div>
         </div>
       </section>

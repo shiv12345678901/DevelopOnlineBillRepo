@@ -245,19 +245,24 @@ export async function scanReceipt(imageBase64: string, mimeType: string) {
 export type Preferences = {
   activeCycleId: string | null;
   theme: "auto" | "light" | "dark";
+  householdName: string | null;
 };
 
 export async function fetchPreferences(deviceId: string): Promise<Preferences | null> {
   try {
     const { data, error } = await supabase
       .from("user_preferences")
-      .select("active_cycle_id, theme")
+      .select("active_cycle_id, theme, household_name")
       .eq("id", deviceId)
       .maybeSingle()
       .retry(false);
     if (error || !data) return null;
     const theme = data.theme === "light" || data.theme === "dark" ? data.theme : "auto";
-    return { activeCycleId: data.active_cycle_id != null ? String(data.active_cycle_id) : null, theme };
+    return {
+      activeCycleId: data.active_cycle_id != null ? String(data.active_cycle_id) : null,
+      theme,
+      householdName: typeof data.household_name === "string" && data.household_name.trim() ? data.household_name : null,
+    };
   } catch {
     return null;
   }
@@ -270,6 +275,7 @@ export async function savePreferences(deviceId: string, patch: Partial<Preferenc
       updated_at: new Date().toISOString(),
       ...(patch.activeCycleId !== undefined ? { active_cycle_id: patch.activeCycleId == null ? null : Number(patch.activeCycleId) } : {}),
       ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
+      ...(patch.householdName !== undefined ? { household_name: patch.householdName?.trim() || null } : {}),
     };
     const { error } = await supabase.from("user_preferences").upsert(row);
     return !error;
