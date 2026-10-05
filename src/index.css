@@ -205,6 +205,14 @@ button.settings-row:active, .settings-row-main:active { background: #eceef3; }
 .settings-icon-green { background: #34c759; }
 .settings-icon-orange { background: #ff9f0a; }
 .settings-icon-cyan { background: #32ade6; }
+.settings-icon-indigo { background: #5e5ce6; }
+
+/* Appearance: iOS segmented control */
+.theme-segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin: 10px 13px 13px; padding: 2px; border-radius: 10px; background: rgba(120, 120, 128, .14); }
+.theme-segment { min-height: 32px; padding: 4px 6px; color: var(--ink); border: 0; border-radius: 8px; background: transparent; font-size: .8rem; font-weight: 600; transition: background 140ms ease, box-shadow 140ms ease; }
+.theme-segment.active { background: var(--card); box-shadow: 0 2px 7px rgba(0, 0, 0, .16), 0 0 0 .5px rgba(0, 0, 0, .04); }
+.theme-segment:active:not(.active) { background: rgba(120, 120, 128, .1); }
+:where(html.dark) .theme-segment.active { background: #636366; }
 .settings-row-copy { display: grid; min-width: 0; flex: 1; gap: 2px; }
 .settings-row-copy strong { overflow: hidden; font-size: .98rem; font-weight: 500; line-height: 1.22; text-overflow: ellipsis; white-space: nowrap; }
 .settings-row-copy small { overflow: hidden; color: var(--muted); font-size: .7rem; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
@@ -419,8 +427,7 @@ button.settings-row:active, .settings-row-main:active { background: #eceef3; }
   .avatar-md { width: 47px; height: 47px; }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+:where(html.dark):root {
     --ink: #ffffff;
     --muted: #98989d;
     --line: #38383a;
@@ -429,43 +436,40 @@ button.settings-row:active, .settings-row-main:active { background: #eceef3; }
     color: var(--ink);
     background: #000000;
   }
-  html, body, .app-shell { background: #000000; }
-  .eyebrow, .kicker { color: #98989d; }
-  .profile-button, .icon-button { color: #f2f2f7; background: #2c2c2e; }
-  .more-button span { color: #c3c8d4; }
-  .balance-card { box-shadow: 0 18px 42px rgba(0,0,0,.35); }
-  .list-card, .settings-card, .settle-hero, .transfer-card, .people-summary, .person-card,
-  .cycle-item, .receipt-editor, .empty-state, .filter-panel, .gallery-item { background: var(--card); }
-  .filter-panel input, .filter-panel select, .receipt-fields input, .receipt-fields select,
-  .form-stack input { color: var(--ink); border-color: var(--line); background: #2c2c2e; }
-  .filter-toggle.active, .settle-icon, .cycle-calendar, .empty-state > span { background: #183657; }
-  .transfer-avatars .avatar + span { background: var(--card); }
-  .tabbar { border-color: rgba(255,255,255,.08); background: rgba(28,28,30,.9); box-shadow: 0 13px 34px rgba(0,0,0,.34); }
-  .camera-button .tab-icon { border-color: #000000; background: #f2f2f7; color: #1c1c1e; }
-  .bottom-sheet { border-color: rgba(255,255,255,.08); background: rgba(28,28,30,.97); box-shadow: 0 -12px 42px rgba(0,0,0,.4); }
-  .sheet-handle { background: #596174; }
-  .receipt-preview { background: #2c2c2e; }
-  .amount-field > div { border-color: #356fa8; background: #2c2c2e; }
-  .close-cycle { color: #d1d1d6; border-color: var(--line); background: #1c1c1e; }
-  .row-divider { background: var(--line); }
-  .settings-card button:active, button.settings-row:active, .settings-row-main:active { background: #2c2c2e; }
-  .gallery-item img { background: #2c2c2e; }
-  .toast { background: #f1f3f8; color: #161b29; }
-  .receipt-sheet-backdrop { background: rgb(0 0 0 / var(--scrim-opacity)); }
-  .receipt-sheet { border-color: rgba(255,255,255,.08); background: rgba(28,28,30,.98); }
-  .receipt-sheet .sheet-handle { background: #636366; }
-  .receipt-sheet-header, .receipt-sheet-actions { background: rgba(28,28,30,.94); }
-  .receipt-sheet-header { border-bottom-color: rgba(255,255,255,.06); }
-  .receipt-sheet-close { color: #d1d1d6; background: #3a3a3c; }
-  .receipt-progress span { background: #3a3a3c; }
-  .receipt-sheet .receipt-editor { background: #2c2c2e; box-shadow: none; }
-  .receipt-sheet .receipt-fields label { color: #aeaeb2; }
-  .receipt-sheet .receipt-fields input, .receipt-sheet .receipt-fields select { color: #ffffff; background: #3a3a3c; }
-  .receipt-sheet .amount-field > div { border-color: #48484a; background: #3a3a3c; }
-  .receipt-sheet .ai-note { background: #3a3a3c; }
-  .receipt-sheet-actions { border-top-color: #38383a; }
-  .receipt-sheet-actions .primary-button:disabled { color: #8e8e93; background: #3a3a3c; }
-}
+:where(html.dark), :where(html.dark) body, :where(html.dark) .app-shell { background: #000000; }
+:where(html.dark) .eyebrow, :where(html.dark) .kicker { color: #98989d; }
+:where(html.dark) .profile-button, :where(html.dark) .icon-button { color: #f2f2f7; background: #2c2c2e; }
+:where(html.dark) .more-button span { color: #c3c8d4; }
+:where(html.dark) .balance-card { box-shadow: 0 18px 42px rgba(0,0,0,.35); }
+:where(html.dark) .list-card, :where(html.dark) .settings-card, :where(html.dark) .settle-hero, :where(html.dark) .transfer-card, :where(html.dark) .people-summary, :where(html.dark) .person-card, :where(html.dark) .cycle-item, :where(html.dark) .receipt-editor, :where(html.dark) .empty-state, :where(html.dark) .filter-panel, :where(html.dark) .gallery-item { background: var(--card); }
+:where(html.dark) .filter-panel input, :where(html.dark) .filter-panel select, :where(html.dark) .receipt-fields input, :where(html.dark) .receipt-fields select, :where(html.dark) .form-stack input { color: var(--ink); border-color: var(--line); background: #2c2c2e; }
+:where(html.dark) .filter-toggle.active, :where(html.dark) .settle-icon, :where(html.dark) .cycle-calendar, :where(html.dark) .empty-state > span { background: #183657; }
+:where(html.dark) .transfer-avatars .avatar + span { background: var(--card); }
+:where(html.dark) .tabbar { border-color: rgba(255,255,255,.08); background: rgba(28,28,30,.9); box-shadow: 0 13px 34px rgba(0,0,0,.34); }
+:where(html.dark) .camera-button .tab-icon { border-color: #000000; background: #f2f2f7; color: #1c1c1e; }
+:where(html.dark) .bottom-sheet { border-color: rgba(255,255,255,.08); background: rgba(28,28,30,.97); box-shadow: 0 -12px 42px rgba(0,0,0,.4); }
+:where(html.dark) .sheet-handle { background: #596174; }
+:where(html.dark) .receipt-preview { background: #2c2c2e; }
+:where(html.dark) .amount-field > div { border-color: #356fa8; background: #2c2c2e; }
+:where(html.dark) .close-cycle { color: #d1d1d6; border-color: var(--line); background: #1c1c1e; }
+:where(html.dark) .row-divider { background: var(--line); }
+:where(html.dark) .settings-card button:active, :where(html.dark) button.settings-row:active, :where(html.dark) .settings-row-main:active { background: #2c2c2e; }
+:where(html.dark) .gallery-item img { background: #2c2c2e; }
+:where(html.dark) .toast { background: #f1f3f8; color: #161b29; }
+:where(html.dark) .receipt-sheet-backdrop { background: rgb(0 0 0 / var(--scrim-opacity)); }
+:where(html.dark) .receipt-sheet { border-color: rgba(255,255,255,.08); background: rgba(28,28,30,.98); }
+:where(html.dark) .receipt-sheet .sheet-handle { background: #636366; }
+:where(html.dark) .receipt-sheet-header, :where(html.dark) .receipt-sheet-actions { background: rgba(28,28,30,.94); }
+:where(html.dark) .receipt-sheet-header { border-bottom-color: rgba(255,255,255,.06); }
+:where(html.dark) .receipt-sheet-close { color: #d1d1d6; background: #3a3a3c; }
+:where(html.dark) .receipt-progress span { background: #3a3a3c; }
+:where(html.dark) .receipt-sheet .receipt-editor { background: #2c2c2e; box-shadow: none; }
+:where(html.dark) .receipt-sheet .receipt-fields label { color: #aeaeb2; }
+:where(html.dark) .receipt-sheet .receipt-fields input, :where(html.dark) .receipt-sheet .receipt-fields select { color: #ffffff; background: #3a3a3c; }
+:where(html.dark) .receipt-sheet .amount-field > div { border-color: #48484a; background: #3a3a3c; }
+:where(html.dark) .receipt-sheet .ai-note { background: #3a3a3c; }
+:where(html.dark) .receipt-sheet-actions { border-top-color: #38383a; }
+:where(html.dark) .receipt-sheet-actions .primary-button:disabled { color: #8e8e93; background: #3a3a3c; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -512,11 +516,9 @@ button.settings-row:active, .settings-row-main:active { background: #eceef3; }
   color: var(--blue); cursor: pointer; flex-shrink: 0;
 }
 .retry-scan:disabled { opacity: 0.5; }
-@media (prefers-color-scheme: dark) {
-  .payer-chip { background: #2c2c2e; border-color: #48484a; }
-  .payer-chip.selected { border-color: #ffffff; }
-  .retry-scan { border-color: #48484a; }
-}
+:where(html.dark) .payer-chip { background: #2c2c2e; border-color: #48484a; }
+:where(html.dark) .payer-chip.selected { border-color: #ffffff; }
+:where(html.dark) .retry-scan { border-color: #48484a; }
 
 /* ================= Apple-grade polish ================= */
 
@@ -614,11 +616,9 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 .tab-button:active { transform: scale(.93); }
 .tab-button.active .tab-icon svg { stroke-width: 2.1; }
-@media (prefers-color-scheme: dark) {
-  .tabbar { border-top-color: rgba(255,255,255,.08); background: rgba(28,28,30,.82); }
-  .swipe-content { background: var(--card); }
-  .swipe-actions { background: linear-gradient(to right, transparent, rgba(60,60,67,.35) 40%); }
-}
+:where(html.dark) .tabbar { border-top-color: rgba(255,255,255,.08); background: rgba(28,28,30,.82); }
+:where(html.dark) .swipe-content { background: var(--card); }
+:where(html.dark) .swipe-actions { background: linear-gradient(to right, transparent, rgba(60,60,67,.35) 40%); }
 
 /* keep content clear of the full-width bar */
 .app-shell { padding-bottom: calc(86px + env(safe-area-inset-bottom)); }
@@ -673,10 +673,8 @@ html, body { overflow-x: clip; }
 .expanded-details > div { padding: 9px 11px; border-radius: 11px; background: #f0f1f5; }
 .expanded-details dt { color: var(--muted); font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
 .expanded-details dd { margin: 3px 0 0; font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
-@media (prefers-color-scheme: dark) {
-  .expanded-details > div { background: #3a3a3c; }
-  .receipt-thumb-placeholder { background: #2c2c2e; }
-}
+:where(html.dark) .expanded-details > div { background: #3a3a3c; }
+:where(html.dark) .receipt-thumb-placeholder { background: #2c2c2e; }
 
 /* Fullscreen receipt viewer */
 .lightbox-backdrop {
@@ -739,14 +737,12 @@ html, body { overflow-x: clip; }
   cursor: pointer; transition: transform .12s ease;
 }
 .cam-orb:active { transform: scale(.93); }
-@media (prefers-color-scheme: dark) {
-  .tabbar-pill, .cam-orb {
+:where(html.dark) .tabbar-pill, :where(html.dark) .cam-orb {
     background: rgba(44, 44, 46, .72);
     border-color: rgba(255, 255, 255, .1);
     box-shadow: 0 18px 44px rgba(0, 0, 0, .45);
   }
-  .cam-orb { color: #f2f2f7; }
-}
+:where(html.dark) .cam-orb { color: #f2f2f7; }
 
 /* Swipe actions: snap in liquid-sync with the card */
 .swipe-actions { transition: opacity .3s ease, transform .4s cubic-bezier(.32, .72, 0, 1); }
@@ -782,7 +778,5 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
   transition: transform .12s ease;
 }
 .cancel-button:not(:disabled):active { transform: scale(.98); }
-@media (prefers-color-scheme: dark) {
-  .confirm-sheet { background: rgba(28, 28, 30, .98); border-color: rgba(255, 255, 255, .08); }
-  .cancel-button { background: #3a3a3c; color: #ffffff; }
-}
+:where(html.dark) .confirm-sheet { background: rgba(28, 28, 30, .98); border-color: rgba(255, 255, 255, .08); }
+:where(html.dark) .cancel-button { background: #3a3a3c; color: #ffffff; }

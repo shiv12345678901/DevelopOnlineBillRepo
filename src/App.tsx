@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { ledgerRepository, scanReceipt, uploadReceipt } from "./api";
 import { ocrOnDevice } from "./receipt-ocr";
+import { applyTheme, getThemePref, watchSystemTheme, type ThemePref } from "./theme";
 
 type Tab = "home" | "settle" | "camera" | "receipts" | "settings";
 
@@ -318,6 +319,7 @@ export default function App() {
   const [sheetExit, setSheetExit] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LedgerEntry | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  const [themePref, setThemePref] = useState<ThemePref>(() => getThemePref());
   const [toast, setToast] = useState("");
   const [showNewCycle, setShowNewCycle] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
@@ -389,6 +391,12 @@ export default function App() {
   useEffect(() => {
     fetchLedger();
   }, [fetchLedger]);
+
+  useEffect(() => {
+    applyTheme(themePref);
+  }, [themePref]);
+
+  useEffect(() => watchSystemTheme(() => applyTheme(getThemePref())), []);
 
   useEffect(() => {
     if (!overlayOpen) return;
@@ -745,6 +753,8 @@ export default function App() {
             onExport={exportLedger}
             onInstall={installApp}
             syncStatus={syncStatus}
+            themePref={themePref}
+            onThemeChange={setThemePref}
           />
         )}
         </div>
@@ -1299,7 +1309,7 @@ function EditSheet({ entry, members, saving, onClose, onSave }: {
   );
 }
 
-function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, onExport, onInstall, syncStatus }: {
+function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, onExport, onInstall, syncStatus, themePref, onThemeChange }: {
   cycles: Cycle[];
   activeId: string | null;
   onSelect: (id: string) => void;
@@ -1309,9 +1319,39 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
   onExport: () => void;
   onInstall: () => void;
   syncStatus: "loading" | "online" | "saving" | "error";
+  themePref: ThemePref;
+  onThemeChange: (pref: ThemePref) => void;
 }) {
   return (
     <div className="view settings-view">
+      <section className="settings-group">
+        <p className="settings-group-label">Appearance</p>
+        <div className="settings-list">
+          <div className="settings-row">
+            <span className="settings-icon settings-icon-indigo"><Icon name="settle" size={19} /></span>
+            <span className="settings-row-copy"><strong>Theme</strong><small>Light, dark, or match your system</small></span>
+          </div>
+          <div className="theme-segmented" role="radiogroup" aria-label="Theme">
+            {([
+              ["auto", "Automatic"],
+              ["light", "Light"],
+              ["dark", "Dark"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={themePref === value}
+                className={`theme-segment ${themePref === value ? "active" : ""}`}
+                onClick={() => onThemeChange(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="settings-group">
         <p className="settings-group-label">Cycles</p>
         <div className="settings-list">
