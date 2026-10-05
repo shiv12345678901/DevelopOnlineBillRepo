@@ -34,10 +34,9 @@ type PendingReceipt = {
   merchant: string;
   note: string;
   spentOn: string;
-  status: "cropping" | "scanning" | "ready";
+  status: "scanning" | "ready";
   confidence: number;
   engine: "ai" | "device" | "manual";
-  crop: { x: number; y: number; width: number; height: number };
   processedImageBase64: string;
 };
 
@@ -82,27 +81,13 @@ const money = (value: number, decimals = 0) =>
     maximumFractionDigits: decimals,
   });
 
-async function resizeReceipt(file: File, crop: PendingReceipt["crop"], maxSide = 1600) {
+async function resizeReceipt(file: File, maxSide = 1600) {
   const bitmap = await createImageBitmap(file);
-  const sourceX = Math.round(bitmap.width * crop.x);
-  const sourceY = Math.round(bitmap.height * crop.y);
-  const sourceWidth = Math.round(bitmap.width * crop.width);
-  const sourceHeight = Math.round(bitmap.height * crop.height);
-  const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.round(sourceWidth * scale);
-  canvas.height = Math.round(sourceHeight * scale);
-  canvas.getContext("2d")?.drawImage(
-    bitmap,
-    sourceX,
-    sourceY,
-    sourceWidth,
-    sourceHeight,
-    0,
-    0,
-    canvas.width,
-    canvas.height,
-  );
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
   const dataUrl = canvas.toDataURL("image/jpeg", 0.84);
   return { imageBase64: dataUrl.split(",")[1], mimeType: "image/jpeg" };
@@ -323,6 +308,7 @@ export default function App() {
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingReceipt[]>([]);
+  const [defaultPayer, setDefaultPayer] = useState("");
   const [toast, setToast] = useState("");
   const [showNewCycle, setShowNewCycle] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
@@ -331,6 +317,11 @@ export default function App() {
   const overlayOpen = pending.length > 0 || showNewCycle;
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
+
+  // Remember the last payer used so consecutive scans need no taps.
+  useEffect(() => {
+    if (!defaultPayer && cycle) setDefaultPayer(cycle.members[0] ?? "");
+  }, [cycle, defaultPayer]);
   const cycleEntries = useMemo(
     () => entries.filter((entry) => entry.cycleId === cycle?.id).sort((a, b) =>
       b.spentOn.localeCompare(a.spentOn) || b.id.localeCompare(a.id)
@@ -403,86 +394,105 @@ export default function App() {
       id: `${Date.now()}-${Math.random()}`,
       file,
       preview: URL.createObjectURL(file),
-      payer: "",
+      payer: defaultPayer || cycle.members[0] || "",
       amount: "",
       merchant: "",
       note: "",
       spentOn: today(),
-      status: "cropping" as const,
+      status: "scanning" as const,
       confidence: 0,
       engine: "ai" as const,
-      crop: { x: 0.03, y: 0.03, width: 0.94, height: 0.94 },
       processedImageBase64: "",
     }));
-    setPending(next);
+    setPending((current) => [...current, ...next]);
+    next.forEach((item) => void processReceipt(item));
   };
 
-  const readReceipt = async (id: string) => {
-    const item = pending.find((receipt) => receipt.id === id);
-    if (!item) return;
-    setPending((current) => current.map((receipt) =>
-      receipt.id === id ? { ...receipt, status: "scanning" } : receipt
-    ));
-    const image = await resizeReceipt(item.file, item.crop);
+  /**
+   * One-tap pipeline: scan the full image (AI, then on-device) and save it
+   * immediately. Only receipts neither engine could read stay on screen for
+   * manual entry.
+   */
+  const processReceipt = async (item: PendingReceipt) => {
     const apply = (patch: Partial<PendingReceipt>) => setPending((current) => current.map((receipt) =>
-      receipt.id === id ? { ...receipt, ...patch } : receipt
+      receipt.id === item.id ? { ...receipt, ...patch } : receipt
     ));
 
-    // 1. AI vision (Gemini) — best read for photos and screenshots.
-    let ai: { amount: number | null; merchant: string; confidence: number } | null = null;
     try {
-      const result = await scanReceipt(image.imageBase64, image.mimeType);
-      if (result.amount !== null && result.confidence >= 0.35) {
-        ai = { amount: result.amount, merchant: result.merchant || "", confidence: result.confidence };
+      const image = await resizeReceipt(item.file);
+
+      // 1. AI vision (Gemini).
+      let ai: { amount: number; merchant: string; confidence: number } | null = null;
+      try {
+        const result = await scanReceipt(image.imageBase64, image.mimeType);
+        if (result.amount !== null && result.confidence >= 0.35) {
+          ai = { amount: result.amount, merchant: result.merchant || "", confidence: result.confidence };
+        }
+      } catch {
+        // AI unavailable — fall through to on-device OCR.
+      }
+
+      // 2. On-device OCR (Tesseract.js).
+      let device: Awaited<ReturnType<typeof ocrOnDevice>> | null = null;
+      if (!ai) {
+        apply({ engine: "device" });
+        try {
+          const result = await ocrOnDevice(image.imageBase64);
+          if (result.amount !== null) device = result;
+        } catch {
+          // both engines failed — manual entry below
+        }
+      }
+
+      const winner = ai ?? device;
+      if (winner) {
+        apply({
+          amount: String(winner.amount),
+          merchant: winner.merchant,
+          confidence: winner.confidence,
+          engine: ai ? "ai" : "device",
+          processedImageBase64: image.imageBase64,
+        });
+      } else {
+        // 3. Manual entry — the only case the review sheet is for.
+        apply({ engine: "manual", processedImageBase64: image.imageBase64 });
+        return;
+      }
+
+      // 4. Save straight away with the payer chosen in the sheet.
+      const payer = defaultPayer || cycle?.members[0] || "";
+      const read = ai ?? device!;
+      if (!cycle || !payer || Number(read.amount) <= 0) {
+        apply({ engine: "manual" }); // let the user complete it by hand
+        return;
+      }
+      try {
+        const created = await ledgerRepository.createEntries<LedgerEntry>([{
+          cycleId: cycle.id,
+          payer,
+          amount: Number(read.amount),
+          merchant: read.merchant,
+          note: "",
+          spentOn: today(),
+          confidence: read.confidence,
+          receiptImageBase64: image.imageBase64,
+          receiptMimeType: "image/jpeg",
+        }]);
+        setEntries((current) => [...created, ...current]);
+        setPending((current) => current.filter((receipt) => receipt.id !== item.id));
+        URL.revokeObjectURL(item.preview);
+        flash(`${money(Number(read.amount))} at ${read.merchant || "receipt"} added as ${payer}`);
+      } catch (error) {
+        apply({ engine: "manual" });
+        flash(error instanceof Error ? error.message : "Could not save the receipt. Enter it manually.");
       }
     } catch {
-      // AI unavailable — fall through to on-device OCR.
-    }
-
-    // 2. On-device OCR (Tesseract.js) — kicks in whenever the AI read is
-    //    missing or too unsure to trust.
-    let device: Awaited<ReturnType<typeof ocrOnDevice>> | null = null;
-    if (!ai) {
-      apply({ engine: "device" }); // shows "on-device" while it works
-      try {
-        const result = await ocrOnDevice(image.imageBase64);
-        if (result.amount !== null) device = result;
-      } catch {
-        // both engines failed — manual entry below
-      }
-    }
-
-    // 3. Review state: best available read, or an empty form for manual entry.
-    if (ai) {
-      apply({
-        amount: String(ai.amount),
-        merchant: ai.merchant,
-        confidence: ai.confidence,
-        engine: "ai",
-        processedImageBase64: image.imageBase64,
-        status: "ready",
-      });
-    } else if (device) {
-      apply({
-        amount: String(device.amount),
-        merchant: device.merchant,
-        confidence: device.confidence,
-        engine: "device",
-        processedImageBase64: image.imageBase64,
-        status: "ready",
-      });
-    } else {
-      apply({
-        amount: "",
-        confidence: 0,
-        engine: "manual",
-        processedImageBase64: image.imageBase64,
-        status: "ready",
-      });
-      setToast("Couldn't read the receipt automatically. Type the total to continue.");
+      apply({ engine: "manual" });
+      setToast("Couldn't process that image. Enter the total manually.");
       window.setTimeout(() => setToast(""), 3200);
     }
   };
+
 
   const saveReceipts = async () => {
     if (!cycle) return;
@@ -707,6 +717,8 @@ export default function App() {
         <ReceiptSheet
           receipts={pending}
           members={cycle?.members ?? []}
+          defaultPayer={defaultPayer}
+          onPayerChange={setDefaultPayer}
           onUpdate={(id, update) => setPending((items) => items.map((item) => item.id === id ? { ...item, ...update } : item))}
           onRemove={(id) => setPending((items) => {
             const removed = items.find((item) => item.id === id);
@@ -716,7 +728,10 @@ export default function App() {
           onClose={closePending}
           onSave={saveReceipts}
           saving={syncStatus === "saving"}
-          onScan={readReceipt}
+          onScan={async (id) => {
+            const item = pending.find((receipt) => receipt.id === id);
+            if (item) await processReceipt(item);
+          }}
         />
       )}
 
@@ -1022,9 +1037,11 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
   );
 }
 
-function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, onScan, saving }: {
+function ReceiptSheet({ receipts, members, defaultPayer, onPayerChange, onUpdate, onRemove, onClose, onSave, onScan, saving }: {
   receipts: PendingReceipt[];
   members: string[];
+  defaultPayer: string;
+  onPayerChange: (payer: string) => void;
   onUpdate: (id: string, update: Partial<PendingReceipt>) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
@@ -1032,24 +1049,19 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
   onScan: (id: string) => Promise<void>;
   saving: boolean;
 }) {
-  const canSave = receipts.length > 0 && receipts.every(
-    (receipt) => receipt.status === "ready" && Number(receipt.amount) > 0 && receipt.payer,
+  // Scanned receipts save themselves; the sheet only holds items that need
+  // manual attention after both engines came up empty.
+  const needsReview = receipts.filter((receipt) => receipt.status === "ready");
+  const canSave = needsReview.length > 0 && needsReview.every(
+    (receipt) => Number(receipt.amount) > 0 && receipt.payer,
   );
-  const cropping = receipts.filter((receipt) => receipt.status === "cropping").length;
   const scanning = receipts.filter((receipt) => receipt.status === "scanning").length;
-  const ready = receipts.filter((receipt) => receipt.status === "ready").length;
-  const phaseTitle = cropping > 0
-    ? "Frame your receipt"
-    : scanning > 0
-      ? "Reading receipt"
-      : "Confirm the details";
-  const completionHint = cropping > 0
-    ? `${cropping} receipt${cropping === 1 ? "" : "s"} still need cropping`
-    : scanning > 0
-      ? "Keep this sheet open while recognition finishes"
-      : canSave
-        ? "Everything is ready to save"
-        : "Confirm an amount and payer for every receipt";
+  const phaseTitle = scanning > 0 ? "Scanning receipts" : "Complete the details";
+  const completionHint = scanning > 0
+    ? "Receipts save automatically as they're read"
+    : canSave
+      ? "Everything is ready to save"
+      : "Add an amount and payer for each receipt";
   const { sheetRef, dismiss, dragProps } = useSheetGesture(onClose);
   return (
     <div className="sheet-backdrop receipt-sheet-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && dismiss()}>
@@ -1062,9 +1074,23 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
           </div>
           <button className="icon-button receipt-sheet-close" onClick={dismiss} aria-label="Cancel receipt review"><Icon name="close" size={18} /></button>
         </div>
-        <div className="receipt-progress" aria-label={`${ready} of ${receipts.length} receipts reviewed`}>
+        <div className="payer-chip-row" role="radiogroup" aria-label="Who paid">
+          <span className="payer-chip-label">Saving as</span>
+          {members.map((member) => (
+            <button
+              key={member}
+              className={`payer-chip ${defaultPayer === member ? "selected" : ""}`}
+              onClick={() => onPayerChange(member)}
+              role="radio"
+              aria-checked={defaultPayer === member}
+            >
+              <Avatar name={member} size="sm" /> {member}
+            </button>
+          ))}
+        </div>
+        <div className="receipt-progress" aria-label={`${needsReview.length} of ${receipts.length} receipts need review`}>
           {receipts.map((receipt) => (
-            <span className={receipt.status === "ready" ? "complete" : receipt.status} key={`progress-${receipt.id}`} />
+            <span className={receipt.status === "ready" ? receipt.engine : receipt.status} key={`progress-${receipt.id}`} />
           ))}
         </div>
         <div className="receipt-editor-list" aria-live="polite">
@@ -1072,20 +1098,12 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
             <div className="receipt-editor" key={receipt.id}>
               <div className="receipt-item-heading">
                 <span>Receipt {index + 1}</span>
-                <span>{receipt.status === "cropping" ? "Crop" : receipt.status === "scanning" ? "Reading…" : "Review"}</span>
+                <span>{receipt.status === "scanning" ? "Reading…" : "Needs your input"}</span>
               </div>
-              {receipt.status === "cropping" ? (
-                <CropEditor
-                  receipt={receipt}
-                  onChange={(crop) => onUpdate(receipt.id, { crop })}
-                  onScan={() => onScan(receipt.id)}
-                />
-              ) : (
-                <div className="receipt-preview">
-                  <img src={receipt.preview} alt="Uploaded receipt" />
-                  {receipt.status === "scanning" && <span className="scanning"><Icon name="receipt" />{receipt.engine === "device" ? "Reading on-device…" : "Reading receipt…"}</span>}
-                </div>
-              )}
+              <div className="receipt-preview">
+                <img src={receipt.preview} alt="Uploaded receipt" />
+                {receipt.status === "scanning" && <span className="scanning"><Icon name="receipt" />{receipt.engine === "device" ? "Reading on-device…" : "Reading receipt…"}</span>}
+              </div>
               <button className="remove-receipt" onClick={() => onRemove(receipt.id)} aria-label={`Remove receipt ${index + 1}`}><Icon name="trash" size={16} /></button>
               {receipt.status === "ready" && (
                 <div className="receipt-fields">
@@ -1102,104 +1120,35 @@ function ReceiptSheet({ receipts, members, onUpdate, onRemove, onClose, onSave, 
                     <label><span>Date</span><input type="date" value={receipt.spentOn} onChange={(event) => onUpdate(receipt.id, { spentOn: event.target.value })} /></label>
                   </div>
                   <label><span>Note <i>optional</i></span><input placeholder="e.g. Weekly shop" value={receipt.note} onChange={(event) => onUpdate(receipt.id, { note: event.target.value })} /></label>
-                  <p className="ai-note">
-                    <Icon name="check" size={14} />
-                    {receipt.confidence > 0
-                      ? `Total found via ${receipt.engine === "device" ? "on-device scan" : "AI"} · ${Math.round(receipt.confidence * 100)}% confidence, please confirm`
-                      : receipt.engine === "manual"
-                        ? "Auto-read failed. Type the total to continue."
-                        : "Enter the printed total before saving"}
-                  </p>
+                  <div className="manual-actions">
+                    <p className="ai-note">
+                      <Icon name="receipt" size={14} />
+                      {receipt.confidence > 0
+                        ? `Read via ${receipt.engine === "device" ? "on-device scan" : "AI"} · ${Math.round(receipt.confidence * 100)}% confidence, please confirm`
+                        : "Auto-read failed. Type the total, or scan again."}
+                    </p>
+                    <button className="retry-scan" onClick={() => onScan(receipt.id)} disabled={saving}>
+                      <Icon name="refresh" size={13} /> Scan again
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           ))}
         </div>
-        <div className="receipt-sheet-actions">
-          <p className={canSave ? "ready" : ""}><Icon name={canSave ? "check" : "receipt"} size={15} />{completionHint}</p>
-          <button className="primary-button" disabled={!canSave || saving} onClick={onSave}>
-            {saving ? "Saving…" : `Save ${receipts.length} receipt${receipts.length === 1 ? "" : "s"}`}
-          </button>
-        </div>
+        {needsReview.length > 0 && (
+          <div className="receipt-sheet-actions">
+            <p className={canSave ? "ready" : ""}><Icon name={canSave ? "check" : "receipt"} size={15} />{completionHint}</p>
+            <button className="primary-button" disabled={!canSave || saving} onClick={onSave}>
+              {saving ? "Saving…" : `Save ${needsReview.length} receipt${needsReview.length === 1 ? "" : "s"}`}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function CropEditor({ receipt, onChange, onScan }: {
-  receipt: PendingReceipt;
-  onChange: (crop: PendingReceipt["crop"]) => void;
-  onScan: () => void;
-}) {
-  const stageRef = useRef<HTMLDivElement>(null);
-  const drag = useRef<{
-    corner: "tl" | "tr" | "bl" | "br";
-    startX: number;
-    startY: number;
-    crop: PendingReceipt["crop"];
-  } | null>(null);
-  const minimum = 0.16;
-
-  const startDrag = (corner: "tl" | "tr" | "bl" | "br", event: ReactPointerEvent<HTMLButtonElement>) => {
-    drag.current = { corner, startX: event.clientX, startY: event.clientY, crop: receipt.crop };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const moveDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (!drag.current || !stageRef.current) return;
-    const bounds = stageRef.current.getBoundingClientRect();
-    const dx = (event.clientX - drag.current.startX) / bounds.width;
-    const dy = (event.clientY - drag.current.startY) / bounds.height;
-    const start = drag.current.crop;
-    let { x, y, width, height } = start;
-    if (drag.current.corner.includes("l")) {
-      const right = start.x + start.width;
-      x = Math.max(0, Math.min(right - minimum, start.x + dx));
-      width = right - x;
-    } else {
-      width = Math.max(minimum, Math.min(1 - start.x, start.width + dx));
-    }
-    if (drag.current.corner.includes("t")) {
-      const bottom = start.y + start.height;
-      y = Math.max(0, Math.min(bottom - minimum, start.y + dy));
-      height = bottom - y;
-    } else {
-      height = Math.max(minimum, Math.min(1 - start.y, start.height + dy));
-    }
-    onChange({ x, y, width, height });
-  };
-
-  return (
-    <div className="crop-editor">
-      <p>Drag the corners around the receipt</p>
-      <div className="crop-stage" ref={stageRef}>
-        <img src={receipt.preview} alt="Receipt ready to crop" />
-        <div
-          className="crop-box"
-          style={{
-            left: `${receipt.crop.x * 100}%`,
-            top: `${receipt.crop.y * 100}%`,
-            width: `${receipt.crop.width * 100}%`,
-            height: `${receipt.crop.height * 100}%`,
-          }}
-        >
-          {(["tl", "tr", "bl", "br"] as const).map((corner) => (
-            <button
-              key={corner}
-              className={`crop-handle crop-${corner}`}
-              aria-label={`Adjust ${corner} crop corner`}
-              onPointerDown={(event) => startDrag(corner, event)}
-              onPointerMove={moveDrag}
-              onPointerUp={() => { drag.current = null; }}
-              onPointerCancel={() => { drag.current = null; }}
-            />
-          ))}
-        </div>
-      </div>
-      <button className="crop-confirm" onClick={onScan}>Crop and read receipt</button>
-    </div>
-  );
-}
 
 function NewCycleSheet({ onClose, onCreate, saving }: {
   onClose: () => void;
