@@ -671,6 +671,20 @@ export default function App() {
   };
 
   const exportLedger = () => {
+    if (!entries.length) {
+      flash("No receipts to export yet");
+      return;
+    }
+    const cycleCount = new Set(entries.map((entry) => entry.cycleId)).size;
+    openConfirm({
+      title: "Export your ledger?",
+      message: `${entries.length} receipt${entries.length === 1 ? "" : "s"} across ${cycleCount} cycle${cycleCount === 1 ? "" : "s"} will download as grocery-ledger-${today()}.csv — merchant, date, payer, amount and note for each.`,
+      confirmLabel: "Download CSV",
+      action: runExport,
+    });
+  };
+
+  const runExport = () => {
     const cycleNames = Object.fromEntries(cycles.map((item) => [item.id, item.name]));
     const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
     const rows = [
