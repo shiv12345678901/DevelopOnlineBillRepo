@@ -2017,40 +2017,32 @@ function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, 
         <span className="guide-nav-spacer" aria-hidden="true" />
       </header>
       <div className="guide-body">
-        <header className="cycles-head">
-          <span className="cycles-head-tile"><Icon name="refresh" size={30} /></span>
-          <div className="push-title">
-            <h1>Cycles</h1>
-            <p>{cycles.length} total · Tap one to switch everywhere</p>
-          </div>
+        <header className="push-title">
+          <h1>Cycles</h1>
+          <p>{cycles.length} total · tap one to switch everywhere</p>
         </header>
         <section className="push-group">
-          <div className="settings-list cycles-list">
-            {cycles.map((cycle, index) => {
+          <p className="settings-group-label">All cycles</p>
+          <div className="settings-list">
+            {cycles.map((cycle) => {
               const active = cycle.id === activeId;
-              const tint = CYCLE_TINTS[index % CYCLE_TINTS.length];
               const range = cycle.endsOn ? `${formatDay(cycle.startsOn)} – ${formatDay(cycle.endsOn)}` : `${formatDay(cycle.startsOn)} – today`;
               const count = countFor(cycle.id);
               return (
-                <div className={`cycles-page-row ${active ? "active" : ""}`} key={cycle.id}>
-                  <button className="cycles-row-main" disabled={saving} onClick={() => onSwitch(cycle.id)}>
-                    <span
-                      className="cycle-tile"
-                      style={active ? undefined : { background: tint.bg, color: tint.fg }}
-                    >
-                      <Icon name="calendar" size={24} />
-                    </span>
-                    <span className="insight-copy">
+                <div className="settings-row" key={cycle.id}>
+                  <button className="settings-row-main" disabled={saving} onClick={() => onSwitch(cycle.id)}>
+                    <span className="settings-icon settings-icon-blue"><Icon name="calendar" size={19} /></span>
+                    <span className="settings-row-copy">
                       <strong>{cycle.name}</strong>
-                      <i>{range} · {count} receipt{count === 1 ? "" : "s"}</i>
+                      <small>{range} · {count} receipt{count === 1 ? "" : "s"}</small>
                     </span>
-                    <span className={`cycle-status-chip ${cycle.endsOn ? "closed" : "live"}`}>
-                      <i className="chip-dot" />{cycle.endsOn ? "Closed" : "Live"}
+                    <span className="settings-row-value sync-value">
+                      <i className={`sync-dot ${cycle.endsOn ? "off" : ""}`} />{cycle.endsOn ? "Closed" : "Live"}
                     </span>
-                    {active && <span className="cycle-check"><Icon name="check" size={20} /></span>}
+                    {active && <span className="cycle-check"><Icon name="check" size={18} /></span>}
                   </button>
                   <button className="cycle-detail-button" onClick={() => onOpenCycle(cycle.id)} aria-label={`Open ${cycle.name} details`}>
-                    <Icon name="chevron" size={18} />
+                    <Icon name="chevron" size={17} />
                   </button>
                 </div>
               );

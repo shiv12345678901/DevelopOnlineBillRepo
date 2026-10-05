@@ -836,6 +836,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .sync-value { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
 .sync-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #34c759; box-shadow: 0 0 0 3px rgba(52, 199, 89, .16); animation: sync-pulse 2.4s ease-in-out infinite; }
 .sync-dot.warn { background: #ffcc00; box-shadow: 0 0 0 3px rgba(255, 204, 0, .18); animation: none; }
+.sync-dot.off { background: #8e8e93; box-shadow: none; animation: none; }
 @keyframes sync-pulse {
   0%, 100% { box-shadow: 0 0 0 3px rgba(52, 199, 89, .16); }
   50% { box-shadow: 0 0 0 5px rgba(52, 199, 89, .07); }
@@ -881,35 +882,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .cycle-page .guide-body { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
 
 /* ================= All Cycles switcher page ================= */
-.cycles-head { display: flex; align-items: center; gap: 16px; margin: 4px 2px 0; }
-.cycles-head-tile {
-  width: 64px; height: 64px; flex: 0 0 auto; display: grid; place-items: center;
-  color: #5856d6; border-radius: 20px; background: var(--card);
-  box-shadow: 0 8px 22px rgba(25, 32, 48, .09), 0 0 0 1px rgba(0, 0, 0, .03);
-}
-:where(html.dark) .cycles-head-tile { background: #1c1c1e; box-shadow: none; }
-
-.cycles-list { padding: 8px; border-radius: 24px; box-shadow: 0 12px 34px rgba(25, 32, 48, .08); }
-.cycles-page-row { display: flex; align-items: center; border-radius: 18px; }
-.cycles-page-row + .cycles-page-row { border-top: 1px solid var(--line); }
-.cycles-page-row.active { background: rgba(0, 122, 255, .07); }
-.cycles-page-row.active + .cycles-page-row { border-top: 0; }
-.cycles-row-main { display: flex; flex: 1; min-width: 0; align-items: center; gap: 14px; min-height: 84px; padding: 10px 6px 10px 10px; color: var(--ink); text-align: left; border: 0; background: transparent; }
-.cycles-row-main:not(:disabled):active { opacity: .7; }
-.cycles-row-main:disabled { cursor: default; }
-.cycles-page-row .insight-copy strong { font-size: 1.12rem; font-weight: 700; letter-spacing: -.015em; white-space: normal; }
-.cycles-page-row .insight-copy i { font-size: .78rem; }
-.cycle-tile { width: 54px; height: 54px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 16px; }
-.cycles-page-row.active .cycle-tile { background: #007aff !important; color: #fff !important; box-shadow: 0 8px 20px rgba(0, 122, 255, .35); }
-:where(html.dark) .cycles-page-row.active .cycle-tile { background: #0a84ff !important; }
-
-.cycle-status-chip { display: inline-flex; align-items: center; flex: 0 0 auto; padding: 6px 12px; border-radius: 99px; font-size: .78rem; font-weight: 650; }
-.cycle-status-chip .chip-dot { width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: currentColor; }
-.cycle-status-chip.live { color: #1d8a3a; background: rgba(52, 199, 89, .14); }
-.cycle-status-chip.closed { color: var(--muted); background: rgba(120, 120, 128, .12); }
-:where(html.dark) .cycle-status-chip.live { color: #4cd964; background: rgba(52, 199, 89, .16); }
-
-.cycle-check { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; margin-left: 2px; color: var(--blue); }
+.cycle-check { display: grid; place-items: center; width: 24px; height: 24px; flex: 0 0 auto; margin-left: 2px; color: var(--blue); }
 .cycle-check svg { stroke-width: 2.6; }
 .cycle-detail-button { display: grid; place-items: center; width: 38px; height: 48px; flex: 0 0 auto; color: #a5a9b2; border: 0; background: transparent; cursor: pointer; }
 .cycle-detail-button:active { opacity: .5; }
