@@ -455,14 +455,19 @@ export default function App() {
     ));
 
     try {
+      // Re-enter the reading state so a rescan shows progress too.
+      apply({ status: "scanning", confidence: 0 });
       const image = await resizeReceipt(item.file);
 
-      // 1. AI vision (Gemini).
+      // 1. AI vision (Gemini) — tried first on every scan and rescan.
       let ai: { amount: number; merchant: string; confidence: number } | null = null;
+      let aiLow: { amount: number; merchant: string; confidence: number } | null = null;
       try {
         const result = await scanReceipt(image.imageBase64, image.mimeType);
-        if (result.amount !== null && result.confidence >= 0.35) {
-          ai = { amount: result.amount, merchant: result.merchant || "", confidence: result.confidence };
+        if (result.amount !== null) {
+          const read = { amount: result.amount, merchant: result.merchant || "", confidence: result.confidence };
+          if (result.confidence >= 0.35) ai = read;
+          else aiLow = read; // kept as a last resort before manual entry
         }
       } catch {
         // AI unavailable — fall through to on-device OCR.
@@ -480,10 +485,11 @@ export default function App() {
         }
       }
 
-      const winner = ai ?? device;
+      const winner = ai ?? device ?? aiLow;
       if (!winner || Number(winner.amount) <= 0) {
         // 3. Manual entry — the only case the review sheet is for.
         apply({ status: "ready", engine: "manual" });
+        flash("Couldn't read a total — type it in or scan again");
         return;
       }
 
@@ -493,12 +499,11 @@ export default function App() {
         amount: String(winner.amount),
         merchant: winner.merchant,
         confidence: winner.confidence,
-        engine: ai ? "ai" : "device",
+        engine: ai ? "ai" : device ? "device" : "ai",
       });
     } catch {
       apply({ status: "ready", engine: "manual" });
-      setToast("Couldn't process that image. Enter the total manually.");
-      window.setTimeout(() => setToast(""), 3200);
+      flash("Couldn't process that image. Enter the total manually.");
     }
   };
 
