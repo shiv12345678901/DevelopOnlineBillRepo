@@ -517,3 +517,44 @@ button.settings-row:active, .settings-row-main:active { background: #eceef3; }
   .payer-chip.selected { border-color: #ffffff; }
   .retry-scan { border-color: #48484a; }
 }
+
+/* ================= Apple-grade polish ================= */
+
+/* Sheets: scrim fades, sheet leaves gracefully after auto-save */
+@keyframes scrim-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheet-down { to { transform: translate3d(0, 105%, 0); } }
+.sheet-backdrop { animation: scrim-in .32s ease both; }
+.sheet-backdrop.closing { pointer-events: none; animation: scrim-in .3s ease reverse both; }
+.sheet-backdrop.closing .bottom-sheet { animation: sheet-down .3s cubic-bezier(.45, 0, .8, .4) both; }
+
+/* Inputs: 16px+ so iOS never zooms on focus; 48px touch targets */
+.receipt-fields input, .receipt-fields select,
+.form-stack input, .filter-panel input, .filter-panel select {
+  font-size: 16px;
+  height: 48px;
+  border-radius: 12px;
+}
+.receipt-sheet .receipt-fields input, .receipt-sheet .receipt-fields select { height: 48px; font-size: 16px; }
+.receipt-fields label, .form-stack label { font-size: 12px; letter-spacing: .01em; }
+.ai-note { font-size: 12px; line-height: 1.4; }
+.receipt-sheet .ai-note { min-height: 30px; }
+
+/* Amount field: exactly ONE border, on the wrapper only */
+.receipt-sheet .amount-field > div input { border: 0; padding-left: 4px; }
+.receipt-sheet .amount-field > div { padding: 0 12px; }
+
+/* Buttons press like native controls */
+.primary-button { font-size: 16px; transition: transform .12s ease, opacity .2s ease; }
+.primary-button:not(:disabled):active { transform: scale(.98); }
+button { -webkit-tap-highlight-color: transparent; }
+
+/* Empty + error states */
+.empty-state p { font-size: 13px; line-height: 1.45; }
+.empty-state h2 { font-size: 1.15rem; }
+.empty-state:focus { outline: none; }
+
+/* Toast readability */
+.toast { font-size: 13px; padding: 11px 16px; }
+
+/* Payer chips match the form rhythm */
+.payer-chip { font-size: 13px; padding: 5px 14px 5px 6px; }

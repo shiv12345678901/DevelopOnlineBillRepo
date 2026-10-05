@@ -309,14 +309,28 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingReceipt[]>([]);
   const [defaultPayer, setDefaultPayer] = useState("");
+  const [sheetExit, setSheetExit] = useState(false);
   const [toast, setToast] = useState("");
   const [showNewCycle, setShowNewCycle] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const overlayOpen = pending.length > 0 || showNewCycle;
+  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit;
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
+
+  // When the last receipt auto-saves (or is removed), slide the sheet away
+  // instead of unmounting it abruptly.
+  const pendingCountRef = useRef(0);
+  useEffect(() => {
+    if (pendingCountRef.current > 0 && pending.length === 0) {
+      setSheetExit(true);
+      const timer = window.setTimeout(() => setSheetExit(false), 320);
+      pendingCountRef.current = 0;
+      return () => window.clearTimeout(timer);
+    }
+    pendingCountRef.current = pending.length;
+  }, [pending]);
 
   // Remember the last payer used so consecutive scans need no taps.
   useEffect(() => {
@@ -496,8 +510,19 @@ export default function App() {
 
   const saveReceipts = async () => {
     if (!cycle) return;
-    const valid = pending.filter((item) => Number(item.amount) > 0 && item.payer);
-    if (!valid.length) return;
+    const readyItems = pending.filter((item) => item.status === "ready");
+    const valid = readyItems.filter((item) => Number(item.amount) > 0 && item.payer);
+    if (!readyItems.length) return;
+    // Nothing valid: put the cursor exactly where the problem is.
+    if (!valid.length) {
+      document.getElementById(`receipt-amount-${readyItems[0].id}`)?.focus();
+      flash("Enter the total to save this receipt");
+      return;
+    }
+    if (valid.length !== readyItems.length) {
+      const incomplete = readyItems.find((item) => !(Number(item.amount) > 0 && item.payer));
+      if (incomplete) document.getElementById(`receipt-amount-${incomplete.id}`)?.focus();
+    }
     setSyncStatus("saving");
     const input = valid.map((item) => ({
       cycleId: cycle.id,
@@ -713,9 +738,10 @@ export default function App() {
         event.target.value = "";
       }} />
 
-      {pending.length > 0 && (
+      {(pending.length > 0 || sheetExit) && (
         <ReceiptSheet
           receipts={pending}
+          exiting={sheetExit}
           members={cycle?.members ?? []}
           defaultPayer={defaultPayer}
           onPayerChange={setDefaultPayer}
@@ -1037,7 +1063,7 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
   );
 }
 
-function ReceiptSheet({ receipts, members, defaultPayer, onPayerChange, onUpdate, onRemove, onClose, onSave, onScan, saving }: {
+function ReceiptSheet({ receipts, members, defaultPayer, onPayerChange, onUpdate, onRemove, onClose, onSave, onScan, saving, exiting }: {
   receipts: PendingReceipt[];
   members: string[];
   defaultPayer: string;
@@ -1048,6 +1074,7 @@ function ReceiptSheet({ receipts, members, defaultPayer, onPayerChange, onUpdate
   onSave: () => Promise<void>;
   onScan: (id: string) => Promise<void>;
   saving: boolean;
+  exiting: boolean;
 }) {
   // Scanned receipts save themselves; the sheet only holds items that need
   // manual attention after both engines came up empty.
@@ -1063,8 +1090,17 @@ function ReceiptSheet({ receipts, members, defaultPayer, onPayerChange, onUpdate
       ? "Everything is ready to save"
       : "Add an amount and payer for each receipt";
   const { sheetRef, dismiss, dragProps } = useSheetGesture(onClose);
+
+  // Auto-focus the amount field of the first receipt that needs a manual
+  // total, so the fix is one keystroke away.
+  const manualReceipt = receipts.find((receipt) => receipt.status === "ready" && receipt.engine === "manual");
+  useEffect(() => {
+    if (manualReceipt && !exiting) {
+      document.getElementById(`receipt-amount-${manualReceipt.id}`)?.focus();
+    }
+  }, [manualReceipt?.id, exiting]);
   return (
-    <div className="sheet-backdrop receipt-sheet-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && dismiss()}>
+    <div className={`sheet-backdrop receipt-sheet-backdrop${exiting ? " closing" : ""}`} role="presentation" onPointerDown={(event) => event.target === event.currentTarget && dismiss()}>
       <div className="bottom-sheet receipt-sheet" ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="receipt-sheet-title">
         <div className="sheet-drag-region" aria-hidden="true" {...dragProps}><div className="sheet-handle" /></div>
         <div className="sheet-header receipt-sheet-header">
@@ -1107,7 +1143,7 @@ function ReceiptSheet({ receipts, members, defaultPayer, onPayerChange, onUpdate
               <button className="remove-receipt" onClick={() => onRemove(receipt.id)} aria-label={`Remove receipt ${index + 1}`}><Icon name="trash" size={16} /></button>
               {receipt.status === "ready" && (
                 <div className="receipt-fields">
-                  <label className="amount-field"><span>Total amount</span><div><b>$</b><input autoFocus inputMode="decimal" type="number" placeholder="0.00" value={receipt.amount} onChange={(event) => onUpdate(receipt.id, { amount: event.target.value })} /></div></label>
+                  <label className="amount-field"><span>Total amount</span><div><b>$</b><input id={`receipt-amount-${receipt.id}`} inputMode="decimal" type="number" placeholder="0.00" value={receipt.amount} onChange={(event) => onUpdate(receipt.id, { amount: event.target.value })} /></div></label>
                   <label><span>Merchant</span><input placeholder="Store or merchant" value={receipt.merchant} onChange={(event) => onUpdate(receipt.id, { merchant: event.target.value })} /></label>
                   <div className="field-grid">
                     <label>
@@ -1187,7 +1223,7 @@ function DataState({ title, copy, action, actionLabel }: {
   actionLabel?: string;
 }) {
   return (
-    <div className="empty-state data-state" role={action ? "alert" : "status"}>
+    <div className="empty-state data-state" role={action ? "alert" : "status"} tabIndex={-1} autoFocus={Boolean(action)}>
       <span><Icon name={action ? "refresh" : "receipt"} size={28} /></span>
       <h2>{title}</h2>
       <p>{copy}</p>
