@@ -1887,8 +1887,11 @@ function InstallGuide({ onClose }: { onClose: () => void }) {
         )}
         {sections.map((section) => (
           <section className="push-group" key={section.id}>
-            <p className="settings-group-label">{section.name} · {section.requires}</p>
             <div className="settings-list">
+              <div className="insight-row guide-platform-row">
+                <span className={`settings-icon ${section.id === "ios" ? "settings-icon-blue" : "settings-icon-green"}`}>{section.glyph}</span>
+                <span>{section.name}{section.id === detected && <i className="guide-device-note">This device</i>}</span>
+              </div>
               {section.steps.map((step, index) => (
                 <div className="guide-step" key={index}>
                   <span className="guide-step-num">{index + 1}</span>
@@ -2012,16 +2015,31 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel 
         <span className="guide-nav-spacer" aria-hidden="true" />
       </header>
       <div className="guide-body">
+        <header className="push-title">
+          <h1>{cycle.name}</h1>
+          <p>{dateRange} · {entries.length} receipt{entries.length === 1 ? "" : "s"}</p>
+        </header>
+
         <section className="push-group">
-          <p className="settings-group-label">Summary</p>
-          <div className="settings-list">
-            <div className="insight-row"><span>Total spent</span><strong>{money(summary.total, 2)}</strong></div>
-            <div className="insight-row"><span>Each share</span><strong>{money(summary.share, 2)}</strong></div>
-            <div className="insight-row"><span>Receipts</span><strong>{entries.length}</strong></div>
-            <div className="insight-row"><span>Period</span><strong>{dateRange}</strong></div>
-            <div className="insight-row">
-              <span>Status</span>
-              <strong>{cycle.endsOn ? "Closed" : <><i className="sync-dot" />Live</>}</strong>
+          <div className="settings-list push-summary">
+            <div className="push-summary-main">
+              <span className="settings-icon settings-icon-blue"><Icon name="settle" size={19} /></span>
+              <div className="push-summary-copy">
+                <small>Total spent</small>
+                <strong>{money(summary.total, 2)}</strong>
+              </div>
+              <div className="push-summary-side">
+                <small>Each</small>
+                <strong>{money(summary.share, 2)}</strong>
+              </div>
+            </div>
+            <div className="push-summary-foot">
+              <div className="avatar-stack">
+                {cycle.members.map((member) => <Avatar name={member} size="sm" key={member} />)}
+              </div>
+              <span className={`cycle-status-chip ${cycle.endsOn ? "closed" : "live"}`}>
+                {cycle.endsOn ? "Closed" : "Live"}
+              </span>
             </div>
           </div>
         </section>
@@ -2031,18 +2049,27 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel 
           <div className="settings-list">
             {entries.length ? (
               <>
-                <div className="insight-row"><span>Average receipt</span><strong>{money(average, 2)}</strong></div>
+                <div className="insight-row">
+                  <span className="row-icon row-icon-blue"><Icon name="settle" size={15} /></span>
+                  <span>Average receipt</span>
+                  <strong>{money(average, 2)}</strong>
+                </div>
                 {largest && (
                   <div className="insight-row">
+                    <span className="row-icon row-icon-orange"><Icon name="receipt" size={15} /></span>
                     <span>Largest receipt</span>
-                    <strong>{money(largest.amount, 2)}<i>{largest.merchant || "Receipt"} · {formatDate(largest.spentOn)}</i></strong>
+                    <strong>{money(largest.amount, 2)}<i>{largest.merchant || "Receipt"}</i></strong>
                   </div>
                 )}
                 {topPayer && topPayer[1] > 0 && (
-                  <div className="insight-row"><span>Top payer</span><strong>{topPayer[0]}<i>{money(topPayer[1], 2)} paid</i></strong></div>
+                  <div className="insight-row">
+                    <span className="row-icon row-icon-green"><Icon name="people" size={15} /></span>
+                    <span>Top payer</span>
+                    <strong>{topPayer[0]}<i>{money(topPayer[1], 2)} paid</i></strong>
+                  </div>
                 )}
               </>
-            ) : <div className="insight-row"><span>Nothing recorded yet</span></div>}
+            ) : <div className="insight-row"><span className="row-icon row-icon-gray"><Icon name="receipt" size={15} /></span><span>Nothing recorded yet</span></div>}
           </div>
         </section>
 
@@ -2051,10 +2078,20 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel 
           <div className="settings-list">
             {summary.settlements.length ? summary.settlements.map((payment) => (
               <div className="insight-row" key={`${payment.from}-${payment.to}`}>
+                <span className="pay-flow">
+                  <Avatar name={payment.from} size="sm" />
+                  <Icon name="arrow" size={14} />
+                  <Avatar name={payment.to} size="sm" />
+                </span>
                 <span>{payment.from} pays {payment.to}</span>
                 <strong>{money(payment.amount, 2)}</strong>
               </div>
-            )) : <div className="insight-row"><span>Everyone is square</span><Icon name="check" size={15} /></div>}
+            )) : (
+              <div className="insight-row">
+                <span className="row-icon row-icon-green"><Icon name="check" size={15} /></span>
+                <span>Everyone is square</span>
+              </div>
+            )}
           </div>
         </section>
 
