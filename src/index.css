@@ -685,3 +685,54 @@ html, body { overflow-x: clip; }
   backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   cursor: pointer;
 }
+
+/* ================= Floating pill nav (News+/App Store style) ================= */
+.tabbar {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  left: 0; right: 0; width: auto; transform: none;
+  padding: 0 16px;
+  border: 0; border-radius: 0; background: none; box-shadow: none;
+  pointer-events: none;
+}
+.tabbar > * { pointer-events: auto; }
+.tabbar-pill {
+  flex: 1; max-width: 380px;
+  display: grid; grid-template-columns: repeat(4, 1fr); align-items: center;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, .55);
+  border-radius: 999px;
+  background: rgba(252, 252, 254, .66);
+  box-shadow: 0 18px 44px rgba(25, 32, 48, .16);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+}
+.tab-button {
+  min-height: 48px; border-radius: 999px; gap: 2px;
+  font-size: 10.5px; padding: 6px 2px 5px;
+}
+.cam-orb {
+  flex-shrink: 0; width: 60px; height: 60px;
+  display: grid; place-items: center;
+  color: var(--ink); border: 1px solid rgba(255, 255, 255, .55);
+  border-radius: 50%; background: rgba(252, 252, 254, .66);
+  box-shadow: 0 18px 44px rgba(25, 32, 48, .16);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  cursor: pointer; transition: transform .12s ease;
+}
+.cam-orb:active { transform: scale(.93); }
+@media (prefers-color-scheme: dark) {
+  .tabbar-pill, .cam-orb {
+    background: rgba(44, 44, 46, .72);
+    border-color: rgba(255, 255, 255, .1);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, .45);
+  }
+  .cam-orb { color: #f2f2f7; }
+}
+
+/* Swipe actions: snap in liquid-sync with the card */
+.swipe-actions { transition: opacity .3s ease, transform .4s cubic-bezier(.32, .72, 0, 1); }
+.swipe-actions.dragging { transition: opacity .2s ease; }
+.swipe-action { transition: transform .4s cubic-bezier(.32, .72, 0, 1), filter .18s ease; }
+.swipe-actions.dragging .swipe-action { transition: filter .18s ease; }

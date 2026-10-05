@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { ledgerRepository, scanReceipt } from "./api";
+import { ledgerRepository, scanReceipt, uploadReceipt } from "./api";
 import { ocrOnDevice } from "./receipt-ocr";
 
 type Tab = "home" | "settle" | "camera" | "receipts" | "settings";
@@ -496,6 +496,9 @@ export default function App() {
         apply({ engine: "manual" }); // let the user complete it by hand
         return;
       }
+      // Prefer the storage bucket; fall back to an inline image if the
+      // bucket isn't set up (supabase/storage-setup.sql).
+      const receiptUrl = await uploadReceipt(cycle.id, stored.imageBase64, stored.mimeType);
       try {
         const created = await ledgerRepository.createEntries<LedgerEntry>([{
           cycleId: cycle.id,
@@ -505,7 +508,8 @@ export default function App() {
           note: "",
           spentOn: today(),
           confidence: read.confidence,
-          receiptImageBase64: stored.imageBase64,
+          receiptUrl: receiptUrl ?? undefined,
+          receiptImageBase64: receiptUrl ? undefined : stored.imageBase64,
           receiptMimeType: stored.mimeType,
         }]);
         setEntries((current) => [...created, ...current]);
@@ -755,17 +759,21 @@ export default function App() {
       </main>
 
       <nav className="tabbar" aria-label="Primary navigation">
-        {(["home", "settle", "camera", "receipts", "settings"] as Tab[]).map((item) => (
-          <button
-            key={item}
-            className={`tab-button ${tab === item ? "active" : ""} ${item === "camera" ? "camera-button" : ""}`}
-            onClick={() => selectTab(item)}
-            aria-label={item === "camera" ? "Add receipt" : undefined}
-          >
-            <span className="tab-icon"><Icon name={item === "receipts" ? "receipt" : item} size={item === "camera" ? 25 : 21} /></span>
-            <span className={item === "camera" ? "camera-label" : ""}>{item === "settle" ? "Settle" : item === "receipts" ? "Receipts" : item[0].toUpperCase() + item.slice(1)}</span>
-          </button>
-        ))}
+        <div className="tabbar-pill">
+          {(["home", "settle", "receipts", "settings"] as Tab[]).map((item) => (
+            <button
+              key={item}
+              className={`tab-button ${tab === item ? "active" : ""}`}
+              onClick={() => selectTab(item)}
+            >
+              <span className="tab-icon"><Icon name={item === "receipts" ? "receipt" : item} size={22} /></span>
+              <span>{item === "settle" ? "Settle" : item === "receipts" ? "Receipts" : item[0].toUpperCase() + item.slice(1)}</span>
+            </button>
+          ))}
+        </div>
+        <button className="cam-orb" onClick={() => fileInput.current?.click()} aria-label="Add receipt">
+          <Icon name="camera" size={25} />
+        </button>
       </nav>
 
       <input ref={fileInput} className="visually-hidden" type="file" accept="image/*" multiple onChange={(event) => {
@@ -1104,7 +1112,7 @@ function SwipeCard({ entry, open, onOpen, onClose, onEdit, onDelete, onExpandIma
 
   return (
     <div className={`swipe-card ${open ? "open" : ""} ${expanded ? "expanded" : ""}`}>
-      <div className="swipe-actions" style={{ opacity: progress, transform: `translateX(${(1 - progress) * 26}px)` }}>
+      <div className={`swipe-actions ${dragging ? "dragging" : ""}`} style={{ opacity: progress, transform: `translateX(${(1 - progress) * 26}px)` }}>
         <button
           className="swipe-action glass-edit"
           style={{ transform: `scale(${0.7 + progress * 0.3})` }}

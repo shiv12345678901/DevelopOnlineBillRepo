@@ -24,6 +24,30 @@ const supabase = createClient(
 );
 
 const ACTIVE_KEY = "rockdale-active-cycle";
+const STORAGE_BUCKET = "receipts";
+const storagePublicBase = `https://${projectId}.supabase.co/storage/v1/object/public/${STORAGE_BUCKET}/`;
+
+/**
+ * Uploads a receipt image to the public `receipts` storage bucket and
+ * returns its public URL, or null when the bucket isn't set up yet
+ * (see supabase/storage-setup.sql) — callers then fall back to storing
+ * the compressed image inline in the database.
+ */
+export async function uploadReceipt(cycleId: string, imageBase64: string, mimeType: string): Promise<string | null> {
+  try {
+    const binary = atob(imageBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const path = `cycle-${cycleId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+    const { error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(path, bytes, { contentType: mimeType, cacheControl: "31536000", upsert: false });
+    if (error) return null;
+    return `${storagePublicBase}${path}`;
+  } catch {
+    return null;
+  }
+}
 
 const toCycle = (row: Record<string, unknown>) => ({
   id: String(row.id),
@@ -42,7 +66,9 @@ const toEntry = (row: Record<string, unknown>) => ({
   note: (row.note as string | null) ?? "",
   spentOn: String(row.spent_on),
   confidence: Number(row.ai_confidence ?? 0),
-  receiptUrl: (row.receipt_image as string | null) ?? undefined,
+  receiptUrl: (row.receipt_path as string | null)
+    ? `${storagePublicBase}${String(row.receipt_path)}`
+    : ((row.receipt_image as string | null) ?? undefined),
 });
 
 export const ledgerRepository = {
@@ -113,24 +139,23 @@ export const ledgerRepository = {
       note: (e.note as string) || null,
       ai_confidence: e.confidence ?? null,
       spent_on: e.spentOn,
+      receipt_path: (e.receiptUrl as string | null) ?? null,
       receipt_image: e.receiptImageBase64
         ? `data:${e.receiptMimeType || "image/jpeg"};base64,${e.receiptImageBase64}`
         : null,
     }));
-    let result = await supabase.from("grocery_ledger").insert(rows).select();
-    // Table without the receipt_image column yet: retry without it.
-    if (result.error && /receipt_image/i.test(result.error.message)) {
-      result = await supabase
-        .from("grocery_ledger")
-        .insert(rows.map(({ receipt_image, ...rest }) => { void receipt_image; return rest; }))
-        .select();
-    }
-    // Table without the merchant column either: strip both and retry.
-    if (result.error && /merchant/i.test(result.error.message)) {
-      result = await supabase
-        .from("grocery_ledger")
-        .insert(rows.map(({ merchant, receipt_image, ...rest }) => { void merchant; void receipt_image; return rest; }))
-        .select();
+    // Optional columns are stripped one by one if the table predates them.
+    const optionalColumns = ["receipt_path", "merchant", "receipt_image"] as const;
+    let attemptRows: Array<Record<string, unknown>> = rows;
+    let result = await supabase.from("grocery_ledger").insert(attemptRows).select();
+    for (const column of optionalColumns) {
+      if (!result.error || !new RegExp(column, "i").test(result.error.message)) continue;
+      attemptRows = attemptRows.map((row) => {
+        const { [column]: dropped, ...rest } = row;
+        void dropped;
+        return rest;
+      });
+      result = await supabase.from("grocery_ledger").insert(attemptRows).select();
     }
     if (result.error) throw new Error(result.error.message);
     return (result.data ?? []).map(toEntry) as unknown as Entry[];
