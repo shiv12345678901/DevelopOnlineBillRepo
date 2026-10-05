@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { ledgerRepository, scanReceipt, uploadReceipt } from "./api";
 import { ocrOnDevice } from "./receipt-ocr";
 import { applyTheme, getThemePref, watchSystemTheme, type ThemePref } from "./theme";
+import { loadLedgerCache, saveLedgerCache } from "./ledger-cache";
 
 type Tab = "home" | "settle" | "camera" | "receipts" | "settings";
 
@@ -66,6 +67,8 @@ type IconName =
 
 const GROUP_NAME = "Rockdale Homies";
 const LAST_SYNC_KEY = "rockdale-last-sync";
+// A cache younger than this is served without touching the network.
+const CACHE_TTL_MS = 60_000;
 
 /** Compact relative stamp for the Cloud Sync row. */
 function timeAgo(timestamp: number): string {
@@ -408,7 +411,8 @@ export default function App() {
     try { localStorage.setItem(LAST_SYNC_KEY, String(at)); } catch { /* private mode */ }
   }, []);
 
-  const fetchLedger = useCallback(async (retries = 2): Promise<string | null> => {
+  const fetchLedger = useCallback(async (opts?: { retries?: number; quiet?: boolean }): Promise<string | null> => {
+    const retries = opts?.retries ?? 2;
     try {
       const snapshot = await ledgerRepository.fetch<Cycle, LedgerEntry>();
       setCycles(snapshot.cycles);
@@ -424,10 +428,12 @@ export default function App() {
       // retry quietly before surfacing the problem.
       if (retries > 0) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
-        return fetchLedger(retries - 1);
+        return fetchLedger({ retries: retries - 1, quiet: opts?.quiet });
       }
       const message = error instanceof Error ? error.message : "Could not load the ledger.";
-      setLoadError(message);
+      // Background revalidation just flips the chip; the initial load owns
+      // the full-screen error state.
+      if (!opts?.quiet) setLoadError(message);
       setSyncStatus("error");
       return message;
     }
@@ -437,16 +443,47 @@ export default function App() {
   const refreshLedger = useCallback(async () => {
     setRefreshing(true);
     try {
-      const error = await fetchLedger();
+      const error = await fetchLedger({ retries: 1, quiet: true });
       if (error) setSyncError(error);
     } finally {
       setRefreshing(false);
     }
   }, [fetchLedger]);
 
+  // Boot: serve the cached snapshot instantly, then revalidate in the
+  // background only if it is older than the freshness window. A warm load
+  // makes zero network calls.
+  const bootedRef = useRef(false);
   useEffect(() => {
-    fetchLedger();
+    if (bootedRef.current) return;
+    bootedRef.current = true;
+    const cached = loadLedgerCache();
+    if (cached) {
+      setCycles(cached.cycles as Cycle[]);
+      setEntries(cached.entries as LedgerEntry[]);
+      setActiveId(cached.activeId);
+      setLastSync((prev) => {
+        const best = Math.max(prev ?? 0, cached.savedAt);
+        return best > 0 ? best : null;
+      });
+      setDataReady(true);
+      setSyncStatus("online");
+      if (Date.now() - cached.savedAt > CACHE_TTL_MS) void fetchLedger({ retries: 1, quiet: true });
+    } else {
+      void fetchLedger();
+    }
   }, [fetchLedger]);
+
+  // Write-through: persist the snapshot whenever it changes, preserving the
+  // original savedAt when the data is identical so the TTL is not reset by
+  // a no-op reload.
+  useEffect(() => {
+    if (!dataReady) return;
+    const fingerprint = JSON.stringify([cycles, entries, activeId]);
+    const prev = loadLedgerCache();
+    const unchanged = Boolean(prev && JSON.stringify([prev.cycles, prev.entries, prev.activeId]) === fingerprint);
+    saveLedgerCache(cycles, entries, activeId, unchanged ? prev!.savedAt : Date.now());
+  }, [cycles, entries, activeId, dataReady]);
 
   useEffect(() => {
     applyTheme(themePref);
@@ -1521,7 +1558,7 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
             <span className="settings-icon settings-icon-green"><Icon name="refresh" size={19} /></span>
             <span className="settings-row-copy">
               <strong>Cloud Sync</strong>
-              <small>{lastSyncedAt ? `Synced ${timeAgo(lastSyncedAt)}` : "Not synced yet"}</small>
+              {lastSyncedAt !== null && <small>Synced {timeAgo(lastSyncedAt)}</small>}
             </span>
             <span className={`settings-row-value sync-value sync-${syncStatus}`}>{syncChip}</span>
             {!busySync && <Icon name="chevron" size={17} />}
@@ -1540,6 +1577,84 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
       </section>
     </div>
   );
+}
+
+/**
+ * iOS edge-swipe back: a horizontal drag starting within ~36px of the left
+ * edge pushes the page right with the finger; past a distance or velocity
+ * threshold it slides out and pops, otherwise it springs back. Vertical
+ * scrolling is preserved via an axis lock on the first movement.
+ */
+function useEdgeSwipeBack(onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const gesture = useRef({ active: false, pointerId: -1, startX: 0, startY: 0, lastX: 0, lastT: 0, velocity: 0, dragging: false, axis: "" as "" | "x" | "y" });
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.clientX > 36) return;
+    gesture.current = {
+      active: true, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+      lastX: event.clientX, lastT: event.timeStamp, velocity: 0, dragging: false, axis: "",
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const g = gesture.current;
+    if (!g.active || g.pointerId !== event.pointerId) return;
+    const dx = event.clientX - g.startX;
+    const dy = event.clientY - g.startY;
+    if (!g.axis) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      g.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      if (g.axis === "x") {
+        const el = ref.current;
+        if (!el) return;
+        el.style.animation = "none"; // release the entrance animation's fill
+        el.classList.add("edge-dragging");
+        g.dragging = true;
+      }
+    }
+    if (g.axis !== "x") return;
+    const elapsed = Math.max(event.timeStamp - g.lastT, 1);
+    g.velocity = g.velocity * 0.6 + ((event.clientX - g.lastX) / elapsed) * 1000 * 0.4;
+    g.lastX = event.clientX;
+    g.lastT = event.timeStamp;
+    ref.current?.style.setProperty("transform", `translate3d(${Math.max(dx, 0)}px, 0, 0)`);
+  };
+
+  const finish = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const g = gesture.current;
+    if (!g.active || g.pointerId !== event.pointerId) return;
+    g.active = false;
+    const el = ref.current;
+    if (!el || !g.dragging) return;
+    g.dragging = false;
+    const dx = g.lastX - g.startX;
+    if (dx > 110 || (dx > 40 && g.velocity > 450)) {
+      el.style.transition = "transform .26s cubic-bezier(.32, .72, 0, 1)";
+      el.style.transform = "translate3d(103%, 0, 0)";
+      window.setTimeout(() => closeRef.current(), 250);
+    } else {
+      el.style.transition = "transform .28s cubic-bezier(.32, .72, 0, 1)";
+      el.style.transform = "translate3d(0, 0, 0)";
+      window.setTimeout(() => {
+        el.style.transition = "";
+        el.classList.remove("edge-dragging");
+      }, 300);
+    }
+  };
+
+  // A drag that began on the back button must not also fire its click.
+  const onClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (gesture.current.dragging) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
+  return { ref, onPointerDown, onPointerMove, onPointerUp: finish, onPointerCancel: finish, onClickCapture };
 }
 
 const SHARE_GLYPH = (
@@ -1601,6 +1716,8 @@ function InstallGuide({ onClose }: { onClose: () => void }) {
     window.setTimeout(onClose, 250);
   }, [onClose]);
 
+  const swipe = useEdgeSwipeBack(onClose);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
     window.addEventListener("keydown", onKeyDown);
@@ -1610,7 +1727,16 @@ function InstallGuide({ onClose }: { onClose: () => void }) {
   const sections = [...INSTALL_GUIDE_SECTIONS].sort((a) => (a.id === detected ? -1 : 1));
 
   return (
-    <div className={`install-guide ${closing ? "closing" : ""}`} role="dialog" aria-modal="true" aria-label="Add to Home Screen guide">
+    <div
+      className={`install-guide ${closing ? "closing" : ""}`}
+      ref={swipe.ref}
+      onPointerDown={swipe.onPointerDown}
+      onPointerMove={swipe.onPointerMove}
+      onPointerUp={swipe.onPointerUp}
+      onPointerCancel={swipe.onPointerCancel}
+      onClickCapture={swipe.onClickCapture}
+      role="dialog" aria-modal="true" aria-label="Add to Home Screen guide"
+    >
       <header className="guide-nav">
         <button className="guide-back" onClick={close}><Icon name="chevron" size={20} />Settings</button>
         <strong>Add to Home Screen</strong>

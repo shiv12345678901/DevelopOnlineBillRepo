@@ -895,3 +895,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
   .sync-dot { animation: none; }
   .content { transition: none; }
 }
+
+/* Edge-swipe back on pushed pages */
+.install-guide { touch-action: pan-y; }
+.install-guide.edge-dragging { user-select: none; box-shadow: -24px 0 60px rgba(0, 0, 0, .28); }
