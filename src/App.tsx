@@ -93,6 +93,11 @@ function timeAgo(timestamp: number): string {
   return `${date.toLocaleDateString(undefined, { day: "numeric", month: "short" })}, ${date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
 }
 
+/** Short day stamp for ranges: "1 Oct". */
+function formatDay(isoDate: string): string {
+  return new Date(`${isoDate}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+}
+
 /** iOS activity indicator: eight blades fading in sequence. */
 function Spinner({ size = 16 }: { size?: number }) {
   return (
@@ -1940,32 +1945,39 @@ function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, 
     >
       <header className="guide-nav">
         <button className="guide-back" onClick={onClose}><Icon name="chevron" size={20} />Settings</button>
-        <strong>All Cycles</strong>
+        <strong>Cycles</strong>
         <span className="guide-nav-spacer" aria-hidden="true" />
       </header>
       <div className="guide-body">
-        <p className="guide-intro">Tap a cycle to make it the active one everywhere — new receipts land there.</p>
-        <div className="settings-list">
-          {cycles.map((cycle) => {
-            const active = cycle.id === activeId;
-            return (
-              <div className={`settings-row cycles-page-row ${active ? "active" : ""}`} key={cycle.id}>
-                <button className="settings-row-main" disabled={saving} onClick={() => onSwitch(cycle.id)}>
-                  <span className="settings-icon settings-icon-blue"><Icon name="calendar" size={19} /></span>
-                  <span className="settings-row-copy">
-                    <strong>{cycle.name}</strong>
-                    <small>{cycle.endsOn ? `${cycle.startsOn} – ${cycle.endsOn}` : `Since ${cycle.startsOn}`} · {countFor(cycle.id)} receipt{countFor(cycle.id) === 1 ? "" : "s"}</small>
-                  </span>
-                  <span className={`cycle-status-chip ${cycle.endsOn ? "closed" : "live"}`}>{cycle.endsOn ? "Closed" : "Live"}</span>
-                  {active && <span className="cycle-check"><Icon name="check" size={16} /></span>}
-                </button>
-                <button className="cycle-detail-button" onClick={() => onOpenCycle(cycle.id)} aria-label={`Open ${cycle.name} details`}>
-                  <Icon name="chevron" size={17} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
+        <header className="push-title">
+          <h1>Cycles</h1>
+          <p>{cycles.length} total · tap one to switch everywhere</p>
+        </header>
+        <section className="push-group">
+          <div className="settings-list">
+            {cycles.map((cycle) => {
+              const active = cycle.id === activeId;
+              const range = cycle.endsOn ? `${formatDay(cycle.startsOn)} – ${formatDay(cycle.endsOn)}` : `${formatDay(cycle.startsOn)} – today`;
+              const count = countFor(cycle.id);
+              return (
+                <div className={`settings-row cycles-page-row ${active ? "active" : ""}`} key={cycle.id}>
+                  <button className="settings-row-main" disabled={saving} onClick={() => onSwitch(cycle.id)}>
+                    <span className={`row-icon ${cycle.endsOn ? "row-icon-gray" : "row-icon-blue"}`}><Icon name="calendar" size={16} /></span>
+                    <span className="insight-copy">
+                      <strong>{cycle.name}</strong>
+                      <i>{range} · {count} receipt{count === 1 ? "" : "s"}</i>
+                    </span>
+                    <span className={`cycle-status-chip ${cycle.endsOn ? "closed" : "live"}`}>{cycle.endsOn ? "Closed" : "Live"}</span>
+                    {active && <span className="cycle-check"><Icon name="check" size={16} /></span>}
+                  </button>
+                  <button className="cycle-detail-button" onClick={() => onOpenCycle(cycle.id)} aria-label={`Open ${cycle.name} details`}>
+                    <Icon name="chevron" size={17} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
         <p className="guide-footnote">Closed cycles stay read-only — balances and history remain viewable.</p>
       </div>
     </div>
