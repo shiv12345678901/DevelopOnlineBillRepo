@@ -224,7 +224,7 @@ button.settings-row:active, .settings-row-main:active { background: #eceef3; }
 .camera-label { display: none; }
 
 .sheet-backdrop { --scrim-opacity: .46; position: fixed; z-index: 50; display: flex; align-items: end; inset: 0; background: rgb(28 29 25 / var(--scrim-opacity)); }
-.bottom-sheet { width: min(100%, 620px); max-height: 91dvh; overflow-y: auto; overscroll-behavior: contain; margin: 0 auto; padding: 0 18px max(22px, env(safe-area-inset-bottom)); border: 1px solid rgba(255,255,255,.68); border-bottom: 0; border-radius: 28px 28px 0 0; background: rgba(248,248,251,.94); box-shadow: 0 -12px 40px rgba(28,35,58,.18); backdrop-filter: blur(24px) saturate(135%); -webkit-backdrop-filter: blur(24px) saturate(135%); will-change: transform; }
+.bottom-sheet { width: min(100%, 620px); max-height: 91dvh; overflow-x: clip; overflow-y: auto; overscroll-behavior: contain; margin: 0 auto; padding: 0 18px max(22px, env(safe-area-inset-bottom)); border: 1px solid rgba(255,255,255,.68); border-bottom: 0; border-radius: 28px 28px 0 0; background: rgba(248,248,251,.94); box-shadow: 0 -12px 40px rgba(28,35,58,.18); backdrop-filter: blur(24px) saturate(135%); -webkit-backdrop-filter: blur(24px) saturate(135%); will-change: transform; }
 .receipt-sheet-backdrop { background: rgb(11 15 24 / var(--scrim-opacity)); }
 .receipt-sheet { width: min(100%, 640px); max-height: 94dvh; padding-right: 16px; padding-left: 16px; border-radius: 30px 30px 0 0; background: rgba(246,246,249,.97); }
 .receipt-sheet .sheet-drag-region { height: 34px; }
@@ -295,7 +295,7 @@ button.settings-row:active, .settings-row-main:active { background: #eceef3; }
 .amount-field > div { display: flex; align-items: center; padding: 0 14px; border: 1.5px solid #7ab8ff; border-radius: 12px; background: #ffffff; }
 .amount-field > div b { color: var(--blue); font-size: 22px; }
 .amount-field > div input { height: 54px; padding-left: 9px; border: 0; background: transparent; font-size: 24px; font-weight: 700; }
-.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 .ai-note { display: flex; align-items: center; gap: 5px; margin: 0; color: #6c7b8d; font-size: 9.5px; }
 .ai-note svg { color: var(--blue); }
 .primary-button { display: flex; width: 100%; min-height: 50px; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; padding: 14px; color: white; border: 0; border-radius: 16px; background: var(--blue); box-shadow: none; font-size: 13px; font-weight: 700; }
@@ -633,8 +633,19 @@ html, body { overflow-x: clip; }
 
 /* Edit sheet: who-paid + date fit without horizontal scroll */
 .field-grid > label { min-width: 0; }
-.field-grid input, .field-grid select { width: 100%; min-width: 0; padding-right: 8px; }
+.field-grid input, .field-grid select { width: 100%; max-width: 100%; min-width: 0; padding-right: 8px; }
+/* Date inputs carry an intrinsic minimum width; drop the native control so it
+   can shrink to the column instead of pushing the sheet sideways. */
 .field-grid input[type="date"] { min-width: 0; }
+.field-grid input[type="date"]::-webkit-date-and-time-value { text-align: left; }
+.field-grid input[type="date"]::-webkit-datetime-edit { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Below tablet width the two fields stack so each keeps a comfortable,
+   tappable box instead of squeezing to half-width. */
+@media (max-width: 430px) {
+  .field-grid { grid-template-columns: minmax(0, 1fr); gap: 13px; }
+  .field-grid input, .field-grid select { height: 46px; font-size: 16px; }
+}
 
 /* Expanded receipt card */
 .swipe-content { flex-direction: column; align-items: stretch; }

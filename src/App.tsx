@@ -44,7 +44,6 @@ type PendingReceipt = {
   status: "scanning" | "ready";
   confidence: number;
   engine: "ai" | "device" | "manual";
-  processedImageBase64: string;
 };
 
 type IconName =
@@ -440,16 +439,15 @@ export default function App() {
       status: "scanning" as const,
       confidence: 0,
       engine: "ai" as const,
-      processedImageBase64: "",
     }));
     setPending((current) => [...current, ...next]);
     next.forEach((item) => void processReceipt(item));
   };
 
   /**
-   * One-tap pipeline: scan the full image (AI, then on-device) and save it
-   * immediately. Only receipts neither engine could read stay on screen for
-   * manual entry.
+   * Recognition only: scan the full image (AI, then on-device) and stage the
+   * result in the review sheet. Nothing reaches the ledger until the user
+   * confirms, so an OCR misread can be corrected before it is saved.
    */
   const processReceipt = async (item: PendingReceipt) => {
     const apply = (patch: Partial<PendingReceipt>) => setPending((current) => current.map((receipt) =>
@@ -458,8 +456,6 @@ export default function App() {
 
     try {
       const image = await resizeReceipt(item.file);
-      // A smaller copy kept in the database so the receipt stays viewable.
-      const stored = await resizeReceipt(item.file, 900, 0.72);
 
       // 1. AI vision (Gemini).
       let ai: { amount: number; merchant: string; confidence: number } | null = null;
@@ -485,53 +481,22 @@ export default function App() {
       }
 
       const winner = ai ?? device;
-      if (winner) {
-        apply({
-          amount: String(winner.amount),
-          merchant: winner.merchant,
-          confidence: winner.confidence,
-          engine: ai ? "ai" : "device",
-          processedImageBase64: image.imageBase64,
-        });
-      } else {
+      if (!winner || Number(winner.amount) <= 0) {
         // 3. Manual entry — the only case the review sheet is for.
-        apply({ engine: "manual", processedImageBase64: image.imageBase64 });
+        apply({ status: "ready", engine: "manual" });
         return;
       }
 
-      // 4. Save straight away with the payer chosen in the sheet.
-      const payer = defaultPayer || cycle?.members[0] || "";
-      const read = ai ?? device!;
-      if (!cycle || !payer || Number(read.amount) <= 0) {
-        apply({ engine: "manual" }); // let the user complete it by hand
-        return;
-      }
-      // Prefer the storage bucket; fall back to an inline image if the
-      // bucket isn't set up (supabase/storage-setup.sql).
-      const receiptUrl = await uploadReceipt(cycle.id, stored.imageBase64, stored.mimeType);
-      try {
-        const created = await ledgerRepository.createEntries<LedgerEntry>([{
-          cycleId: cycle.id,
-          payer,
-          amount: Number(read.amount),
-          merchant: read.merchant,
-          note: "",
-          spentOn: today(),
-          confidence: read.confidence,
-          receiptUrl: receiptUrl ?? undefined,
-          receiptImageBase64: receiptUrl ? undefined : stored.imageBase64,
-          receiptMimeType: stored.mimeType,
-        }]);
-        setEntries((current) => [...created, ...current]);
-        setPending((current) => current.filter((receipt) => receipt.id !== item.id));
-        URL.revokeObjectURL(item.preview);
-        flash(`${money(Number(read.amount))} at ${read.merchant || "receipt"} added as ${payer}`);
-      } catch (error) {
-        apply({ engine: "manual" });
-        flash(error instanceof Error ? error.message : "Could not save the receipt. Enter it manually.");
-      }
+      // 4. Stage it for review. The user checks the numbers, then saves.
+      apply({
+        status: "ready",
+        amount: String(winner.amount),
+        merchant: winner.merchant,
+        confidence: winner.confidence,
+        engine: ai ? "ai" : "device",
+      });
     } catch {
-      apply({ engine: "manual" });
+      apply({ status: "ready", engine: "manual" });
       setToast("Couldn't process that image. Enter the total manually.");
       window.setTimeout(() => setToast(""), 3200);
     }
@@ -554,19 +519,28 @@ export default function App() {
       if (incomplete) document.getElementById(`receipt-amount-${incomplete.id}`)?.focus();
     }
     setSyncStatus("saving");
-    const input = valid.map((item) => ({
-      cycleId: cycle.id,
-      payer: item.payer,
-      amount: Number(item.amount),
-      merchant: item.merchant.trim(),
-      note: item.note.trim(),
-      spentOn: item.spentOn,
-      confidence: item.confidence,
-      receiptImageBase64: item.processedImageBase64,
-      receiptMimeType: "image/jpeg",
-    }));
+    const created: LedgerEntry[] = [];
     try {
-      const created = await ledgerRepository.createEntries<LedgerEntry>(input);
+      // One receipt at a time so a single bad image can't lose the whole batch.
+      for (const item of valid) {
+        // A smaller copy kept in storage so the receipt stays viewable.
+        const stored = await resizeReceipt(item.file, 900, 0.72);
+        // Prefer the storage bucket; fall back to an inline copy when the
+        // bucket isn't set up (supabase/storage-setup.sql).
+        const receiptUrl = await uploadReceipt(cycle.id, stored.imageBase64, stored.mimeType);
+        created.push(...await ledgerRepository.createEntries<LedgerEntry>([{
+          cycleId: cycle.id,
+          payer: item.payer,
+          amount: Number(item.amount),
+          merchant: item.merchant.trim(),
+          note: item.note.trim(),
+          spentOn: item.spentOn,
+          confidence: item.confidence,
+          receiptUrl: receiptUrl ?? undefined,
+          receiptImageBase64: receiptUrl ? undefined : stored.imageBase64,
+          receiptMimeType: stored.mimeType,
+        }]));
+      }
       setEntries((current) => [...created, ...current]);
       pending.forEach((item) => URL.revokeObjectURL(item.preview));
       setPending([]);
@@ -574,6 +548,7 @@ export default function App() {
       flash(`${created.length} receipt${created.length === 1 ? "" : "s"} added`);
       setTab("home");
     } catch (error) {
+      if (created.length) setEntries((current) => [...created, ...current]);
       setSyncStatus("error");
       flash(error instanceof Error ? error.message : "Could not save the receipts.");
     }
