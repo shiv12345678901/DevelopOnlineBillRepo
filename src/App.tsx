@@ -349,6 +349,7 @@ export default function App() {
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [themePref, setThemePref] = useState<ThemePref>(() => getThemePref());
   const [showInstallGuide, setShowInstallGuide] = useState(false);
+  const [detailCycleId, setDetailCycleId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   // False until the first successful fetch — the initial load shows the
@@ -363,7 +364,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError);
+  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId);
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
 
@@ -859,12 +860,12 @@ export default function App() {
           <SettingsView
             cycles={cycles}
             activeId={activeId}
-            onSelect={selectCycle}
             onReopen={reopenCycle}
             onNew={() => setShowNewCycle(true)}
             onRefresh={refreshLedger}
             onExport={exportLedger}
             onInstall={installApp}
+            onOpenCycle={setDetailCycleId}
             syncStatus={syncStatus}
             themePref={themePref}
             onThemeChange={setThemePref}
@@ -954,6 +955,28 @@ export default function App() {
       )}
 
       {showInstallGuide && <InstallGuide onClose={() => setShowInstallGuide(false)} />}
+
+      {detailCycleId && (() => {
+        const detailCycle = cycles.find((item) => item.id === detailCycleId);
+        if (!detailCycle) return null;
+        const detailEntries = entries
+          .filter((entry) => entry.cycleId === detailCycle.id)
+          .sort((a, b) => b.spentOn.localeCompare(a.spentOn) || b.id.localeCompare(a.id));
+        return (
+          <CycleDetailPage
+            cycle={detailCycle}
+            entries={detailEntries}
+            summary={computeSettlements(detailEntries, detailCycle.members)}
+            isActive={detailCycle.id === activeId}
+            saving={syncStatus === "saving"}
+            onClose={() => setDetailCycleId(null)}
+            onSetActive={async () => {
+              await selectCycle(detailCycle.id);
+              setDetailCycleId(null);
+            }}
+          />
+        );
+      })()}
 
       {syncError && (
         <ConfirmSheet
@@ -1441,15 +1464,15 @@ function EditSheet({ entry, members, saving, onClose, onSave }: {
   );
 }
 
-function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, onExport, onInstall, syncStatus, themePref, onThemeChange, lastSyncedAt, isRefreshing }: {
+function SettingsView({ cycles, activeId, onReopen, onNew, onRefresh, onExport, onInstall, onOpenCycle, syncStatus, themePref, onThemeChange, lastSyncedAt, isRefreshing }: {
   cycles: Cycle[];
   activeId: string | null;
-  onSelect: (id: string) => void;
   onReopen: (id: string) => void;
   onNew: () => void;
   onRefresh: () => void;
   onExport: () => void;
   onInstall: () => void;
+  onOpenCycle: (id: string) => void;
   syncStatus: "loading" | "online" | "saving" | "error";
   themePref: ThemePref;
   onThemeChange: (pref: ThemePref) => void;
@@ -1512,7 +1535,7 @@ function SettingsView({ cycles, activeId, onSelect, onReopen, onNew, onRefresh, 
           </button>
           {cycles.map((cycle) => (
             <div className={`settings-row settings-cycle-row ${cycle.id === activeId ? "active" : ""}`} key={cycle.id}>
-              <button className="settings-row-main" onClick={() => onSelect(cycle.id)}>
+              <button className="settings-row-main" onClick={() => onOpenCycle(cycle.id)}>
                 <span className="settings-icon settings-icon-blue"><Icon name="calendar" size={19} /></span>
                 <span className="settings-row-copy"><strong>{cycle.name}</strong><small>{cycle.startsOn}{cycle.endsOn ? ` – ${cycle.endsOn}` : " · Live"}</small></span>
               </button>
@@ -1770,6 +1793,146 @@ function InstallGuide({ onClose }: { onClose: () => void }) {
           </section>
         ))}
         <p className="guide-footnote">Your receipts and settlement cycles stay in sync automatically, installed or not.</p>
+      </div>
+    </div>
+  );
+}
+
+/** Pushed page: every detail and insight for one cycle, on a single scroll. */
+function CycleDetailPage({ cycle, entries, summary, isActive, saving, onClose, onSetActive }: {
+  cycle: Cycle;
+  entries: LedgerEntry[];
+  summary: ReturnType<typeof computeSettlements>;
+  isActive: boolean;
+  saving: boolean;
+  onClose: () => void;
+  onSetActive: () => Promise<void>;
+}) {
+  const swipe = useEdgeSwipeBack(onClose);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const average = entries.length ? summary.total / entries.length : 0;
+  const largest = entries.reduce<LedgerEntry | null>((max, entry) => (!max || entry.amount > max.amount ? entry : max), null);
+  const topPayer = Object.entries(summary.paidBy).sort(([, a], [, b]) => b - a)[0];
+  const dateRange = cycle.endsOn
+    ? `${cycle.startsOn} – ${cycle.endsOn}`
+    : `Since ${cycle.startsOn}`;
+  const formatDate = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+
+  return (
+    <div
+      className="install-guide cycle-page"
+      ref={swipe.ref}
+      onPointerDown={swipe.onPointerDown}
+      onPointerMove={swipe.onPointerMove}
+      onPointerUp={swipe.onPointerUp}
+      onPointerCancel={swipe.onPointerCancel}
+      onClickCapture={swipe.onClickCapture}
+      role="dialog" aria-modal="true" aria-label={`${cycle.name} details`}
+    >
+      <header className="guide-nav">
+        <button className="guide-back" onClick={onClose}><Icon name="chevron" size={20} />Settings</button>
+        <strong>Cycle details</strong>
+        <span className="guide-nav-spacer" aria-hidden="true" />
+      </header>
+      <div className="guide-body">
+        <section className="balance-card cycle-hero">
+          <span className="balance-ring balance-ring-one" />
+          <span className="balance-ring balance-ring-two" />
+          <div className="card-topline">
+            <strong className="cycle-name">{cycle.name}</strong>
+            <span className="receipt-count">{cycle.endsOn ? "Closed" : "Live"}</span>
+          </div>
+          <div className="balance-value">{money(summary.total, 2)}</div>
+          <p className="balance-meta">
+            {money(summary.share, 2)} each · {entries.length} receipt{entries.length === 1 ? "" : "s"} · {dateRange}
+          </p>
+          <div className="balance-footer">
+            <div className="avatar-stack">
+              {cycle.members.map((member) => <Avatar name={member} size="sm" key={member} />)}
+            </div>
+            {!isActive && <span className="cycle-inactive-chip">Inactive</span>}
+          </div>
+        </section>
+
+        <section className="section">
+          <div className="section-title"><div><p className="kicker">Insights</p><h2>At a glance</h2></div></div>
+          <div className="list-card">
+            <div className="insight-row"><span>Average per receipt</span><strong>{money(average, 2)}</strong></div>
+            {largest && (
+              <div className="insight-row">
+                <span>Largest receipt</span>
+                <strong>{money(largest.amount, 2)}<i>{largest.merchant || "Receipt"} · {formatDate(largest.spentOn)}</i></strong>
+              </div>
+            )}
+            {topPayer && topPayer[1] > 0 && (
+              <div className="insight-row"><span>Top payer</span><strong>{topPayer[0]}<i>{money(topPayer[1], 2)} paid</i></strong></div>
+            )}
+            {entries.length > 1 && (
+              <div className="insight-row">
+                <span>Period covered</span>
+                <strong>{formatDate(entries[entries.length - 1].spentOn)}<i>to {formatDate(entries[0].spentOn)}</i></strong>
+              </div>
+            )}
+            {entries.length === 0 && <div className="insight-row"><span>No receipts yet</span><strong>—</strong></div>}
+          </div>
+        </section>
+
+        <section className="section">
+          <div className="section-title"><div><p className="kicker">Settlement</p><h2>Square everything up</h2></div></div>
+          <div className="transfer-list">
+            {summary.settlements.length ? summary.settlements.map((payment) => (
+              <div className="transfer-card" key={`${payment.from}-${payment.to}`}>
+                <div className="transfer-avatars"><Avatar name={payment.from} size="sm" /><span><Icon name="arrow" size={14} /></span><Avatar name={payment.to} size="sm" /></div>
+                <div className="transfer-copy"><strong>{payment.from} pays {payment.to}</strong><span>Settles their balance</span></div>
+                <strong>{money(payment.amount)}</strong>
+              </div>
+            )) : (
+              <div className="transfer-card"><div className="all-square"><Icon name="check" /><strong>Everyone is square</strong></div></div>
+            )}
+          </div>
+        </section>
+
+        <section className="section">
+          <div className="section-title"><div><p className="kicker">Breakdown</p><h2>Member balances</h2></div><span className="subtle">{money(summary.share)} share</span></div>
+          <div className="list-card">
+            {cycle.members.map((member, index) => (
+              <div className="balance-row" key={member}>
+                <Avatar name={member} size="sm" />
+                <div><strong>{member}</strong><span>Paid {money(summary.paidBy[member] ?? 0)}</span></div>
+                <strong className={(summary.net[member] ?? 0) >= 0 ? "positive" : "negative"}>{(summary.net[member] ?? 0) >= 0 ? "+" : "−"}{money(Math.abs(summary.net[member] ?? 0))}</strong>
+                {index < cycle.members.length - 1 && <span className="row-divider" />}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="section">
+          <div className="section-title"><div><p className="kicker">Activity</p><h2>All receipts</h2></div><span className="subtle">{entries.length} total</span></div>
+          <div className="list-card">
+            {entries.length ? entries.map((entry) => (
+              <div className="expense-row" key={entry.id}>
+                <Avatar name={entry.payer} size="sm" />
+                <div className="expense-main">
+                  <strong>{entry.merchant || entry.note || "Grocery receipt"}</strong>
+                  <span>{entry.payer} · {new Date(`${entry.spentOn}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}</span>
+                </div>
+                <strong className="expense-amount">{money(entry.amount)}</strong>
+              </div>
+            )) : <div className="insight-row"><span>Nothing recorded in this cycle yet</span></div>}
+          </div>
+        </section>
+
+        {!isActive && (
+          <button className="primary-button" disabled={saving} onClick={onSetActive}>
+            {saving ? "Switching…" : "Set as active cycle"}
+          </button>
+        )}
       </div>
     </div>
   );

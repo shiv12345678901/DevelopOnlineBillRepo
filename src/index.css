@@ -899,3 +899,15 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 /* Edge-swipe back on pushed pages */
 .install-guide { touch-action: pan-y; }
 .install-guide.edge-dragging { user-select: none; box-shadow: -24px 0 60px rgba(0, 0, 0, .28); }
+
+/* ================= Cycle detail page ================= */
+.cycle-page .guide-body { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+.cycle-hero { min-height: 0; padding: 22px; }
+.cycle-hero .balance-meta { text-wrap: balance; }
+.cycle-inactive-chip { margin-left: auto; padding: 4px 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; font-size: .66rem; font-weight: 650; }
+.insight-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; font-size: .84rem; }
+.insight-row + .insight-row { border-top: 1px solid var(--line); }
+.insight-row span { color: var(--muted); }
+.insight-row strong { display: grid; gap: 1px; justify-items: end; text-align: right; font-size: .88rem; font-weight: 600; }
+.insight-row strong i { color: var(--muted); font-size: .68rem; font-style: normal; font-weight: 500; }
+.cycle-page .primary-button { margin-top: 4px; }
