@@ -1974,11 +1974,12 @@ function InstallGuide({ onClose }: { onClose: () => void }) {
 }
 
 /** Pushed page: every cycle as an account-style switcher list. */
-const CYCLE_TINTS = [
-  { bg: "rgba(0, 122, 255, .12)", fg: "#007aff" },
-  { bg: "rgba(94, 92, 230, .12)", fg: "#5856d6" },
-  { bg: "rgba(50, 173, 230, .12)", fg: "#32ade6" },
-  { bg: "rgba(255, 159, 10, .14)", fg: "#ff9f0a" },
+const CYCLE_ICON_CLASSES = [
+  "settings-icon-blue",
+  "settings-icon-indigo",
+  "settings-icon-cyan",
+  "settings-icon-orange",
+  "settings-icon-green",
 ];
 
 function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, onClose }: {
@@ -2017,29 +2018,27 @@ function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, 
         <span className="guide-nav-spacer" aria-hidden="true" />
       </header>
       <div className="guide-body">
-        <header className="push-title">
-          <h1>Cycles</h1>
-          <p>{cycles.length} total · tap one to switch everywhere</p>
-        </header>
         <section className="push-group">
-          <p className="settings-group-label">All cycles</p>
           <div className="settings-list">
-            {cycles.map((cycle) => {
+            {cycles.map((cycle, index) => {
               const active = cycle.id === activeId;
               const range = cycle.endsOn ? `${formatDay(cycle.startsOn)} – ${formatDay(cycle.endsOn)}` : `${formatDay(cycle.startsOn)} – today`;
               const count = countFor(cycle.id);
               return (
                 <div className="settings-row" key={cycle.id}>
                   <button className="settings-row-main" disabled={saving} onClick={() => onSwitch(cycle.id)}>
-                    <span className="settings-icon settings-icon-blue"><Icon name="calendar" size={19} /></span>
+                    <span className={`settings-icon ${CYCLE_ICON_CLASSES[index % CYCLE_ICON_CLASSES.length]}`}><Icon name="calendar" size={19} /></span>
                     <span className="settings-row-copy">
                       <strong>{cycle.name}</strong>
                       <small>{range} · {count} receipt{count === 1 ? "" : "s"}</small>
                     </span>
-                    <span className="settings-row-value sync-value">
-                      <i className={`sync-dot ${cycle.endsOn ? "off" : ""}`} />{cycle.endsOn ? "Closed" : "Live"}
-                    </span>
-                    {active && <span className="cycle-check"><Icon name="check" size={18} /></span>}
+                    {active
+                      ? <span className="settings-row-value active-value"><i className="sync-dot" />Active</span>
+                      : (
+                        <span className="settings-row-value sync-value">
+                          <i className={`sync-dot ${cycle.endsOn ? "off" : "static"}`} />{cycle.endsOn ? "Closed" : "Live"}
+                        </span>
+                      )}
                   </button>
                   <button className="cycle-detail-button" onClick={() => onOpenCycle(cycle.id)} aria-label={`Open ${cycle.name} details`}>
                     <Icon name="chevron" size={17} />

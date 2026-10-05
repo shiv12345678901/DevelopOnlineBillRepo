@@ -837,6 +837,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .sync-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #34c759; box-shadow: 0 0 0 3px rgba(52, 199, 89, .16); animation: sync-pulse 2.4s ease-in-out infinite; }
 .sync-dot.warn { background: #ffcc00; box-shadow: 0 0 0 3px rgba(255, 204, 0, .18); animation: none; }
 .sync-dot.off { background: #8e8e93; box-shadow: none; animation: none; }
+.sync-dot.static { animation: none; }
 @keyframes sync-pulse {
   0%, 100% { box-shadow: 0 0 0 3px rgba(52, 199, 89, .16); }
   50% { box-shadow: 0 0 0 5px rgba(52, 199, 89, .07); }
@@ -882,8 +883,10 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .cycle-page .guide-body { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
 
 /* ================= All Cycles switcher page ================= */
-.cycle-check { display: grid; place-items: center; width: 24px; height: 24px; flex: 0 0 auto; margin-left: 2px; color: var(--blue); }
-.cycle-check svg { stroke-width: 2.6; }
+/* Icons pick up a faint top-light gloss; the active row's value reads blue */
+.cycles-page .settings-icon { background-image: linear-gradient(180deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, 0) 62%); }
+.cycles-page .active-value { color: var(--blue); font-weight: 600; }
+:where(html.dark) .active-value { color: #64a8ff; }
 .cycle-detail-button { display: grid; place-items: center; width: 38px; height: 48px; flex: 0 0 auto; color: #a5a9b2; border: 0; background: transparent; cursor: pointer; }
 .cycle-detail-button:active { opacity: .5; }
 
