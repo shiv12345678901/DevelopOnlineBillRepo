@@ -542,6 +542,9 @@ button.settings-row:active, .settings-row-main:active { background: #eceef3; }
 /* Amount field: exactly ONE border, on the wrapper only */
 .receipt-sheet .amount-field > div input { border: 0; padding-left: 4px; }
 .receipt-sheet .amount-field > div { padding: 0 12px; }
+/* The wrapper already carries the focus ring (:focus-within above); the
+   global input:focus-visible outline would draw a second one inside it. */
+.receipt-sheet .amount-field > div input:focus-visible { outline: none; }
 
 /* Buttons press like native controls */
 .primary-button { font-size: 16px; transition: transform .12s ease, opacity .2s ease; }
