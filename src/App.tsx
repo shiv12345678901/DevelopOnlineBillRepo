@@ -368,7 +368,7 @@ export default function App() {
   const [showCyclesPage, setShowCyclesPage] = useState(false);
   const [household, setHousehold] = useState<string>(() => localStorage.getItem("rockdale-household") || GROUP_NAME);
   const [editHousehold, setEditHousehold] = useState(false);
-  const [renameCycle, setRenameCycle] = useState<{ id: string; name: string } | null>(null);
+  const [editCycle, setEditCycle] = useState<Cycle | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   // False until the first successful fetch — the initial load shows the
@@ -386,7 +386,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId) || showCyclesPage || editHousehold || Boolean(renameCycle);
+  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId) || showCyclesPage || editHousehold || Boolean(editCycle);
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
 
@@ -762,18 +762,18 @@ export default function App() {
     }
   };
 
-  const renameCycleTo = async (id: string, name: string) => {
+  const commitCycleEdit = async (id: string, patch: { name: string; members: string[]; startsOn: string; endsOn: string | null }) => {
     setSyncStatus("saving");
     try {
-      const updated = await ledgerRepository.updateCycle<Cycle>(id, { name });
+      const updated = await ledgerRepository.updateCycle<Cycle>(id, patch);
       setCycles((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setSyncStatus("online");
       markSynced();
-      setRenameCycle(null);
-      flash("Cycle renamed");
+      setEditCycle(null);
+      flash("Cycle updated");
     } catch (error) {
       setSyncStatus("error");
-      flash(error instanceof Error ? error.message : "Could not rename the cycle.");
+      flash(error instanceof Error ? error.message : "Could not update the cycle.");
     }
   };
 
@@ -1095,22 +1095,22 @@ export default function App() {
           cycles={cycles}
           activeId={activeId}
           entries={entries}
-          saving={syncStatus === "saving"}
-          onSwitch={selectCycle}
           onOpenCycle={setDetailCycleId}
-          onRenameCycle={(id, current) => setRenameCycle({ id, name: current })}
+          onEditCycle={(id) => {
+            const target = cycles.find((item) => item.id === id);
+            if (target) setEditCycle(target);
+          }}
           onDeleteCycle={requestCycleDelete}
           onClose={() => setShowCyclesPage(false)}
         />
       )}
 
-      {renameCycle && (
-        <TextEditSheet
-          title="Cycle name"
-          value={renameCycle.name}
+      {editCycle && (
+        <CycleEditSheet
+          cycle={editCycle}
           saving={syncStatus === "saving"}
-          onClose={() => setRenameCycle(null)}
-          onSave={(next) => renameCycleTo(renameCycle.id, next)}
+          onClose={() => setEditCycle(null)}
+          onSave={(patch) => commitCycleEdit(editCycle.id, patch)}
         />
       )}
 
@@ -1568,6 +1568,84 @@ function ConfirmSheet({ title, message, confirmLabel, tone = "danger", onClose, 
   );
 }
 
+/** Edit sheet for a whole cycle: name, dates and members. */
+function CycleEditSheet({ cycle, saving, onClose, onSave }: {
+  cycle: Cycle;
+  saving: boolean;
+  onClose: () => void;
+  onSave: (patch: { name: string; members: string[]; startsOn: string; endsOn: string | null }) => void | Promise<void>;
+}) {
+  const [name, setName] = useState(cycle.name);
+  const [startsOn, setStartsOn] = useState(cycle.startsOn);
+  const [endsOn, setEndsOn] = useState(cycle.endsOn ?? "");
+  const [members, setMembers] = useState<string[]>(cycle.members);
+  const [newMember, setNewMember] = useState("");
+  const { sheetRef, dismiss, dragProps } = useSheetGesture(onClose);
+
+  const trimmedName = name.trim();
+  const valid = Boolean(trimmedName) && Boolean(startsOn) && members.length > 0 && (!endsOn || endsOn >= startsOn);
+
+  const addMember = () => {
+    const member = newMember.trim();
+    if (!member || members.includes(member)) { setNewMember(""); return; }
+    setMembers((current) => [...current, member]);
+    setNewMember("");
+  };
+  const removeMember = (member: string) => setMembers((current) => current.filter((item) => item !== member));
+
+  return (
+    <div className="sheet-backdrop receipt-sheet-backdrop" role="presentation" onPointerDown={(event) => event.target === event.currentTarget && !saving && dismiss()}>
+      <div className="bottom-sheet compact-sheet" ref={sheetRef} role="dialog" aria-modal="true" aria-label="Edit cycle">
+        <div className="sheet-drag-region" aria-hidden="true" {...dragProps}><div className="sheet-handle" /></div>
+        <div className="sheet-header receipt-sheet-header">
+          <div>
+            <p className="receipt-sheet-context">Edit cycle</p>
+            <h2>{cycle.name}</h2>
+          </div>
+          <button className="icon-button receipt-sheet-close" onClick={onClose} aria-label="Close editor" disabled={saving}><Icon name="close" size={18} /></button>
+        </div>
+        <div className="form-stack">
+          <label><span>Name</span><input value={name} maxLength={40} disabled={saving} onChange={(event) => setName(event.target.value)} /></label>
+          <div className="field-grid">
+            <label><span>Starts</span><input type="date" value={startsOn} disabled={saving} onChange={(event) => setStartsOn(event.target.value)} /></label>
+            <label><span>Ends <i>optional</i></span><input type="date" value={endsOn} min={startsOn} disabled={saving} onChange={(event) => setEndsOn(event.target.value)} /></label>
+          </div>
+          <div>
+            <span className="member-editor-label">Members</span>
+            <div className="member-chips">
+              {members.map((member) => (
+                <span className="member-chip" key={member}>
+                  <Avatar name={member} size="sm" />
+                  {member}
+                  <button type="button" onClick={() => removeMember(member)} disabled={saving || members.length === 1} aria-label={`Remove ${member}`}>
+                    <Icon name="close" size={11} />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="member-add">
+              <input
+                placeholder="Add a member"
+                value={newMember}
+                maxLength={20}
+                disabled={saving}
+                onChange={(event) => setNewMember(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addMember(); } }}
+              />
+              <button type="button" className="member-add-button" onClick={addMember} disabled={saving || !newMember.trim()}>
+                <Icon name="plus" size={15} /> Add
+              </button>
+            </div>
+          </div>
+        </div>
+        <button className="primary-button" disabled={!valid || saving} onClick={() => onSave({ name: trimmedName, members, startsOn, endsOn: endsOn || null })}>
+          {saving ? "Saving…" : "Save changes"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Bottom sheet for editing a single text value (e.g. the household name). */
 function TextEditSheet({ title, value, saving, onClose, onSave }: {
   title: string;
@@ -2018,20 +2096,115 @@ const CYCLE_ICON_CLASSES = [
   "settings-icon-green",
 ];
 
-function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, onRenameCycle, onDeleteCycle, onClose }: {
+/** One cycle row with notification-style progressive swipe actions. */
+function CycleSwipeCard({ cycle, tintClass, count, range, active, open, onOpen, onClose, onTap, onEdit, onDelete }: {
+  cycle: Cycle;
+  tintClass: string;
+  count: number;
+  range: string;
+  active: boolean;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onTap: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const width = SWIPE_ACTIONS_WIDTH;
+  const [offset, setOffset] = useState(open ? -width : 0);
+  const [dragging, setDragging] = useState(false);
+  const gesture = useRef({ active: false, startX: 0, base: 0, moved: false });
+
+  useEffect(() => { setOffset(open ? -width : 0); }, [open, width]);
+
+  const position = dragging ? offset : open ? -width : offset;
+  const progress = Math.min(1, Math.max(0, -position / width));
+
+  const endDrag = () => {
+    if (!gesture.current.active) return;
+    gesture.current.active = false;
+    setDragging(false);
+    const moved = Math.abs(offset - gesture.current.base) > 6;
+    if (moved && offset < -width / 2 - 12) onOpen();
+    else if (!moved && open) onClose();
+    else if (!moved && !open) onTap();
+    else onClose();
+    setOffset(moved && offset < -width / 2 - 12 ? -width : open && !moved ? -width : 0);
+  };
+
+  return (
+    <div className={`swipe-card ${open ? "open" : ""}`}>
+      <div className={`swipe-actions ${dragging ? "dragging" : ""}`} style={{ opacity: progress, transform: `translateX(${(1 - progress) * 26}px)` }}>
+        <button
+          className="swipe-action glass-edit"
+          style={{ transform: `scale(${0.7 + progress * 0.3})` }}
+          onClick={(event) => { event.stopPropagation(); onEdit(); }}
+          aria-label={`Edit ${cycle.name}`}
+          tabIndex={open ? 0 : -1}
+        >
+          <Icon name="plus" size={17} /> Edit
+        </button>
+        <button
+          className="swipe-action glass-delete"
+          style={{ transform: `scale(${0.7 + progress * 0.3})` }}
+          onClick={(event) => { event.stopPropagation(); onDelete(); }}
+          aria-label={`Delete ${cycle.name}`}
+          tabIndex={open ? 0 : -1}
+        >
+          <Icon name="trash" size={17} /> Delete
+        </button>
+      </div>
+      <div
+        className={`swipe-content ${dragging ? "dragging" : ""}`}
+        style={{ transform: `translate3d(${position}px, 0, 0)`, transition: dragging ? "none" : "transform .4s cubic-bezier(.32,.72,0,1)", cursor: "pointer" }}
+        onPointerDown={(event) => {
+          gesture.current = { active: true, startX: event.clientX, base: open ? -width : offset, moved: false };
+          setDragging(true);
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          if (!gesture.current.active) return;
+          const raw = gesture.current.base + event.clientX - gesture.current.startX;
+          if (Math.abs(raw - gesture.current.base) > 6) gesture.current.moved = true;
+          setOffset(Math.max(-width - 40, Math.min(0, raw)));
+        }}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onClick={(event) => {
+          if (gesture.current.moved) event.stopPropagation();
+        }}
+      >
+        <div className="settings-row">
+          <span className={`settings-icon ${tintClass}`}><Icon name="calendar" size={19} /></span>
+          <span className="settings-row-copy">
+            <strong>{cycle.name}</strong>
+            <small>{range} · {count} receipt{count === 1 ? "" : "s"}</small>
+          </span>
+          {active
+            ? <span className="settings-row-value active-value"><i className="sync-dot" />Active</span>
+            : (
+              <span className="settings-row-value sync-value">
+                <i className={`sync-dot ${cycle.endsOn ? "off" : "static"}`} />{cycle.endsOn ? "Closed" : "Live"}
+              </span>
+            )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Pushed page: every cycle as an account-style switcher list. */
+function CyclesPage({ cycles, activeId, entries, onOpenCycle, onEditCycle, onDeleteCycle, onClose }: {
   cycles: Cycle[];
   activeId: string | null;
   entries: LedgerEntry[];
-  saving: boolean;
-  onSwitch: (id: string) => Promise<void>;
   onOpenCycle: (id: string) => void;
-  onRenameCycle: (id: string, current: string) => void;
+  onEditCycle: (id: string) => void;
   onDeleteCycle: (id: string, receiptCount: number, isActive: boolean) => void;
   onClose: () => void;
 }) {
   const swipe = useEdgeSwipeBack(onClose);
   const [openId, setOpenId] = useState<string | null>(null);
-  const gestureRef = useRef({ active: false, id: "", startX: 0, base: 0, moved: false });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -2071,95 +2244,26 @@ function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, 
       </header>
       <div className="guide-body">
         <section className="push-group">
-          <div className="swipe-list cycles-swipe-list">
-            {cycles.map((cycle, index) => {
-              const active = cycle.id === activeId;
-              const range = cycle.endsOn ? `${formatDay(cycle.startsOn)} – ${formatDay(cycle.endsOn)}` : `${formatDay(cycle.startsOn)} – today`;
-              const count = countFor(cycle.id);
-              const open = openId === cycle.id;
-              return (
-                <div className={`swipe-card ${open ? "open" : ""}`} key={cycle.id}>
-                  <div className="swipe-actions" style={{ opacity: open ? 1 : 0, transform: `translateX(${open ? 0 : 26}px)` }}>
-                    <button
-                      className="swipe-action glass-edit"
-                      style={{ transform: `scale(${open ? 1 : 0.7})` }}
-                      onClick={(event) => { event.stopPropagation(); setOpenId(null); onRenameCycle(cycle.id, cycle.name); }}
-                      aria-label={`Rename ${cycle.name}`}
-                      tabIndex={open ? 0 : -1}
-                    >
-                      <Icon name="plus" size={17} /> Rename
-                    </button>
-                    <button
-                      className="swipe-action glass-delete"
-                      style={{ transform: `scale(${open ? 1 : 0.7})` }}
-                      onClick={(event) => { event.stopPropagation(); setOpenId(null); onDeleteCycle(cycle.id, count, active); }}
-                      aria-label={`Delete ${cycle.name}`}
-                      tabIndex={open ? 0 : -1}
-                    >
-                      <Icon name="trash" size={17} /> Delete
-                    </button>
-                  </div>
-                  <div
-                    className={`swipe-content ${open ? "" : ""}`}
-                    style={{ transform: `translate3d(${open ? -SWIPE_ACTIONS_WIDTH : 0}px, 0, 0)`, transition: "transform .4s cubic-bezier(.32,.72,0,1)" }}
-                    onPointerDown={(event) => {
-                      gestureRef.current = { active: true, id: cycle.id, startX: event.clientX, base: open ? -SWIPE_ACTIONS_WIDTH : 0, moved: false };
-                      event.currentTarget.setPointerCapture(event.pointerId);
-                    }}
-                    onPointerMove={(event) => {
-                      const g = gestureRef.current;
-                      if (!g.active || g.id !== cycle.id) return;
-                      const raw = g.base + event.clientX - g.startX;
-                      if (Math.abs(raw - g.base) > 6) g.moved = true;
-                      event.currentTarget.style.transition = "none";
-                      event.currentTarget.style.transform = `translate3d(${Math.max(-SWIPE_ACTIONS_WIDTH - 40, Math.min(0, raw))}px, 0, 0)`;
-                    }}
-                    onPointerUp={(event) => {
-                      const g = gestureRef.current;
-                      if (!g.active || g.id !== cycle.id) return;
-                      g.active = false;
-                      const el = event.currentTarget;
-                      const final = g.moved && (g.base + event.clientX - g.startX) < -SWIPE_ACTIONS_WIDTH / 2 - 12;
-                      el.style.transition = "transform .4s cubic-bezier(.32,.72,0,1)";
-                      el.style.transform = `translate3d(${final ? -SWIPE_ACTIONS_WIDTH : 0}px, 0, 0)`;
-                      if (final) setOpenId(cycle.id);
-                      else if (g.moved) setOpenId(null);
-                      else if (open) setOpenId(null);
-                    }}
-                    onPointerCancel={(event) => {
-                      const g = gestureRef.current;
-                      if (!g.active || g.id !== cycle.id) return;
-                      g.active = false;
-                      event.currentTarget.style.transition = "transform .4s cubic-bezier(.32,.72,0,1)";
-                      event.currentTarget.style.transform = `translate3d(${open ? -SWIPE_ACTIONS_WIDTH : 0}px, 0, 0)`;
-                    }}
-                  >
-                    <div className="settings-row">
-                      <button className="settings-row-main" disabled={saving} onClick={() => onSwitch(cycle.id)}>
-                        <span className={`settings-icon ${CYCLE_ICON_CLASSES[index % CYCLE_ICON_CLASSES.length]}`}><Icon name="calendar" size={19} /></span>
-                        <span className="settings-row-copy">
-                          <strong>{cycle.name}</strong>
-                          <small>{range} · {count} receipt{count === 1 ? "" : "s"}</small>
-                        </span>
-                        {active
-                          ? <span className="settings-row-value active-value"><i className="sync-dot" />Active</span>
-                          : (
-                            <span className="settings-row-value sync-value">
-                              <i className={`sync-dot ${cycle.endsOn ? "off" : "static"}`} />{cycle.endsOn ? "Closed" : "Live"}
-                            </span>
-                          )}
-                      </button>
-                      <button className="cycle-detail-button" onClick={(event) => { event.stopPropagation(); onOpenCycle(cycle.id); }} aria-label={`Open ${cycle.name} details`}>
-                        <Icon name="chevron" size={17} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="swipe-list">
+            {cycles.map((cycle, index) => (
+              <CycleSwipeCard
+                key={cycle.id}
+                cycle={cycle}
+                tintClass={CYCLE_ICON_CLASSES[index % CYCLE_ICON_CLASSES.length]}
+                count={countFor(cycle.id)}
+                range={cycle.endsOn ? `${formatDay(cycle.startsOn)} – ${formatDay(cycle.endsOn)}` : `${formatDay(cycle.startsOn)} – today`}
+                active={cycle.id === activeId}
+                open={openId === cycle.id}
+                onOpen={() => setOpenId(cycle.id)}
+                onClose={() => setOpenId(null)}
+                onTap={() => onOpenCycle(cycle.id)}
+                onEdit={() => { setOpenId(null); onEditCycle(cycle.id); }}
+                onDelete={() => { setOpenId(null); onDeleteCycle(cycle.id, countFor(cycle.id), cycle.id === activeId); }}
+              />
+            ))}
           </div>
         </section>
-        <p className="guide-footnote with-icon"><Icon name="refresh" size={15} />Swipe a cycle for actions — closed cycles stay read-only.</p>
+        <p className="guide-footnote with-icon"><Icon name="refresh" size={15} />Tap a cycle for details — swipe for edit and delete.</p>
       </div>
     </div>
   );

@@ -978,3 +978,15 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 }
 .edit-field:focus-visible { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0, 122, 255, .13); }
 :where(html.dark) .edit-field { background: #2c2c2e; border-color: #48484a; }
+
+/* Cycle edit sheet: member chips */
+.member-editor-label { display: block; margin-bottom: 6px; color: #616d7e; font-size: 10px; font-weight: 650; }
+.member-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.member-chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 7px 5px 6px; border: 1px solid var(--line); border-radius: 99px; background: var(--card); font-size: .85rem; font-weight: 600; }
+.member-chip button { display: grid; place-items: center; width: 20px; height: 20px; color: var(--muted); border: 0; border-radius: 50%; background: rgba(120, 120, 128, .14); cursor: pointer; }
+.member-chip button:disabled { opacity: .35; cursor: default; }
+.member-add { display: flex; gap: 8px; margin-top: 9px; }
+.member-add input { flex: 1; min-width: 0; height: 42px; padding: 0 12px; color: var(--ink); border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 16px; }
+.member-add-button { display: inline-flex; align-items: center; gap: 5px; padding: 0 14px; color: var(--blue); border: 1px solid rgba(0, 122, 255, .35); border-radius: 10px; background: rgba(0, 122, 255, .08); font-size: .84rem; font-weight: 650; cursor: pointer; }
+.member-add-button:disabled { opacity: .45; cursor: default; }
+:where(html.dark) .member-add input { background: #2c2c2e; border-color: #48484a; }
