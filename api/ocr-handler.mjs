@@ -12,9 +12,13 @@
 
 const PROMPT =
   "This is a photo of a grocery/store receipt or a payment screenshot. " +
-  "Find the store or merchant name and the final grand total amount paid. " +
-  'Respond ONLY with JSON: {"amount": <number>, "merchant": "<store name or empty string>", "confidence": <0-1>}. ' +
-  'If you cannot confidently determine a total, respond {"amount": null, "merchant": "", "confidence": 0}. No other text.';
+  "Find the FINAL GRAND TOTAL the customer paid: the bottom-line amount, " +
+  "usually beside the word TOTAL, TOTAL DUE or AMOUNT PAYABLE, including " +
+  "any taxes, GST and fees. It always carries cents. " +
+  "Never use subtotals, item prices, GST lines, tips listed separately, " +
+  "phone numbers, card numbers, ABN/registration numbers or dates. " +
+  'Respond ONLY with JSON: {"amount": <number with cents>, "merchant": "<store name or empty string>", "confidence": <0-1>}. ' +
+  'If there is no clearly printed grand total, respond {"amount": null, "merchant": "", "confidence": 0}. No other text.';
 
 // Free-tier overload (503) and rate limits (429) are transient; a short
 // second attempt on the same key usually gets through.
@@ -92,10 +96,17 @@ export async function handleOcr({ imageBase64, mimeType }) {
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
       try {
         const parsed = JSON.parse(text);
+        // Sanity gate: an absurd or non-numeric total is treated as no read
+        // rather than poisoning the ledger.
+        const rawAmount = parsed.amount;
+        const amount =
+          typeof rawAmount === "number" && Number.isFinite(rawAmount) && rawAmount > 0 && rawAmount < 1_000_000
+            ? Math.round(rawAmount * 100) / 100
+            : null;
         return {
           status: 200,
           body: {
-            amount: typeof parsed.amount === "number" ? parsed.amount : null,
+            amount,
             merchant: typeof parsed.merchant === "string" ? parsed.merchant : "",
             confidence: parsed.confidence ?? 0,
           },
