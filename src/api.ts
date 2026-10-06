@@ -195,6 +195,20 @@ export const ledgerRepository = {
     if (error) throw new Error(error.message);
   },
 
+  /** Removes a cycle and every receipt in it, in that order. */
+  async deleteCycle(id: string) {
+    const { error: entriesError } = await supabase
+      .from("grocery_ledger")
+      .delete()
+      .eq("cycle_id", Number(id));
+    if (entriesError) throw new Error(entriesError.message);
+    const { error: cycleError } = await supabase
+      .from("settlement_cycles")
+      .delete()
+      .eq("id", Number(id));
+    if (cycleError) throw new Error(cycleError.message);
+  },
+
   async updateEntry<Entry>(id: string, update: Record<string, unknown>) {
     const patch: Record<string, unknown> = {};
     if ("payer" in update) patch.payer = update.payer;

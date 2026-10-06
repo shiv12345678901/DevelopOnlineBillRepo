@@ -39,6 +39,69 @@ function geminiKeys() {
   ].filter(Boolean);
 }
 
+/**
+ * Fallback vision provider, used when every Gemini key fails. Any
+ * OpenAI-compatible endpoint works; the default shape targets Groq's free
+ * tier (no credit card, ~30 req/min, vision via Llama 4 Scout). Configure:
+ *   OCR_FALLBACK_API_KEY   (or GROQ_API_KEY) — the API key
+ *   OCR_FALLBACK_BASE_URL  (default https://api.groq.com/openai/v1)
+ *   OCR_FALLBACK_MODEL     (default meta-llama/llama-4-scout-17b-16e-instruct)
+ */
+function fallbackConfig() {
+  const key = process.env.OCR_FALLBACK_API_KEY || process.env.GROQ_API_KEY;
+  if (!key) return null;
+  return {
+    key,
+    baseUrl: (process.env.OCR_FALLBACK_BASE_URL || "https://api.groq.com/openai/v1").replace(/\/$/, ""),
+    model: process.env.OCR_FALLBACK_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct",
+  };
+}
+
+async function askFallback(config, payload) {
+  const res = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.key}` },
+    body: JSON.stringify({
+      model: config.model,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: PROMPT },
+            { type: "image_url", image_url: { url: `data:${payload.mime};base64,${payload.data}` } },
+          ],
+        },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`fallback error ${res.status}`);
+  const data = await res.json();
+  return data?.choices?.[0]?.message?.content ?? "";
+}
+
+function normalizeRead(raw) {
+  let text = String(raw ?? "").trim();
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) text = fenced[1].trim();
+  try {
+    const parsed = JSON.parse(text);
+    const rawAmount = parsed.amount;
+    const amount =
+      typeof rawAmount === "number" && Number.isFinite(rawAmount) && rawAmount > 0 && rawAmount < 1_000_000
+        ? Math.round(rawAmount * 100) / 100
+        : null;
+    return {
+      amount,
+      merchant: typeof parsed.merchant === "string" ? parsed.merchant : "",
+      confidence: parsed.confidence ?? 0,
+    };
+  } catch {
+    return { amount: null, merchant: "", confidence: 0 };
+  }
+}
+
 function askGemini(model, key, payload) {
   return fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
@@ -71,6 +134,7 @@ export async function handleOcr({ imageBase64, mimeType }) {
 
   const model = process.env.GEMINI_MODEL || "gemini-flash-latest";
   let lastError = "no keys attempted";
+  let lastRead = null;
 
   // Walk every key; only a definitive read ends the loop early.
   for (const key of keys) {
@@ -95,22 +159,12 @@ export async function handleOcr({ imageBase64, mimeType }) {
       const data = await res.json().catch(() => null);
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
       try {
-        const parsed = JSON.parse(text);
-        // Sanity gate: an absurd or non-numeric total is treated as no read
-        // rather than poisoning the ledger.
-        const rawAmount = parsed.amount;
-        const amount =
-          typeof rawAmount === "number" && Number.isFinite(rawAmount) && rawAmount > 0 && rawAmount < 1_000_000
-            ? Math.round(rawAmount * 100) / 100
-            : null;
-        return {
-          status: 200,
-          body: {
-            amount,
-            merchant: typeof parsed.merchant === "string" ? parsed.merchant : "",
-            confidence: parsed.confidence ?? 0,
-          },
-        };
+        const read = normalizeRead(text);
+        if (read.amount !== null) return { status: 200, body: read };
+        // A definitive "no total" from the model is still a usable answer
+        // unless another key might do better — keep it as the last read.
+        lastError = read.amount === null ? "model found no total" : lastError;
+        lastRead = read;
       } catch {
         // A malformed read is worth one more try before blaming the key.
         lastError = "unparseable Gemini response";
@@ -123,6 +177,19 @@ export async function handleOcr({ imageBase64, mimeType }) {
     }
   }
 
-  // The client falls back to on-device OCR when it sees this.
+  // Gemini exhausted: try the configured fallback vision model.
+  const fallback = fallbackConfig();
+  if (fallback) {
+    try {
+      const read = normalizeRead(await askFallback(fallback, { mime: mimeType || "image/jpeg", data: imageBase64 }));
+      if (read.amount !== null) return { status: 200, body: read };
+      if (read.confidence > 0 || lastRead === null) lastRead = read;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : lastError;
+    }
+  }
+
+  if (lastRead) return { status: 200, body: lastRead };
+  // No engine could read the receipt — the client asks for manual entry.
   return { status: 502, body: { error: lastError } };
 }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { ledgerRepository, scanReceipt, uploadReceipt, fetchPreferences, savePreferences, type Preferences } from "./api";
-import { ocrOnDevice } from "./receipt-ocr";
 import { applyTheme, getThemePref, watchSystemTheme, type ThemePref } from "./theme";
 import { loadLedgerCache, saveLedgerCache } from "./ledger-cache";
 
@@ -45,7 +44,7 @@ type PendingReceipt = {
   spentOn: string;
   status: "scanning" | "ready";
   confidence: number;
-  engine: "ai" | "device" | "manual";
+  engine: "ai" | "manual";
 };
 
 type IconName =
@@ -369,6 +368,7 @@ export default function App() {
   const [showCyclesPage, setShowCyclesPage] = useState(false);
   const [household, setHousehold] = useState<string>(() => localStorage.getItem("rockdale-household") || GROUP_NAME);
   const [editHousehold, setEditHousehold] = useState(false);
+  const [renameCycle, setRenameCycle] = useState<{ id: string; name: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   // False until the first successful fetch — the initial load shows the
@@ -386,7 +386,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId) || showCyclesPage || editHousehold;
+  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId) || showCyclesPage || editHousehold || Boolean(renameCycle);
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
 
@@ -613,9 +613,10 @@ export default function App() {
   };
 
   /**
-   * Recognition only: scan the full image (AI, then on-device) and stage the
-   * result in the review sheet. Nothing reaches the ledger until the user
-   * confirms, so an OCR misread can be corrected before it is saved.
+   * Recognition only: the server chains Gemini, then a fallback vision
+   * model, and stages the result in the review sheet. Nothing reaches the
+   * ledger until the user confirms, so an OCR misread can be corrected
+   * before it is saved.
    */
   const processReceipt = async (item: PendingReceipt) => {
     const apply = (patch: Partial<PendingReceipt>) => setPending((current) => current.map((receipt) =>
@@ -627,48 +628,22 @@ export default function App() {
       apply({ status: "scanning", confidence: 0 });
       const image = await resizeReceipt(item.file);
 
-      // 1. AI vision (Gemini) — tried first on every scan and rescan.
-      let ai: { amount: number; merchant: string; confidence: number } | null = null;
-      let aiLow: { amount: number; merchant: string; confidence: number } | null = null;
-      try {
-        const result = await scanReceipt(image.imageBase64, image.mimeType);
-        if (result.amount !== null) {
-          const read = { amount: result.amount, merchant: result.merchant || "", confidence: result.confidence };
-          if (result.confidence >= 0.35) ai = read;
-          else aiLow = read; // kept as a last resort before manual entry
-        }
-      } catch {
-        // AI unavailable — fall through to on-device OCR.
-      }
-
-      // 2. On-device OCR (Tesseract.js).
-      let device: Awaited<ReturnType<typeof ocrOnDevice>> | null = null;
-      if (!ai) {
-        apply({ engine: "device" });
-        try {
-          const result = await ocrOnDevice(image.imageBase64);
-          if (result.amount !== null) device = result;
-        } catch {
-          // both engines failed — manual entry below
-        }
-      }
-
-      const winner = ai ?? device ?? aiLow;
-      if (!winner || Number(winner.amount) <= 0) {
-        // 3. Manual entry — the only case the review sheet is for.
-        apply({ status: "ready", engine: "manual" });
-        flash("Couldn't read a total — type it in or scan again");
+      // The server tries Gemini first, then the configured fallback model.
+      const result = await scanReceipt(image.imageBase64, image.mimeType);
+      if (result.amount !== null && Number(result.amount) > 0) {
+        apply({
+          status: "ready",
+          amount: String(result.amount),
+          merchant: result.merchant || "",
+          confidence: result.confidence,
+          engine: "ai",
+        });
         return;
       }
 
-      // 4. Stage it for review. The user checks the numbers, then saves.
-      apply({
-        status: "ready",
-        amount: String(winner.amount),
-        merchant: winner.merchant,
-        confidence: winner.confidence,
-        engine: ai ? "ai" : device ? "device" : "ai",
-      });
+      // No readable total anywhere — manual entry.
+      apply({ status: "ready", engine: "manual" });
+      flash("Couldn't read a total — type it in or scan again");
     } catch {
       apply({ status: "ready", engine: "manual" });
       flash("Couldn't process that image. Enter the total manually.");
@@ -785,6 +760,55 @@ export default function App() {
       setSyncStatus("error");
       flash(error instanceof Error ? error.message : "Could not reopen the cycle.");
     }
+  };
+
+  const renameCycleTo = async (id: string, name: string) => {
+    setSyncStatus("saving");
+    try {
+      const updated = await ledgerRepository.updateCycle<Cycle>(id, { name });
+      setCycles((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setSyncStatus("online");
+      markSynced();
+      setRenameCycle(null);
+      flash("Cycle renamed");
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "Could not rename the cycle.");
+    }
+  };
+
+  const removeCycle = async (id: string) => {
+    setSyncStatus("saving");
+    try {
+      await ledgerRepository.deleteCycle(id);
+      const remaining = cycles.filter((item) => item.id !== id);
+      setCycles(remaining);
+      setEntries((current) => current.filter((entry) => entry.cycleId !== id));
+      if (activeId === id) {
+        const next = remaining[0] ?? null;
+        setActiveId(next?.id ?? null);
+        localStorage.setItem("rockdale-active-cycle", next?.id ?? "");
+        void savePreferences(deviceId(), { activeCycleId: next?.id ?? null });
+        setTab("home");
+      }
+      setSyncStatus("online");
+      markSynced();
+      flash("Cycle deleted");
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "Could not delete the cycle.");
+    }
+  };
+
+  const requestCycleDelete = (id: string, receiptCount: number, isActive: boolean) => {
+    const target = cycles.find((item) => item.id === id);
+    if (!target) return;
+    openConfirm({
+      title: `Delete “${target.name}”?`,
+      message: `The cycle and its ${receiptCount} receipt${receiptCount === 1 ? "" : "s"} will be permanently removed. This cannot be undone.${isActive ? " It is the active cycle — the next one takes over." : ""}`,
+      confirmLabel: "Delete cycle",
+      action: () => removeCycle(id),
+    });
   };
 
   // Switching cycles behaves like changing accounts: the whole app flips
@@ -1074,7 +1098,19 @@ export default function App() {
           saving={syncStatus === "saving"}
           onSwitch={selectCycle}
           onOpenCycle={setDetailCycleId}
+          onRenameCycle={(id, current) => setRenameCycle({ id, name: current })}
+          onDeleteCycle={requestCycleDelete}
           onClose={() => setShowCyclesPage(false)}
+        />
+      )}
+
+      {renameCycle && (
+        <TextEditSheet
+          title="Cycle name"
+          value={renameCycle.name}
+          saving={syncStatus === "saving"}
+          onClose={() => setRenameCycle(null)}
+          onSave={(next) => renameCycleTo(renameCycle.id, next)}
         />
       )}
 
@@ -1982,16 +2018,20 @@ const CYCLE_ICON_CLASSES = [
   "settings-icon-green",
 ];
 
-function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, onClose }: {
+function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, onRenameCycle, onDeleteCycle, onClose }: {
   cycles: Cycle[];
   activeId: string | null;
   entries: LedgerEntry[];
   saving: boolean;
   onSwitch: (id: string) => Promise<void>;
   onOpenCycle: (id: string) => void;
+  onRenameCycle: (id: string, current: string) => void;
+  onDeleteCycle: (id: string, receiptCount: number, isActive: boolean) => void;
   onClose: () => void;
 }) {
   const swipe = useEdgeSwipeBack(onClose);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const gestureRef = useRef({ active: false, id: "", startX: 0, base: 0, moved: false });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -2001,11 +2041,23 @@ function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, 
 
   const countFor = (id: string) => entries.filter((entry) => entry.cycleId === id).length;
 
+  // Close an open swipe row when the pointer goes down outside the cards.
+  const onOutsidePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!openId) return;
+    const card = (event.target as HTMLElement).closest?.(".swipe-card");
+    if (!card) setOpenId(null);
+  };
+
   return (
     <div
       className="install-guide cycles-page"
       ref={swipe.ref}
-      onPointerDown={swipe.onPointerDown}
+      onPointerDown={(event) => {
+        // Row swipes own their pointers; the page-level edge swipe must not
+        // fight them inside a card.
+        if (!(event.target as HTMLElement).closest?.(".swipe-card")) swipe.onPointerDown(event);
+        onOutsidePointerDown(event);
+      }}
       onPointerMove={swipe.onPointerMove}
       onPointerUp={swipe.onPointerUp}
       onPointerCancel={swipe.onPointerCancel}
@@ -2019,36 +2071,95 @@ function CyclesPage({ cycles, activeId, entries, saving, onSwitch, onOpenCycle, 
       </header>
       <div className="guide-body">
         <section className="push-group">
-          <div className="settings-list">
+          <div className="swipe-list cycles-swipe-list">
             {cycles.map((cycle, index) => {
               const active = cycle.id === activeId;
               const range = cycle.endsOn ? `${formatDay(cycle.startsOn)} – ${formatDay(cycle.endsOn)}` : `${formatDay(cycle.startsOn)} – today`;
               const count = countFor(cycle.id);
+              const open = openId === cycle.id;
               return (
-                <div className="settings-row" key={cycle.id}>
-                  <button className="settings-row-main" disabled={saving} onClick={() => onSwitch(cycle.id)}>
-                    <span className={`settings-icon ${CYCLE_ICON_CLASSES[index % CYCLE_ICON_CLASSES.length]}`}><Icon name="calendar" size={19} /></span>
-                    <span className="settings-row-copy">
-                      <strong>{cycle.name}</strong>
-                      <small>{range} · {count} receipt{count === 1 ? "" : "s"}</small>
-                    </span>
-                    {active
-                      ? <span className="settings-row-value active-value"><i className="sync-dot" />Active</span>
-                      : (
-                        <span className="settings-row-value sync-value">
-                          <i className={`sync-dot ${cycle.endsOn ? "off" : "static"}`} />{cycle.endsOn ? "Closed" : "Live"}
+                <div className={`swipe-card ${open ? "open" : ""}`} key={cycle.id}>
+                  <div className="swipe-actions" style={{ opacity: open ? 1 : 0, transform: `translateX(${open ? 0 : 26}px)` }}>
+                    <button
+                      className="swipe-action glass-edit"
+                      style={{ transform: `scale(${open ? 1 : 0.7})` }}
+                      onClick={(event) => { event.stopPropagation(); setOpenId(null); onRenameCycle(cycle.id, cycle.name); }}
+                      aria-label={`Rename ${cycle.name}`}
+                      tabIndex={open ? 0 : -1}
+                    >
+                      <Icon name="plus" size={17} /> Rename
+                    </button>
+                    <button
+                      className="swipe-action glass-delete"
+                      style={{ transform: `scale(${open ? 1 : 0.7})` }}
+                      onClick={(event) => { event.stopPropagation(); setOpenId(null); onDeleteCycle(cycle.id, count, active); }}
+                      aria-label={`Delete ${cycle.name}`}
+                      tabIndex={open ? 0 : -1}
+                    >
+                      <Icon name="trash" size={17} /> Delete
+                    </button>
+                  </div>
+                  <div
+                    className={`swipe-content ${open ? "" : ""}`}
+                    style={{ transform: `translate3d(${open ? -SWIPE_ACTIONS_WIDTH : 0}px, 0, 0)`, transition: "transform .4s cubic-bezier(.32,.72,0,1)" }}
+                    onPointerDown={(event) => {
+                      gestureRef.current = { active: true, id: cycle.id, startX: event.clientX, base: open ? -SWIPE_ACTIONS_WIDTH : 0, moved: false };
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    }}
+                    onPointerMove={(event) => {
+                      const g = gestureRef.current;
+                      if (!g.active || g.id !== cycle.id) return;
+                      const raw = g.base + event.clientX - g.startX;
+                      if (Math.abs(raw - g.base) > 6) g.moved = true;
+                      event.currentTarget.style.transition = "none";
+                      event.currentTarget.style.transform = `translate3d(${Math.max(-SWIPE_ACTIONS_WIDTH - 40, Math.min(0, raw))}px, 0, 0)`;
+                    }}
+                    onPointerUp={(event) => {
+                      const g = gestureRef.current;
+                      if (!g.active || g.id !== cycle.id) return;
+                      g.active = false;
+                      const el = event.currentTarget;
+                      const final = g.moved && (g.base + event.clientX - g.startX) < -SWIPE_ACTIONS_WIDTH / 2 - 12;
+                      el.style.transition = "transform .4s cubic-bezier(.32,.72,0,1)";
+                      el.style.transform = `translate3d(${final ? -SWIPE_ACTIONS_WIDTH : 0}px, 0, 0)`;
+                      if (final) setOpenId(cycle.id);
+                      else if (g.moved) setOpenId(null);
+                      else if (open) setOpenId(null);
+                    }}
+                    onPointerCancel={(event) => {
+                      const g = gestureRef.current;
+                      if (!g.active || g.id !== cycle.id) return;
+                      g.active = false;
+                      event.currentTarget.style.transition = "transform .4s cubic-bezier(.32,.72,0,1)";
+                      event.currentTarget.style.transform = `translate3d(${open ? -SWIPE_ACTIONS_WIDTH : 0}px, 0, 0)`;
+                    }}
+                  >
+                    <div className="settings-row">
+                      <button className="settings-row-main" disabled={saving} onClick={() => onSwitch(cycle.id)}>
+                        <span className={`settings-icon ${CYCLE_ICON_CLASSES[index % CYCLE_ICON_CLASSES.length]}`}><Icon name="calendar" size={19} /></span>
+                        <span className="settings-row-copy">
+                          <strong>{cycle.name}</strong>
+                          <small>{range} · {count} receipt{count === 1 ? "" : "s"}</small>
                         </span>
-                      )}
-                  </button>
-                  <button className="cycle-detail-button" onClick={() => onOpenCycle(cycle.id)} aria-label={`Open ${cycle.name} details`}>
-                    <Icon name="chevron" size={17} />
-                  </button>
+                        {active
+                          ? <span className="settings-row-value active-value"><i className="sync-dot" />Active</span>
+                          : (
+                            <span className="settings-row-value sync-value">
+                              <i className={`sync-dot ${cycle.endsOn ? "off" : "static"}`} />{cycle.endsOn ? "Closed" : "Live"}
+                            </span>
+                          )}
+                      </button>
+                      <button className="cycle-detail-button" onClick={(event) => { event.stopPropagation(); onOpenCycle(cycle.id); }} aria-label={`Open ${cycle.name} details`}>
+                        <Icon name="chevron" size={17} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               );
             })}
           </div>
         </section>
-        <p className="guide-footnote with-icon"><Icon name="refresh" size={15} />Closed cycles stay read-only — balances and history remain viewable.</p>
+        <p className="guide-footnote with-icon"><Icon name="refresh" size={15} />Swipe a cycle for actions — closed cycles stay read-only.</p>
       </div>
     </div>
   );
@@ -2318,7 +2429,7 @@ function ReceiptSheet({ receipts, members, defaultPayer, onPayerChange, onUpdate
               </div>
               <div className="receipt-preview">
                 <img src={receipt.preview} alt="Uploaded receipt" />
-                {receipt.status === "scanning" && <span className="scanning"><Icon name="receipt" />{receipt.engine === "device" ? "Reading on-device…" : "Reading receipt…"}</span>}
+                {receipt.status === "scanning" && <span className="scanning"><Icon name="receipt" />Reading receipt…</span>}
               </div>
               <button className="remove-receipt" onClick={() => onRemove(receipt.id)} aria-label={`Remove receipt ${index + 1}`}><Icon name="trash" size={16} /></button>
               {receipt.status === "ready" && (
@@ -2340,7 +2451,7 @@ function ReceiptSheet({ receipts, members, defaultPayer, onPayerChange, onUpdate
                     <p className="ai-note">
                       <Icon name="receipt" size={14} />
                       {receipt.confidence > 0
-                        ? `Read via ${receipt.engine === "device" ? "on-device scan" : "AI"} · ${Math.round(receipt.confidence * 100)}% confidence, please confirm`
+                        ? `Read via AI · ${Math.round(receipt.confidence * 100)}% confidence, please confirm`
                         : "Auto-read failed. Type the total, or scan again."}
                     </p>
                     <button className="retry-scan" onClick={() => onScan(receipt.id)} disabled={saving}>
