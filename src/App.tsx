@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { ledgerRepository, scanReceipt, uploadReceipt, fetchPreferences, savePreferences, type Preferences } from "./api";
 import { applyTheme, getThemePref, watchSystemTheme, type ThemePref } from "./theme";
 import { loadLedgerCache, saveLedgerCache } from "./ledger-cache";
+import OcrScannerSheet from "./ocr-scanner/OcrScannerSheet";
 
 type Tab = "home" | "settle" | "camera" | "receipts" | "settings";
 
@@ -143,7 +144,7 @@ async function resizeReceipt(file: File, maxSide = 1600, quality = 0.84) {
   return { imageBase64: dataUrl.split(",")[1], mimeType: "image/jpeg" };
 }
 
-function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
+export function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, React.ReactNode> = {
     home: <><path d="M3.5 10.5 12 3l8.5 7.5"/><path d="M5.5 9.5v10h13v-10M9.5 19.5v-6h5v6"/></>,
     settle: <><path d="M5 7h14M5 17h14"/><path d="m15 3 4 4-4 4M9 13l-4 4 4 4"/></>,
@@ -209,7 +210,7 @@ function projectVelocity(velocity: number, decelerationRate = 0.99) {
   return (velocity / 1000) * decelerationRate / (1 - decelerationRate);
 }
 
-function useSheetGesture(onClose: () => void) {
+export function useSheetGesture(onClose: () => void) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number | null>(null);
   const closeRef = useRef(onClose);
@@ -369,6 +370,7 @@ export default function App() {
   const [household, setHousehold] = useState<string>(() => localStorage.getItem("rockdale-household") || GROUP_NAME);
   const [editHousehold, setEditHousehold] = useState(false);
   const [editCycle, setEditCycle] = useState<Cycle | null>(null);
+  const [showOcrScanner, setShowOcrScanner] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   // False until the first successful fetch — the initial load shows the
@@ -386,7 +388,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId) || showCyclesPage || editHousehold || Boolean(editCycle);
+  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId) || showCyclesPage || editHousehold || Boolean(editCycle) || showOcrScanner;
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
 
@@ -1010,6 +1012,7 @@ export default function App() {
             onOpenCycles={() => setShowCyclesPage(true)}
             onEditHousehold={() => setEditHousehold(true)}
             household={household}
+            onOpenOcrScanner={() => setShowOcrScanner(true)}
             syncStatus={syncStatus}
             themePref={themePref}
             onThemeChange={setThemePref}
@@ -1099,6 +1102,8 @@ export default function App() {
       )}
 
       {showInstallGuide && <InstallGuide onClose={() => setShowInstallGuide(false)} />}
+
+      {showOcrScanner && <OcrScannerSheet onClose={() => setShowOcrScanner(false)} />}
 
       {showCyclesPage && (
         <CyclesPage
@@ -1770,7 +1775,7 @@ function EditSheet({ entry, members, saving, onClose, onSave }: {
   );
 }
 
-function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall, onOpenCycle, onOpenCycles, onEditHousehold, household, syncStatus, themePref, onThemeChange, lastSyncedAt, isRefreshing }: {
+function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall, onOpenCycle, onOpenCycles, onEditHousehold, household, onOpenOcrScanner, syncStatus, themePref, onThemeChange, lastSyncedAt, isRefreshing }: {
   cycles: Cycle[];
   activeId: string | null;
   onNew: () => void;
@@ -1781,6 +1786,7 @@ function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall,
   onOpenCycles: () => void;
   onEditHousehold: () => void;
   household: string;
+  onOpenOcrScanner: () => void;
   syncStatus: "loading" | "online" | "saving" | "error";
   themePref: ThemePref;
   onThemeChange: (pref: ThemePref) => void;
@@ -1876,6 +1882,11 @@ function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall,
             <span className="settings-row-copy"><strong>Currency</strong></span>
             <span className="settings-row-value">AUD</span>
           </div>
+          <button className="settings-row" onClick={onOpenOcrScanner}>
+            <span className="settings-icon settings-icon-cyan"><Icon name="receipt" size={19} /></span>
+            <span className="settings-row-copy"><strong>OCR Scanner</strong><small>Test the PaddleOCR experiment</small></span>
+            <Icon name="chevron" size={17} />
+          </button>
         </div>
       </section>
 

@@ -993,3 +993,11 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 /* Destructive action row (close cycle) */
 .insight-row.action-row.action-row-danger { color: #ff3b30; }
 :where(html.dark) .insight-row.action-row.action-row-danger { color: #ff6961; }
+
+/* OCR scanner test sheet */
+.ocr-test-note { margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.45; }
+.ocr-pick { margin-top: 0; }
+.ocr-lines { max-height: 260px; overflow-y: auto; }
+.ocr-lines .insight-row { min-height: 0; padding: 9px 15px; }
+.ocr-line { color: var(--ink); font-size: .82rem; font-variant-numeric: tabular-nums; }
+.ocr-error { color: #ff453a; font-size: .84rem; }
