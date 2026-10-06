@@ -138,11 +138,29 @@ function mergeRows(texts: string[], boxes: Point[][]): string[] {
   ).filter(Boolean);
 }
 
+// Detection cost scales with pixels; receipts stay legible far below
+// camera resolution, so oversized uploads are downscaled before inference.
+const MAX_SIDE = 900;
+
+function downscale(img: HTMLImageElement): string {
+  const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+  if (scale === 1) return img.src;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.naturalWidth * scale);
+  canvas.height = Math.round(img.naturalHeight * scale);
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.92);
+}
+
 export async function paddleScan(file: File): Promise<PaddleScan> {
   const started = performance.now();
   const paddle = await loadPaddle();
-  const img = await loadImage(file);
-  const result = await paddle.recognize(img);
+  const loaded = await loadImage(file);
+  const scaled = new Image();
+  scaled.src = downscale(loaded);
+  await scaled.decode();
+  const result = await paddle.recognize(scaled);
   const lines = mergeRows(result.text ?? [], result.points ?? []);
   return { lines, total: parseTotal(lines), ms: Math.round(performance.now() - started) };
 }
