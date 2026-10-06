@@ -297,3 +297,38 @@ export async function savePreferences(deviceId: string, patch: Partial<Preferenc
     return false;
   }
 }
+
+/** Response shape of the Australian receipt auditor (api/auditor-handler.mjs). */
+export type AuditorRead = {
+  merchant: string;
+  amount: number;
+  category: "Groceries" | "Utilities" | "Dining" | "Household Supplies" | "Other";
+  isBankTransfer: boolean;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  isBlurry: boolean;
+  model?: string;
+};
+
+export async function scanReceiptAuditor(imageBase64: string, mimeType: string): Promise<AuditorRead> {
+  const response = await fetch("/api/ocr-auditor", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageBase64, mimeType }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || `Auditor failed (${response.status})`);
+  return body as AuditorRead;
+}
+
+/** Downscales an image file in-browser and returns base64 JPEG for upload. */
+export async function resizeImage(file: File, maxSide = 1600, quality = 0.84) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const dataUrl = canvas.toDataURL("image/jpeg", quality);
+  return { imageBase64: dataUrl.split(",")[1], mimeType: "image/jpeg" };
+}

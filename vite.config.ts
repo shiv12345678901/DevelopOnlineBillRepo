@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import { readFileSync } from 'node:fs'
 import { handleOcr } from './api/ocr-handler.mjs'
+import { handleAuditor } from './api/auditor-handler.mjs'
 
 import siteConfiguration from './.figma/make/site.json'
 
@@ -28,7 +29,7 @@ function ocrDevServer(): Plugin {
     name: 'ocr-dev-server',
     apply: 'serve',
     configureServer(server) {
-      server.middlewares.use('/api/ocr', (req, res) => {
+      const ocrEndpoint = (handler: (body: any) => Promise<{ status: number; body: any }>) => (req: any, res: any) => {
         if (req.method !== 'POST') {
           res.statusCode = 405
           res.end(JSON.stringify({ error: 'POST only' }))
@@ -39,7 +40,7 @@ function ocrDevServer(): Plugin {
         req.on('end', async () => {
           try {
             const body = JSON.parse(raw || '{}')
-            const { status, body: payload } = await handleOcr(body)
+            const { status, body: payload } = await handler(body)
             res.statusCode = status
             res.setHeader('Content-Type', 'application/json')
             res.end(JSON.stringify(payload))
@@ -48,7 +49,9 @@ function ocrDevServer(): Plugin {
             res.end(JSON.stringify({ error: (err as Error).message }))
           }
         })
-      })
+      }
+      server.middlewares.use('/api/ocr', ocrEndpoint(handleOcr))
+      server.middlewares.use('/api/ocr-auditor', ocrEndpoint(handleAuditor))
     },
   }
 }

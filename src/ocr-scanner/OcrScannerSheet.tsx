@@ -1,17 +1,17 @@
 import { useRef, useState } from "react";
-import { useSheetGesture } from "../App";
-import { Icon } from "../App";
-import { paddleScan } from "./paddle";
+import { useSheetGesture, Icon } from "../App";
+import { scanReceiptAuditor, resizeImage, type AuditorRead } from "../api";
 
 type ScanState =
   | { phase: "idle" }
-  | { phase: "running"; note: string }
-  | { phase: "done"; lines: string[]; total: number | null; ms: number }
+  | { phase: "running" }
+  | { phase: "done"; read: AuditorRead; ms: number }
   | { phase: "error"; message: string };
 
-/** Test bench for the PaddleOCR experiment: pick a receipt, run the
- *  in-browser PP-OCRv2 models, and inspect every line it reads. Kept fully
- *  separate from the app's Gemini pipeline so the two can be compared. */
+/** Test bench for the Australian receipt auditor: pick a receipt or bank
+ *  screenshot, run the structured Gemini classification, and inspect the
+ *  full verdict. Kept fully separate from the app's Gemini pipeline so the
+ *  two can be compared before swapping it in. */
 export default function OcrScannerSheet({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<ScanState>({ phase: "idle" });
   const [file, setFile] = useState<File | null>(null);
@@ -20,10 +20,12 @@ export default function OcrScannerSheet({ onClose }: { onClose: () => void }) {
 
   const run = async () => {
     if (!file) return;
-    setState({ phase: "running", note: "Loading PaddleOCR models (first run downloads them)…" });
+    setState({ phase: "running" });
     try {
-      const scan = await paddleScan(file);
-      setState({ phase: "done", lines: scan.lines, total: scan.total, ms: scan.ms });
+      const image = await resizeImage(file, 1600, 0.9);
+      const started = performance.now();
+      const read = await scanReceiptAuditor(image.imageBase64, image.mimeType);
+      setState({ phase: "done", read, ms: Math.round(performance.now() - started) });
     } catch (error) {
       setState({ phase: "error", message: error instanceof Error ? error.message : "Scan failed." });
     }
@@ -36,14 +38,16 @@ export default function OcrScannerSheet({ onClose }: { onClose: () => void }) {
         <div className="sheet-header receipt-sheet-header">
           <div>
             <p className="receipt-sheet-context">OCR scanner · experiment</p>
-            <h2>PaddleOCR test</h2>
+            <h2>Gemini receipt auditor</h2>
           </div>
           <button className="icon-button receipt-sheet-close" onClick={onClose} aria-label="Close scanner test"><Icon name="close" size={18} /></button>
         </div>
 
         <div className="form-stack">
           <p className="ocr-test-note">
-            Runs PP-OCRv2 fully in this browser — no API key, nothing uploaded. First run downloads the models.
+            Classifies the image as a valid retail expense or a flatmate bank
+            transfer, and grades the read quality. Runs on the server with your
+            Gemini keys — nothing is stored.
           </p>
 
           <input
@@ -59,14 +63,14 @@ export default function OcrScannerSheet({ onClose }: { onClose: () => void }) {
             }}
           />
           <button className="primary-button ocr-pick" onClick={() => inputRef.current?.click()}>
-            {file ? `Image: ${file.name.length > 28 ? `${file.name.slice(0, 25)}…` : file.name}` : "Choose a receipt image"}
+            {file ? `Image: ${file.name.length > 28 ? `${file.name.slice(0, 25)}…` : file.name}` : "Choose a receipt or screenshot"}
           </button>
 
           <button className="tinted-button" disabled={!file || state.phase === "running"} onClick={() => void run()}>
-            {state.phase === "running" ? "Scanning…" : "Run PaddleOCR"}
+            {state.phase === "running" ? "Auditing…" : "Run auditor"}
           </button>
 
-          {state.phase === "running" && <p className="ocr-test-note">{state.note}</p>}
+          {state.phase === "running" && <p className="ocr-test-note">Reading the image with Gemini…</p>}
 
           {state.phase === "error" && (
             <div className="settings-list"><div className="insight-row"><span className="ocr-error">{state.message}</span></div></div>
@@ -76,19 +80,26 @@ export default function OcrScannerSheet({ onClose }: { onClose: () => void }) {
             <>
               <div className="settings-list">
                 <div className="insight-row">
-                  <span className="row-icon row-icon-green"><Icon name="check" size={15} /></span>
-                  <div className="insight-copy"><strong>Parsed total</strong><i>{state.ms} ms in-browser</i></div>
-                  <span className="insight-value">{state.total === null ? "None found" : `$${state.total.toFixed(2)}`}</span>
+                  <span className={`row-icon ${state.read.isBankTransfer ? "row-icon-gray" : "row-icon-green"}`}>
+                    <Icon name={state.read.isBankTransfer ? "close" : "check"} size={15} />
+                  </span>
+                  <div className="insight-copy">
+                    <strong>{state.read.isBankTransfer ? "Bank transfer — filtered out" : "Valid expense"}</strong>
+                    <i>{state.read.category}</i>
+                  </div>
+                </div>
+                <div className="insight-row">
+                  <span className="row-icon row-icon-orange"><Icon name="receipt" size={15} /></span>
+                  <div className="insight-copy"><strong>Merchant</strong><i>{state.read.isBlurry ? "Image looks blurry" : "Read looks clean"}</i></div>
+                  <span className="insight-value">{state.read.merchant}</span>
+                </div>
+                <div className="insight-row">
+                  <span className="row-icon row-icon-blue"><Icon name="settle" size={15} /></span>
+                  <div className="insight-copy"><strong>Amount</strong><i>confidence: {state.read.confidence}</i></div>
+                  <span className="insight-value">${state.read.amount.toFixed(2)}</span>
                 </div>
               </div>
-              <div>
-                <span className="member-editor-label">All recognized lines ({state.lines.length})</span>
-                <div className="settings-list ocr-lines">
-                  {state.lines.length
-                    ? state.lines.map((line, index) => <div className="insight-row" key={index}><span className="ocr-line">{line}</span></div>)
-                    : <div className="insight-row"><span>No text detected</span></div>}
-                </div>
-              </div>
+              <p className="ocr-test-note">Model: {state.read.model ?? "gemini"} · {state.ms} ms round-trip</p>
             </>
           )}
         </div>

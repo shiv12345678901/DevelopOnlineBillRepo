@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { ledgerRepository, scanReceipt, uploadReceipt, fetchPreferences, savePreferences, type Preferences } from "./api";
 import { applyTheme, getThemePref, watchSystemTheme, type ThemePref } from "./theme";
 import { loadLedgerCache, saveLedgerCache } from "./ledger-cache";
+import { resizeImage } from "./api";
 import OcrScannerSheet from "./ocr-scanner/OcrScannerSheet";
 
 type Tab = "home" | "settle" | "camera" | "receipts" | "settings";
@@ -131,18 +132,6 @@ const money = (value: number, decimals = 0) =>
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
-
-async function resizeReceipt(file: File, maxSide = 1600, quality = 0.84) {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  const dataUrl = canvas.toDataURL("image/jpeg", quality);
-  return { imageBase64: dataUrl.split(",")[1], mimeType: "image/jpeg" };
-}
 
 export function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -632,7 +621,7 @@ export default function App() {
     try {
       // Re-enter the reading state so a rescan shows progress too.
       apply({ status: "scanning", confidence: 0 });
-      const image = await resizeReceipt(item.file);
+      const image = await resizeImage(item.file);
 
       // The server tries Gemini first, then the configured fallback model.
       const result = await scanReceipt(image.imageBase64, image.mimeType);
@@ -678,7 +667,7 @@ export default function App() {
       // One receipt at a time so a single bad image can't lose the whole batch.
       for (const item of valid) {
         // A smaller copy kept in storage so the receipt stays viewable.
-        const stored = await resizeReceipt(item.file, 900, 0.72);
+        const stored = await resizeImage(item.file, 900, 0.72);
         // Prefer the storage bucket; fall back to an inline copy when the
         // bucket isn't set up (supabase/storage-setup.sql).
         const receiptUrl = await uploadReceipt(cycle.id, stored.imageBase64, stored.mimeType);
@@ -1884,7 +1873,7 @@ function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall,
           </div>
           <button className="settings-row" onClick={onOpenOcrScanner}>
             <span className="settings-icon settings-icon-cyan"><Icon name="receipt" size={19} /></span>
-            <span className="settings-row-copy"><strong>OCR Scanner</strong><small>Test the PaddleOCR experiment</small></span>
+            <span className="settings-row-copy"><strong>OCR Scanner</strong><small>Test the receipt auditor experiment</small></span>
             <Icon name="chevron" size={17} />
           </button>
         </div>
