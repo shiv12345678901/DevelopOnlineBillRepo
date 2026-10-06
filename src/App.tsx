@@ -593,6 +593,10 @@ export default function App() {
 
   const queueFiles = (files: FileList | null) => {
     if (!files || !cycle) return;
+    if (cycle.endsOn) {
+      flash(`“${cycle.name}” is closed — set an active cycle to add receipts`);
+      return;
+    }
     const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
     if (!images.length) return;
     const next = images.map((file) => ({
@@ -723,22 +727,28 @@ export default function App() {
     }
   };
 
-  const closeCycle = async (options?: { skipConfirm?: boolean }) => {
-    if (!cycle) return;
-    if (!options?.skipConfirm && summary.settlements.length > 0) {
-      const outstanding = summary.settlements.reduce((sum, payment) => sum + payment.amount, 0);
+  // Closing works on any cycle and always surfaces its settlement first.
+  const closeCycleById = async (id: string, options?: { skipConfirm?: boolean }) => {
+    const target = cycles.find((item) => item.id === id);
+    if (!target || target.endsOn) return;
+    const targetEntries = entries.filter((entry) => entry.cycleId === id);
+    const targetSummary = computeSettlements(targetEntries, target.members);
+    const outstanding = targetSummary.settlements.reduce((sum, payment) => sum + payment.amount, 0);
+    if (!options?.skipConfirm) {
       openConfirm({
-        title: "Close this cycle?",
-        message: `${summary.settlements.length} unresolved payment${summary.settlements.length === 1 ? "" : "s"} totalling ${money(outstanding)} remain. Closing prevents new receipts, but balances stay visible.`,
+        title: `Close “${target.name}”?`,
+        message: outstanding > 0
+          ? `${targetSummary.settlements.length} unresolved payment${targetSummary.settlements.length === 1 ? "" : "s"} totalling ${money(outstanding)} remain. It closes today and becomes read-only; balances stay visible.`
+          : `“${target.name}” is fully settled. It closes today and becomes read-only; balances stay visible.`,
         confirmLabel: "Close cycle",
-        action: () => closeCycle({ skipConfirm: true }),
+        action: () => closeCycleById(id, { skipConfirm: true }),
       });
       return;
     }
     setSyncStatus("saving");
     try {
-      const updated = await ledgerRepository.updateCycle<Cycle>(cycle.id, { endsOn: today() });
-      setCycles((current) => current.map((item) => item.id === updated.id ? updated : item));
+      const updated = await ledgerRepository.updateCycle<Cycle>(id, { endsOn: today() });
+      setCycles((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setSyncStatus("online");
       markSynced();
       flash("Cycle closed and locked");
@@ -978,7 +988,7 @@ export default function App() {
             onSettle={() => setTab("settle")}
           />
         ) : tab === "settle" ? (
-          <SettleView cycle={cycle} summary={summary} entries={cycleEntries} onClose={closeCycle} />
+          <SettleView cycle={cycle} summary={summary} entries={cycleEntries} onClose={() => closeCycleById(cycle.id)} />
         ) : tab === "receipts" ? (
           <ReceiptsView
             cycle={cycle}
@@ -1150,6 +1160,7 @@ export default function App() {
               setDetailCycleId(null);
             }}
             onReopen={reopenCycle}
+            onCloseCycle={closeCycleById}
           />
         );
       })()}
@@ -2270,7 +2281,7 @@ function CyclesPage({ cycles, activeId, entries, onOpenCycle, onEditCycle, onDel
 }
 
 /** Pushed page: every detail and insight for one cycle, on a single scroll. */
-function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel = "Settings", onClose, onSetActive, onReopen }: {
+function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel = "Settings", onClose, onSetActive, onReopen, onCloseCycle }: {
   cycle: Cycle;
   entries: LedgerEntry[];
   summary: ReturnType<typeof computeSettlements>;
@@ -2280,6 +2291,7 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel 
   onClose: () => void;
   onSetActive: () => Promise<void>;
   onReopen: (id: string) => Promise<void>;
+  onCloseCycle: (id: string) => void;
 }) {
   const swipe = useEdgeSwipeBack(onClose);
 
@@ -2444,6 +2456,11 @@ function CycleDetailPage({ cycle, entries, summary, isActive, saving, backLabel 
             {!isActive && (
               <button className="insight-row action-row" disabled={saving} onClick={onSetActive}>
                 {saving ? "Switching…" : "Set as Active Cycle"}
+              </button>
+            )}
+            {!cycle.endsOn && (
+              <button className="insight-row action-row action-row-danger" disabled={saving} onClick={() => onCloseCycle(cycle.id)}>
+                Close Cycle
               </button>
             )}
             {cycle.endsOn && (

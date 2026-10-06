@@ -990,3 +990,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .member-add-button { display: inline-flex; align-items: center; gap: 5px; padding: 0 14px; color: var(--blue); border: 1px solid rgba(0, 122, 255, .35); border-radius: 10px; background: rgba(0, 122, 255, .08); font-size: .84rem; font-weight: 650; cursor: pointer; }
 .member-add-button:disabled { opacity: .45; cursor: default; }
 :where(html.dark) .member-add input { background: #2c2c2e; border-color: #48484a; }
+
+/* Destructive action row (close cycle) */
+.insight-row.action-row.action-row-danger { color: #ff3b30; }
+:where(html.dark) .insight-row.action-row.action-row-danger { color: #ff6961; }
