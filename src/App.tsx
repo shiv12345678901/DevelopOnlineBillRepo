@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { ledgerRepository, scanReceipt, uploadReceipt, fetchPreferences, savePreferences, type Preferences } from "./api";
+import { ledgerRepository, scanReceipt, uploadReceipt, fetchPreferences, savePreferences, confidenceScore, type Preferences } from "./api";
 import { applyTheme, getThemePref, watchSystemTheme, type ThemePref } from "./theme";
 import { loadLedgerCache, saveLedgerCache } from "./ledger-cache";
 import { resizeImage } from "./api";
@@ -47,6 +47,7 @@ type PendingReceipt = {
   status: "scanning" | "ready";
   confidence: number;
   engine: "ai" | "manual";
+  category?: string;
 };
 
 type IconName =
@@ -623,20 +624,33 @@ export default function App() {
       apply({ status: "scanning", confidence: 0 });
       const image = await resizeImage(item.file);
 
-      // The server tries Gemini first, then the configured fallback model.
+      // The server classifies the image and extracts the structured read.
       const result = await scanReceipt(image.imageBase64, image.mimeType);
-      if (result.amount !== null && Number(result.amount) > 0) {
+
+      // Flatmate transfer screenshots are not expenses — drop the card.
+      if (result.isBankTransfer) {
+        setPending((current) => {
+          const next = current.filter((receipt) => receipt.id !== item.id);
+          return next;
+        });
+        URL.revokeObjectURL(item.preview);
+        flash("That's a bank transfer, not a receipt");
+        return;
+      }
+
+      if (result.amount > 0) {
         apply({
           status: "ready",
           amount: String(result.amount),
-          merchant: result.merchant || "",
-          confidence: result.confidence,
+          merchant: result.merchant,
+          confidence: confidenceScore(result.confidence),
+          category: result.category,
           engine: "ai",
         });
         return;
       }
 
-      // No readable total anywhere — manual entry.
+      // Valid image but no readable total — manual entry.
       apply({ status: "ready", engine: "manual" });
       flash("Couldn't read a total — type it in or scan again");
     } catch {
@@ -2572,7 +2586,7 @@ function ReceiptSheet({ receipts, members, defaultPayer, onPayerChange, onUpdate
                     <p className="ai-note">
                       <Icon name="receipt" size={14} />
                       {receipt.confidence > 0
-                        ? `Read via AI · ${Math.round(receipt.confidence * 100)}% confidence, please confirm`
+                        ? `Read via AI · ${receipt.category ?? "Other"} · ${Math.round(receipt.confidence * 100)}% confidence, please confirm`
                         : "Auto-read failed. Type the total, or scan again."}
                     </p>
                     <button className="retry-scan" onClick={() => onScan(receipt.id)} disabled={saving}>

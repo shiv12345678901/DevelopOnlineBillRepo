@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
 import { useSheetGesture, Icon } from "../App";
-import { scanReceiptAuditor, resizeImage, type AuditorRead } from "../api";
+import { scanReceipt, resizeImage, type ScanRead } from "../api";
 
 type ScanState =
   | { phase: "idle" }
   | { phase: "running" }
-  | { phase: "done"; read: AuditorRead; ms: number }
+  | { phase: "done"; read: ScanRead; ms: number }
   | { phase: "error"; message: string };
 
 /** Test bench for the Australian receipt auditor: pick a receipt or bank
@@ -24,7 +24,7 @@ export default function OcrScannerSheet({ onClose }: { onClose: () => void }) {
     try {
       const image = await resizeImage(file, 1600, 0.9);
       const started = performance.now();
-      const read = await scanReceiptAuditor(image.imageBase64, image.mimeType);
+      const read = await scanReceipt(image.imageBase64, image.mimeType);
       setState({ phase: "done", read, ms: Math.round(performance.now() - started) });
     } catch (error) {
       setState({ phase: "error", message: error instanceof Error ? error.message : "Scan failed." });

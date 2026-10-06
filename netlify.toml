@@ -7,7 +7,3 @@
   to = "/.netlify/functions/ocr"
   status = 200
 
-[[redirects]]
-  from = "/api/ocr-auditor"
-  to = "/.netlify/functions/ocr-auditor"
-  status = 200

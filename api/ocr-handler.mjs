@@ -1,32 +1,63 @@
 /**
- * Shared Gemini receipt-OCR handler, used by:
- *   - the Vite dev server middleware (vite.config.ts)
- *   - the Netlify function (netlify/functions/ocr.mjs)
- * Keys come from the environment (GEMINI_API_KEY or GEMINI_API_KEY_1..N)
- * and rotate automatically on rate limits / transient errors.
+ * Receipt OCR — Australian receipt auditor on Gemini.
  *
- * The model defaults to the "flash-latest" alias rather than a pinned
- * version: pinned names (e.g. gemini-2.5-flash) disappear when Google
- * retires them and every scan starts failing with a 404.
+ * Classifies an image as a valid retail/grocery expense or a flatmate
+ * bank-transfer screenshot, extracts the grand total, and grades the read.
+ * Every key x model combination is raced in parallel (first structured read
+ * wins) with a hard per-call abort, keeping the whole scan well inside
+ * Netlify's 10s function budget.
  */
 
-const PROMPT =
-  "This is a photo of a grocery/store receipt or a payment screenshot. " +
-  "Find the FINAL GRAND TOTAL the customer paid: the bottom-line amount, " +
-  "usually beside the word TOTAL, TOTAL DUE or AMOUNT PAYABLE, including " +
-  "any taxes, GST and fees. It always carries cents. " +
-  "Never use subtotals, item prices, GST lines, tips listed separately, " +
-  "phone numbers, card numbers, ABN/registration numbers or dates. " +
-  'Respond ONLY with JSON: {"amount": <number with cents>, "merchant": "<store name or empty string>", "confidence": <0-1>}. ' +
-  'If there is no clearly printed grand total, respond {"amount": null, "merchant": "", "confidence": 0}. No other text.';
+const PROMPT = `You are an expert Australian bill and receipt auditor for a flatmate grocery and household group.
+Your task is to identify and extract VALID grocery, supermarket, and household bills, and STRICTLY EXCLUDE bank transfers, peer-to-peer payments, or settlement transaction screenshots.
 
-// Free-tier overload (503) and rate limits (429) are transient; a short
-// second attempt on the same key usually gets through.
-const RETRYABLE = new Set([429, 500, 503]);
-const ATTEMPTS_PER_KEY = 2;
-const RETRY_DELAY_MS = 900;
+CRITICAL NEGATIVE FILTER (EXCLUDE ONLY FLATMATES P2P TRANSFERS):
+- STRICTLY EXCLUDE PEER-TO-PEER TRANSFERS: Images showing money transfers sent to another individual/flatmate (e.g. "Sent to Arjun", "Transfer to Shiva", "PayID payment to [Person]", "Osko payment to Arjun", "Transfer Successful to [Name]", "Account Transfer to [Name]").
+  Set: isBankTransfer: true, amount: 0, merchant: "Bank Transfer", category: "Other".
+  These are flatmate reimbursement transfers, not grocery expenses!
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+- VALID RETAIL CARD PAYMENTS (EVEN IF SHOWN IN A BANKING APP):
+  If an image is a mobile banking app transaction screenshot showing a card purchase paid to a STORE, MERCHANT, or RESTAURANT (e.g. "Nepal House -$9.19", "Woolworths -$45.20", "Country Fresh -$15.00", "FoodWorks", "Primeline Butchery", "Indreni Supermarket"):
+  This IS a valid expense!
+  Set: isBankTransfer: false, merchant: Store name (e.g. "Nepal House"), amount: the positive purchase amount (e.g. 9.19), category: "Groceries" or "Dining".
+
+RETAIL MERCHANTS & HOUSEHOLD BILLS:
+- Supermarkets and grocery stores (Woolworths, Coles, Aldi, Indian Grocers, Costco, IGA, Asian supermarkets, butchers, fruit & veg).
+- Utilities (Electricity, Gas, Internet, Water).
+- Restaurant/Takeaway food dockets for the household (e.g. Nepal House, Bhok & Bhojan).
+- General household supplies (Kmart, Target, Bunnings, Chemist Warehouse).
+
+Output properties:
+- merchant: Store name (e.g. "Woolworths", "Coles", "Aldi", "Indian Grocer").
+- amount: The final grand total paid as a clean positive float (e.g. 45.20). If not a retail receipt, use 0.
+- category: One of ["Groceries", "Utilities", "Dining", "Household Supplies", "Other"].
+- isBankTransfer: true if bank transfer confirmation/screenshot, false if retail receipt.
+- confidence: "HIGH" if numbers and store name are crisp and clear; "MEDIUM" if partially wrinkled; "LOW" if blurry/faded.
+- isBlurry: true if image is low-resolution, out of focus, or numbers are hard to read; false otherwise.`;
+
+const STRUCTURED_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    merchant: { type: "STRING" },
+    amount: { type: "NUMBER" },
+    category: {
+      type: "STRING",
+      enum: ["Groceries", "Utilities", "Dining", "Household Supplies", "Other"],
+    },
+    isBankTransfer: { type: "BOOLEAN" },
+    confidence: { type: "STRING", enum: ["HIGH", "MEDIUM", "LOW"] },
+    isBlurry: { type: "BOOLEAN" },
+  },
+  required: ["merchant", "amount", "category", "isBankTransfer", "confidence", "isBlurry"],
+};
+
+// Verified available on the free tier (ListModels). Racing all key x model
+// combinations in parallel keeps the call inside Netlify's 10s budget.
+const CANDIDATE_MODELS = [
+  "gemini-flash-latest",
+  "gemini-flash-lite-latest",
+  "gemini-3.8-flash",
+];
 
 function geminiKeys() {
   return [
@@ -39,74 +70,57 @@ function geminiKeys() {
   ].filter(Boolean);
 }
 
-/**
- * Fallback vision provider, used when every Gemini key fails. Any
- * OpenAI-compatible endpoint works; the default shape targets Groq's free
- * tier (no credit card, ~30 req/min, vision via Llama 4 Scout). Configure:
- *   OCR_FALLBACK_API_KEY   (or GROQ_API_KEY) — the API key
- *   OCR_FALLBACK_BASE_URL  (default https://api.groq.com/openai/v1)
- *   OCR_FALLBACK_MODEL     (default meta-llama/llama-4-scout-17b-16e-instruct)
- */
-function fallbackConfig() {
-  const key = process.env.OCR_FALLBACK_API_KEY || process.env.GROQ_API_KEY;
-  if (!key) return null;
-  return {
-    key,
-    baseUrl: (process.env.OCR_FALLBACK_BASE_URL || "https://api.groq.com/openai/v1").replace(/\/$/, ""),
-    model: process.env.OCR_FALLBACK_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct",
-  };
-}
-
-async function askFallback(config, payload) {
-  const res = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.key}` },
-    body: JSON.stringify({
-      model: config.model,
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: PROMPT },
-            { type: "image_url", image_url: { url: `data:${payload.mime};base64,${payload.data}` } },
-          ],
-        },
-      ],
-    }),
-  });
-  if (!res.ok) throw new Error(`fallback error ${res.status}`);
-  const data = await res.json();
-  return data?.choices?.[0]?.message?.content ?? "";
-}
-
-function normalizeRead(raw) {
-  let text = String(raw ?? "").trim();
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced) text = fenced[1].trim();
-  try {
-    const parsed = JSON.parse(text);
-    const rawAmount = parsed.amount;
-    const amount =
-      typeof rawAmount === "number" && Number.isFinite(rawAmount) && rawAmount > 0 && rawAmount < 1_000_000
-        ? Math.round(rawAmount * 100) / 100
-        : null;
-    return {
-      amount,
-      merchant: typeof parsed.merchant === "string" ? parsed.merchant : "",
-      confidence: parsed.confidence ?? 0,
-    };
-  } catch {
-    return { amount: null, merchant: "", confidence: 0 };
+export function cleanAndParseJson(text) {
+  let cleaned = (text || "").trim();
+  // Strip markdown code fences if present
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
   }
-}
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    cleaned = jsonMatch[0];
+  }
+  const parsed = JSON.parse(cleaned);
+  let amount = parseFloat(parsed.amount);
+  if (isNaN(amount) || amount < 0 || amount > 1_000_000) amount = 0;
 
-function askGemini(model, key, payload) {
-  return fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: payload },
-  );
+  const isBankTransfer = Boolean(parsed.isBankTransfer);
+  if (isBankTransfer) {
+    amount = 0;
+  }
+
+  const validCategories = [
+    "Groceries",
+    "Utilities",
+    "Dining",
+    "Household Supplies",
+    "Other",
+  ];
+  let category = parsed.category || "Other";
+  if (!validCategories.includes(category)) {
+    category = "Other";
+  }
+
+  const confidence = ["HIGH", "MEDIUM", "LOW"].includes(parsed.confidence)
+    ? parsed.confidence
+    : amount > 0
+      ? "HIGH"
+      : "LOW";
+  const isBlurry = Boolean(parsed.isBlurry);
+
+  return {
+    merchant: String(
+      parsed.merchant || (isBankTransfer ? "Bank Transfer" : "Unknown Store"),
+    ).trim(),
+    amount: Math.round(amount * 100) / 100,
+    category,
+    isBankTransfer,
+    confidence,
+    isBlurry,
+  };
 }
 
 export async function handleOcr({ imageBase64, mimeType }) {
@@ -123,73 +137,54 @@ export async function handleOcr({ imageBase64, mimeType }) {
   const payload = JSON.stringify({
     contents: [
       {
+        role: "user",
         parts: [
           { text: PROMPT },
-          { inline_data: { mime_type: mimeType || "image/jpeg", data: imageBase64 } },
+          { inlineData: { mimeType: mimeType || "image/jpeg", data: imageBase64 } },
         ],
       },
     ],
-    generationConfig: { responseMimeType: "application/json", temperature: 0 },
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: STRUCTURED_SCHEMA,
+    },
   });
 
-  const model = process.env.GEMINI_MODEL || "gemini-flash-latest";
-  let lastError = "no keys attempted";
-  let lastRead = null;
-
-  // Walk every key; only a definitive read ends the loop early.
+  // Race every key x model combination; the first clean structured read wins.
+  const attempts = [];
   for (const key of keys) {
-    for (let attempt = 1; attempt <= ATTEMPTS_PER_KEY; attempt++) {
-      let res;
-      try {
-        res = await askGemini(model, key, payload);
-      } catch (error) {
-        lastError = `network: ${error instanceof Error ? error.message : "unknown"}`;
-        continue;
-      }
-
-      if (!res.ok) {
-        lastError = `Gemini error ${res.status}`;
-        if (RETRYABLE.has(res.status) && attempt < ATTEMPTS_PER_KEY) {
-          await sleep(RETRY_DELAY_MS);
-          continue;
-        }
-        break; // this key is done — move to the next one
-      }
-
-      const data = await res.json().catch(() => null);
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      try {
-        const read = normalizeRead(text);
-        if (read.amount !== null) return { status: 200, body: read };
-        // A definitive "no total" from the model is still a usable answer
-        // unless another key might do better — keep it as the last read.
-        lastError = read.amount === null ? "model found no total" : lastError;
-        lastRead = read;
-      } catch {
-        // A malformed read is worth one more try before blaming the key.
-        lastError = "unparseable Gemini response";
-        if (attempt < ATTEMPTS_PER_KEY) {
-          await sleep(RETRY_DELAY_MS);
-          continue;
-        }
-        break;
-      }
+    for (const model of CANDIDATE_MODELS) {
+      attempts.push(
+        (async () => {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: payload,
+              signal: AbortSignal.timeout(8500),
+            },
+          );
+          if (!res.ok) throw new Error(`Gemini error ${res.status} on ${model}`);
+          const data = await res.json().catch(() => null);
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          return { ...cleanAndParseJson(text), model };
+        })(),
+      );
     }
   }
 
-  // Gemini exhausted: try the configured fallback vision model.
-  const fallback = fallbackConfig();
-  if (fallback) {
-    try {
-      const read = normalizeRead(await askFallback(fallback, { mime: mimeType || "image/jpeg", data: imageBase64 }));
-      if (read.amount !== null) return { status: 200, body: read };
-      if (read.confidence > 0 || lastRead === null) lastRead = read;
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : lastError;
-    }
+  try {
+    const winner = await Promise.any(attempts);
+    return { status: 200, body: winner };
+  } catch (aggregate) {
+    const failures = aggregate?.errors ?? [];
+    const lastError = failures[failures.length - 1] ?? new Error("all Gemini attempts failed");
+    return {
+      status: 502,
+      body: {
+        error: `Gemini Vision extraction failed across ${keys.length} key(s): ${lastError.message || "Unsupported model or API key error"}`,
+      },
+    };
   }
-
-  if (lastRead) return { status: 200, body: lastRead };
-  // No engine could read the receipt — the client asks for manual entry.
-  return { status: 502, body: { error: lastError } };
 }

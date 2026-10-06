@@ -238,7 +238,17 @@ export const ledgerRepository = {
   },
 };
 
-export async function scanReceipt(imageBase64: string, mimeType: string) {
+export type ScanRead = {
+  merchant: string;
+  amount: number;
+  category: "Groceries" | "Utilities" | "Dining" | "Household Supplies" | "Other";
+  isBankTransfer: boolean;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  isBlurry: boolean;
+  model: string;
+};
+
+export async function scanReceipt(imageBase64: string, mimeType: string): Promise<ScanRead> {
   const response = await fetch("/api/ocr", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -246,7 +256,14 @@ export async function scanReceipt(imageBase64: string, mimeType: string) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || `OCR failed (${response.status})`);
-  return body as { amount: number | null; merchant: string; confidence: number };
+  return body as ScanRead;
+}
+
+/** Maps the auditor's qualitative grade to the numeric confidence the ledger stores. */
+export function confidenceScore(grade: ScanRead["confidence"]): number {
+  if (grade === "HIGH") return 0.95;
+  if (grade === "MEDIUM") return 0.7;
+  return 0.45;
 }
 
 /**
@@ -296,28 +313,6 @@ export async function savePreferences(deviceId: string, patch: Partial<Preferenc
   } catch {
     return false;
   }
-}
-
-/** Response shape of the Australian receipt auditor (api/auditor-handler.mjs). */
-export type AuditorRead = {
-  merchant: string;
-  amount: number;
-  category: "Groceries" | "Utilities" | "Dining" | "Household Supplies" | "Other";
-  isBankTransfer: boolean;
-  confidence: "HIGH" | "MEDIUM" | "LOW";
-  isBlurry: boolean;
-  model?: string;
-};
-
-export async function scanReceiptAuditor(imageBase64: string, mimeType: string): Promise<AuditorRead> {
-  const response = await fetch("/api/ocr-auditor", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imageBase64, mimeType }),
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `Auditor failed (${response.status})`);
-  return body as AuditorRead;
 }
 
 /** Downscales an image file in-browser and returns base64 JPEG for upload. */

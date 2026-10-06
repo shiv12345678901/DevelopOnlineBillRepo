@@ -4,7 +4,6 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import { readFileSync } from 'node:fs'
 import { handleOcr } from './api/ocr-handler.mjs'
-import { handleAuditor } from './api/auditor-handler.mjs'
 
 import siteConfiguration from './.figma/make/site.json'
 
@@ -51,7 +50,6 @@ function ocrDevServer(): Plugin {
         })
       }
       server.middlewares.use('/api/ocr', ocrEndpoint(handleOcr))
-      server.middlewares.use('/api/ocr-auditor', ocrEndpoint(handleAuditor))
     },
   }
 }
