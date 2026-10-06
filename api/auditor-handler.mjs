@@ -53,12 +53,13 @@ const STRUCTURED_SCHEMA = {
   required: ["merchant", "amount", "category", "isBankTransfer", "confidence", "isBlurry"],
 };
 
+// Verified available on the free tier (ListModels). Racing all key x model
+// combinations in parallel keeps the call inside Netlify's 10s budget
+// (sequential fan-out used to 504 the function).
 const CANDIDATE_MODELS = [
   "gemini-flash-latest",
   "gemini-flash-lite-latest",
-  "gemini-3.7-flash",
-  "gemini-3.6-flash",
-  "gemini-3.5-flash",
+  "gemini-3.8-flash",
 ];
 
 export function cleanAndParseJson(text) {
@@ -154,28 +155,36 @@ export async function handleAuditor({ imageBase64, mimeType }) {
 
   let lastError = null;
 
+  // Race every key x model combination; the first clean structured read wins.
+  const attempts = [];
   for (const key of keys) {
     for (const model of CANDIDATE_MODELS) {
-      try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: payload,
-          },
-        );
-        if (!res.ok) {
-          lastError = new Error(`Gemini error ${res.status} on ${model}`);
-          continue;
-        }
-        const data = await res.json().catch(() => null);
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        return { status: 200, body: { ...cleanAndParseJson(text), model } };
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-      }
+      attempts.push(
+        (async () => {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: payload,
+              signal: AbortSignal.timeout(8500),
+            },
+          );
+          if (!res.ok) throw new Error(`Gemini error ${res.status} on ${model}`);
+          const data = await res.json().catch(() => null);
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          return { ...cleanAndParseJson(text), model };
+        })(),
+      );
     }
+  }
+
+  try {
+    const winner = await Promise.any(attempts);
+    return { status: 200, body: winner };
+  } catch (aggregate) {
+    const failures = aggregate?.errors ?? [];
+    lastError = failures[failures.length - 1] ?? new Error("all Gemini attempts failed");
   }
 
   return {
