@@ -1,6 +1,13 @@
-import { handleOcr } from "../../api/ocr-handler.mjs";
+import { handleOcr, handleKeysInfo } from "../../api/ocr-handler.mjs";
 
 export default async (req) => {
+  if (req.method === "GET") {
+    const info = handleKeysInfo();
+    return new Response(JSON.stringify(info.body), {
+      status: info.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "POST only" }), {
       status: 405,

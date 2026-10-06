@@ -123,7 +123,12 @@ export function cleanAndParseJson(text) {
   };
 }
 
-export async function handleOcr({ imageBase64, mimeType }) {
+/** Key count only — lets the batch scanner size its worker pool. */
+export function handleKeysInfo() {
+  return { status: 200, body: { keys: geminiKeys().length } };
+}
+
+export async function handleOcr({ imageBase64, mimeType, keyIndex }) {
   if (!imageBase64) return { status: 400, body: { error: "imageBase64 is required." } };
 
   const keys = geminiKeys();
@@ -132,6 +137,18 @@ export async function handleOcr({ imageBase64, mimeType }) {
       status: 500,
       body: { error: "GEMINI_API_KEY (or GEMINI_API_KEY_1..N) is not configured on the server." },
     };
+  }
+
+  // Batch mode: the caller pins a key index so parallel workers each burn a
+  // different key's quota. One model per call - the pool provides the speed.
+  let models = CANDIDATE_MODELS;
+  let pool = keys;
+  if (typeof keyIndex === "number" && Number.isInteger(keyIndex)) {
+    if (keyIndex < 0 || keyIndex >= keys.length) {
+      return { status: 400, body: { error: `keyIndex ${keyIndex} out of range (${keys.length} keys configured).` } };
+    }
+    pool = [keys[keyIndex]];
+    models = ["gemini-flash-latest"];
   }
 
   const payload = JSON.stringify({
@@ -151,24 +168,37 @@ export async function handleOcr({ imageBase64, mimeType }) {
   });
 
   // Race every key x model combination; the first clean structured read wins.
+  // Each attempt absorbs brief rate limits (429/503 with backoff) so a
+  // parallel batch does not turn free-tier spikes into failed scans.
   const attempts = [];
-  for (const key of keys) {
-    for (const model of CANDIDATE_MODELS) {
+  for (const key of pool) {
+    for (const model of models) {
       attempts.push(
         (async () => {
-          const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: payload,
-              signal: AbortSignal.timeout(8500),
-            },
-          );
-          if (!res.ok) throw new Error(`Gemini error ${res.status} on ${model}`);
-          const data = await res.json().catch(() => null);
-          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          return { ...cleanAndParseJson(text), model };
+          let wait = 1200;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            const res = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: payload,
+                signal: AbortSignal.timeout(8500),
+              },
+            );
+            if (res.ok) {
+              const data = await res.json().catch(() => null);
+              const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+              return { ...cleanAndParseJson(text), model };
+            }
+            if ((res.status === 429 || res.status === 500 || res.status === 503) && attempt < 3) {
+              await sleep(wait);
+              wait = Math.min(wait * 2, 6000);
+              continue;
+            }
+            throw new Error(`Gemini error ${res.status} on ${model}`);
+          }
+          throw new Error(`Gemini error on ${model}`);
         })(),
       );
     }
@@ -183,7 +213,7 @@ export async function handleOcr({ imageBase64, mimeType }) {
     return {
       status: 502,
       body: {
-        error: `Gemini Vision extraction failed across ${keys.length} key(s): ${lastError.message || "Unsupported model or API key error"}`,
+        error: `Gemini Vision extraction failed across ${pool.length} key(s): ${lastError.message || "Unsupported model or API key error"}`,
       },
     };
   }

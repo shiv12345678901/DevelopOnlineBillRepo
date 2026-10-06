@@ -52,7 +52,7 @@ export type ParsedExport = {
   totalMedia: number;
 };
 
-const MESSAGE_RE = /^\[(\d{1,2})\/(\d{1,2})\/(\d{2,4}),\s+(\d{1,2}):(\d{2}):(\d{2})\s*([AP]M)\]\s*([^:]+?):\s([\s\S]*)$/;
+const MESSAGE_RE = /^\[(\d{1,2})\/(\d{1,2})\/(\d{2,4}),\s+(\d{1,2}):(\d{2}):(\d{2})\s*([AaPp][Mm])\]\s*([^:]+?):\s([\s\S]*)$/;
 
 const CLEAR_RE = /\bclear(ed)?\b/i;
 const SUMMARY_HEAD_RE = /\(\s*(\d+)\s*members?\s*\)\s*[·\-–—]\s*(\d{4}-\d{2}-\d{2})\s*[·\-–—]\s*(\d{4}-\d{2}-\d{2})/;
@@ -101,27 +101,52 @@ function parseSummaryBlock(text: string): SummaryBlock | null {
 }
 
 export function parseChatMessages(text: string): WhatsAppMessage[] {
+  // Different phones export different date orders (9/19/26 M/D vs 20/4/2026
+  // D/M). Vote across every matched line: a component above 12 can only be a
+  // day, which settles the order for the whole file.
+  const matches: Array<RegExpMatchArray> = [];
+  let dayFirst = false;
+  let decided = false;
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = cleanText(rawLine);
+    if (!line) continue;
+    const match = line.match(MESSAGE_RE);
+    if (!match) continue;
+    if (!decided) {
+      const a = Number(match[1]);
+      const b = Number(match[2]);
+      if (a > 12) { dayFirst = true; decided = true; }
+      else if (b > 12) { dayFirst = false; decided = true; }
+      else if (matches.length > 60) decided = true;
+    }
+    matches.push(match);
+  }
+
   const messages: WhatsAppMessage[] = [];
+  let last: WhatsAppMessage | null = null;
   for (const rawLine of text.split(/\r?\n/)) {
     const line = cleanText(rawLine);
     if (!line) continue;
     const match = line.match(MESSAGE_RE);
     if (!match) {
-      const last = messages[messages.length - 1];
+      // Continuation of a multi-line message.
       if (last) last.text += `\n${line}`;
       continue;
     }
-    const [, m, d, y, hh, mm, ss, ampm, sender, body] = match;
+    const [, a, b, y, hh, mm, ss, ampm, sender, body] = match;
+    const month = dayFirst ? b : a;
+    const day = dayFirst ? a : b;
     let hour = Number(hh) % 12;
-    if (/PM/i.test(ampm)) hour += 12;
+    if (/p/i.test(ampm)) hour += 12;
     const clean = cleanText(body);
-    if (isSystemLine(clean)) continue;
-    messages.push({
-      date: toIso(m, d, y),
+    if (isSystemLine(clean)) { last = null; continue; }
+    last = {
+      date: toIso(String(month), String(day), y),
       time: `${String(hour).padStart(2, "0")}:${mm}:${ss}`,
       sender: sender.trim(),
       text: clean,
-    });
+    };
+    messages.push(last);
   }
   return messages;
 }
@@ -196,6 +221,18 @@ export function parseExport(chatText: string, mediaFiles: RawMedia[]): ParsedExp
   return { participants, segments, totalMedia: stamped.length };
 }
 
+/** WhatsApp exports are UTF-8 without media but often UTF-16 with media —
+ *  detect the encoding from the BOM or null-byte pattern before decoding. */
+function decodeChatFile(bytes: Uint8Array): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder("utf-16le").decode(bytes.slice(2));
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder("utf-16be").decode(bytes.slice(2));
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return new TextDecoder("utf-8").decode(bytes.slice(3));
+  let nulls = 0;
+  for (let i = 0; i < Math.min(bytes.length, 400); i++) if (bytes[i] === 0) nulls++;
+  if (nulls > 20) return new TextDecoder("utf-16le").decode(bytes);
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
 /** Zip source: chat.txt + media files straight from the archive. */
 export function parseWhatsAppZip(zipData: Uint8Array): ParsedExport {
   let entries: Record<string, Uint8Array>;
@@ -208,7 +245,7 @@ export function parseWhatsAppZip(zipData: Uint8Array): ParsedExport {
   if (!chatName) {
     throw new Error("No chat.txt found — export the chat from WhatsApp (with or without media) and try again.");
   }
-  const chatText = new TextDecoder("utf-8").decode(entries[chatName]);
+  const chatText = decodeChatFile(entries[chatName]);
   const mediaFiles: RawMedia[] = Object.entries(entries)
     .filter(([name]) => name !== chatName && isMediaName(name))
     .map(([name, data]) => ({

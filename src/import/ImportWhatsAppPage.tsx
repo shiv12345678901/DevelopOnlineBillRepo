@@ -1,12 +1,14 @@
 import { useMemo, useRef, useState } from "react";
 import { useEdgeSwipeBack, Icon } from "../App";
-import { resizeImage, scanReceipt, uploadImportedMedia, confidenceScore } from "../api";
+import { resizeImage, scanReceipt, uploadImportedMedia, fetchOcrKeyCount, confidenceScore } from "../api";
 import {
   parseWhatsAppZip,
   parseWhatsAppFolder,
   type ParsedExport,
   type Segment,
+  type RawMedia,
 } from "./whatsapp";
+import { normalizeOcrJson, parseTotalFromText, guessMerchant, type OcrJsonItem } from "./ocr-json";
 import {
   loadImportState,
   saveImportState,
@@ -62,14 +64,14 @@ function segmentKey(segment: Segment): string {
   return segment.summary?.rangeEnd ?? `${segment.start}_${segment.end}`;
 }
 
-export default function ImportWhatsAppPage({ members, activeCycleName, onClose, onImportSegment, onImportExpenses, onEnsureChatCycle, onImportMediaEntry }: {
+export default function ImportWhatsAppPage({ members, activeCycleName, onClose, onImportSegment, onImportExpenses, onEnsureChatCycle, onImportMediaBatch }: {
   members: string[];
   activeCycleName: string;
   onClose: () => void;
   onImportSegment: (segment: SegmentImport) => Promise<boolean>;
   onImportExpenses: (expenses: ImportedEntry[]) => Promise<boolean>;
   onEnsureChatCycle: (startsOn: string, name: string) => Promise<string | null>;
-  onImportMediaEntry: (cycleId: string, entry: ImportedEntry, savedName: string, file: File) => Promise<boolean>;
+  onImportMediaBatch: (cycleId: string, entries: ImportedEntry[]) => Promise<boolean>;
 }) {
   const swipe = useEdgeSwipeBack(onClose);
   const [parsed, setParsed] = useState<ParsedExport | null>(null);
@@ -77,9 +79,14 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
   const [error, setError] = useState("");
   const [importedKeys, setImportedKeys] = useState<string[]>([]);
   const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
+  const [ocrItems, setOcrItems] = useState<OcrJsonItem[] | null>(null);
+  const [ocrName, setOcrName] = useState("");
+  const ocrInputRef = useRef<HTMLInputElement>(null);
   const [review, setReview] = useState<ReviewItem[]>([]);
   const [accepted, setAccepted] = useState<AcceptedItem[]>([]);
   const [importing, setImporting] = useState(false);
+  const [workersActive, setWorkersActive] = useState(0);
+  const stopRef = useRef(false);
   const importStateRef = useRef<ImportState>(loadImportState());
   const fileRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
@@ -105,6 +112,8 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
       const result = parseWhatsAppZip(buffer);
       setParsed(result);
       setMapping(autoMap(collectNames(result), members));
+      restoreClassified(liveSegmentOf(result) as Segment);
+      void fetchOcrKeyCount();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read that export.");
     }
@@ -119,10 +128,49 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
       const result = await parseWhatsAppFolder(files);
       setParsed(result);
       setMapping(autoMap(collectNames(result), members));
+      restoreClassified(liveSegmentOf(result) as Segment);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read that folder.");
     }
   };
+
+  /** Rebuild review/accepted lists from already-classified images so an
+   *  interrupted scan resumes without paying for the same OCR twice. */
+  const restoreClassified = (segment: Segment) => {
+    const state = importStateRef.current;
+    const restoredReview: ReviewItem[] = [];
+    const restoredAccepted: AcceptedItem[] = [];
+    for (const file of segment.media) {
+      const sender = file.sender ?? "Unknown";
+      const date = file.date ?? "";
+      const fp = mediaFingerprint(file.name.replace(/^.*\//, ""), file.data?.length ?? file.file?.size ?? 0, sender);
+      const record = state.media[fp];
+      if (!record || record.status !== "classified" || !record.read) continue;
+      const payer = mapping[sender] ?? members[0] ?? "";
+      const blob = file.file ?? new File([file.data!.slice().buffer as ArrayBuffer], file.name, { type: file.name.endsWith(".png") ? "image/png" : "image/jpeg" });
+      const read = record.read;
+      if (read.isBankTransfer || !(read.amount > 0)) {
+        restoredReview.push({
+          fingerprint: fp, savedName: record.savedName, payer, date, file: blob,
+          reason: read.isBankTransfer ? "Looks like a personal transfer" : "No receipt total found",
+          extractedAmount: read.amount, importAmount: read.amount > 0 ? read.amount : null,
+        });
+      } else {
+        restoredAccepted.push({
+          fingerprint: fp, savedName: record.savedName, payer, amount: read.amount,
+          merchant: read.merchant || "Receipt", spentOn: date, file: blob,
+        });
+      }
+    }
+    if (restoredReview.length || restoredAccepted.length) {
+      setReview((current) => [...current, ...restoredReview]);
+      setAccepted((current) => [...current, ...restoredAccepted]);
+    }
+    return restoredReview.length + restoredAccepted.length;
+  };
+
+  const liveSegmentOf = (result: ParsedExport): Segment | null =>
+    result.segments.find((segment) => !segment.settled) ?? null;
 
   const settledSegments = useMemo(
     () => (parsed ? parsed.segments.filter((segment) => segment.settled && segment.summary) : []),
@@ -131,6 +179,21 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
   const liveSegment = useMemo(
     () => (parsed ? parsed.segments.find((segment) => !segment.settled) ?? null : null),
     [parsed],
+  );
+
+  /** Every media file in the export, ascending by name, paired with the
+   *  user's OCR result at the same index. */
+  const matchedMedia = useMemo(() => {
+    if (!parsed || !ocrItems) return null;
+    const sorted = [...parsed.segments.flatMap((segment) => segment.media)].sort((a, b) =>
+      a.name.replace(/^.*\//, "").localeCompare(b.name.replace(/^.*\//, ""), undefined, { numeric: true }),
+    );
+    return sorted.map((file, index) => ({ file, result: ocrItems[index] ?? { text: "" } }));
+  }, [parsed, ocrItems]);
+
+  const readyCount = useMemo(
+    () => (matchedMedia ? matchedMedia.filter(({ result }) => (result.amount ?? parseTotalFromText(result.text) ?? 0) > 0).length : 0),
+    [matchedMedia],
   );
 
   const isAlreadyImported = (segment: Segment): boolean => {
@@ -165,7 +228,10 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
     }
   };
 
-  /** Scan every never-processed image in the live segment through the auditor. */
+  /** Batch scanner: one worker per Gemini key, each pulling the next
+   *  unprocessed image turn by turn. Originals upload to Supabase under
+   *  their canonical names as they are classified; a stopped run resumes
+   *  where it left off because only imported images are marked done. */
   const scanLiveMedia = async (segment: Segment) => {
     const state = importStateRef.current;
     const fresh = segment.media.filter((file) => {
@@ -177,12 +243,19 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
       return;
     }
 
+    const keyCount = await fetchOcrKeyCount();
+    const workerCount = Math.min(3, Math.max(1, keyCount));
+    stopRef.current = false;
+    setWorkersActive(workerCount);
     setScanProgress({ done: 0, total: fresh.length });
     const newReview: ReviewItem[] = [];
     const newAccepted: AcceptedItem[] = [];
     const seqBySecond = new Map<string, number>();
+    let cursor = 0;
+    // Classification persists the moment it lands, so a reload or Stop
+    // never pays for the same OCR twice.
 
-    for (const file of fresh) {
+    const processOne = async (file: RawMedia, workerId: number) => {
       const sender = file.sender ?? "Unknown";
       const date = file.date ?? "";
       const time = file.time ?? "";
@@ -190,15 +263,20 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
       const blob = file.file ?? new File([file.data!.slice().buffer as ArrayBuffer], file.name, { type: file.name.endsWith(".png") ? "image/png" : "image/jpeg" });
       try {
         const image = await resizeImage(blob, 1600, 0.9);
-        const read = await scanReceipt(image.imageBase64, image.mimeType);
         const secondKey = `${sender}${date}${time}`;
         const seq = (seqBySecond.get(secondKey) ?? 0) + 1;
         seqBySecond.set(secondKey, seq);
         const savedName = canonicalName(mapping[sender] ?? sender, date, time, file.name, seq);
         const payer = mapping[sender] ?? members[0] ?? "";
 
+        // The user's export uploads live in the bucket under the original
+        // WhatsApp file names; the duplicate-tolerant upload fills in any
+        // image that is not stored yet.
+        const storagePath = file.name.replace(/^.*\//, "");
+        const imagePath = await uploadImportedMedia(storagePath, blob, savedName.endsWith(".png") ? "image/png" : "image/jpeg");
+        const read = await scanReceipt(image.imageBase64, image.mimeType, workerId % keyCount);
+
         if (read.isBankTransfer || !(read.amount > 0)) {
-          // Personal transfer or unreadable: needs a human decision.
           newReview.push({
             fingerprint: fp,
             savedName,
@@ -209,6 +287,11 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
             extractedAmount: read.amount,
             importAmount: read.amount > 0 ? read.amount : null,
           });
+          state.media[fp] = {
+            status: "classified", savedName,
+            read: { amount: read.amount, merchant: read.merchant, isBankTransfer: read.isBankTransfer, confidence: read.confidence, isBlurry: read.isBlurry },
+          };
+          persistState();
         } else {
           newAccepted.push({
             fingerprint: fp,
@@ -219,27 +302,61 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
             spentOn: date,
             file: blob,
           });
-          state.media[fp] = { status: "imported", savedName };
+          state.media[fp] = {
+            status: "classified", savedName,
+            read: { amount: read.amount, merchant: read.merchant, isBankTransfer: read.isBankTransfer, confidence: read.confidence, isBlurry: read.isBlurry },
+          };
           persistState();
         }
       } catch {
-        newReview.push({
-          fingerprint: fp,
-          savedName: file.name,
-          payer: mapping[sender] ?? sender,
-          date,
-          file: blob,
-          reason: "OCR failed on this image",
-          extractedAmount: 0,
-          importAmount: null,
-        });
+        // One quiet retry before giving up - transient spikes are common.
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 2500));
+          const image = await resizeImage(blob, 1600, 0.9);
+          const read = await scanReceipt(image.imageBase64, image.mimeType, workerId % keyCount);
+          const secondKey = `${sender}${date}${time}`;
+          const seq = (seqBySecond.get(secondKey) ?? 0) + 1;
+          seqBySecond.set(secondKey, seq);
+          const savedName = canonicalName(mapping[sender] ?? sender, date, time, file.name, seq);
+          const retryPayer = mapping[sender] ?? members[0] ?? "";
+          if (read.isBankTransfer || !(read.amount > 0)) {
+            newReview.push({
+              fingerprint: fp, savedName, payer: retryPayer, date, file: blob,
+              reason: read.isBankTransfer ? "Looks like a personal transfer" : "No receipt total found",
+              extractedAmount: read.amount, importAmount: read.amount > 0 ? read.amount : null,
+            });
+          } else {
+            newAccepted.push({
+              fingerprint: fp, savedName, payer: retryPayer, amount: read.amount,
+              merchant: read.merchant || "Receipt", spentOn: date, file: blob,
+            });
+          }
+        } catch {
+          newReview.push({
+            fingerprint: fp, savedName: file.name, payer: mapping[sender] ?? sender, date, file: blob,
+            reason: "OCR failed on this image", extractedAmount: 0, importAmount: null,
+          });
+        }
       }
       setScanProgress({ done: newAccepted.length + newReview.length, total: fresh.length });
       setReview([...newReview]);
       setAccepted([...newAccepted]);
-    }
+    };
+
+    const worker = async (workerId: number) => {
+      while (!stopRef.current) {
+        if (cursor >= fresh.length) return;
+        const file = fresh[cursor++];
+        await processOne(file, workerId);
+      }
+    };
+
+    await Promise.all(Array.from({ length: workerCount }, (_, id) => worker(id)));
+    setWorkersActive(0);
     setScanProgress(null);
   };
+
+  const stopScan = () => { stopRef.current = true; };
 
   const markExcluded = (item: ReviewItem) => {
     const state = importStateRef.current;
@@ -258,6 +375,45 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
     setReview((current) => current.filter((entry) => entry.fingerprint !== item.fingerprint));
   };
 
+  /** Link the user's OCR JSON to the exported images and store every entry
+   *  that carries a total. Images are referenced from the grocery-receipts
+   *  bucket under their original WhatsApp file names. */
+  const importOcrJson = async () => {
+    if (!matchedMedia || !liveSegment) return;
+    setImporting(true);
+    try {
+      const cycleId = await onEnsureChatCycle(liveSegment.start, `Chat ${shortDate(liveSegment.start)} – ongoing`);
+      if (!cycleId) throw new Error("Could not prepare the import cycle.");
+      const entries: ImportedEntry[] = [];
+      const fingerprints: string[] = [];
+      for (const { file, result } of matchedMedia) {
+        const sender = file.sender ?? "Unknown";
+        const date = file.date ?? "";
+        const parsedTotal = result.amount ?? parseTotalFromText(result.text);
+        if (parsedTotal === null || !(parsedTotal > 0)) continue;
+        const fp = mediaFingerprint(file.name.replace(/^.*\//, ""), file.data?.length ?? file.file?.size ?? 0, sender);
+        const payer = mapping[sender] ?? members[0] ?? "";
+        if (!payer) continue;
+        const merchant = result.merchant ?? guessMerchant(result.text) ?? "Receipt";
+        entries.push({ payer, amount: parsedTotal, merchant, spentOn: date, note: `Imported from WhatsApp — ${file.name}`, savedName: file.name.replace(/^.*\//, "") });
+        fingerprints.push(fp);
+      }
+      if (!entries.length) throw new Error("None of the OCR results contained a usable total.");
+      const ok = await onImportMediaBatch(cycleId, entries);
+      if (!ok) throw new Error("The database rejected the import.");
+      const state = importStateRef.current;
+      fingerprints.forEach((fp, index) => {
+        state.media[fp] = { status: "imported", savedName: entries[index].savedName ?? "", cycleId };
+      });
+      persistState();
+      setError("");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Import failed.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   /** Push accepted items into a chat-import cycle: upload originals under
    *  canonical names, then create one entry per image. Idempotent —
    *  fingerprints are marked the moment an entry is written. */
@@ -269,7 +425,8 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
     try {
       const cycleId = await onEnsureChatCycle(live.start, `Chat ${shortDate(live.start)} – ongoing`);
       if (!cycleId) throw new Error("Could not prepare the import cycle.");
-      let importedCount = 0;
+      const entries: ImportedEntry[] = [];
+      const storagePaths: string[] = [];
       for (const item of accepted) {
         const storagePath = `imported/${item.savedName}`;
         const uploaded = await uploadImportedMedia(
@@ -277,7 +434,8 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
           item.file,
           item.savedName.endsWith(".png") ? "image/png" : "image/jpeg",
         );
-        const entry: ImportedEntry = {
+        storagePaths.push(uploaded ? storagePath : "");
+        entries.push({
           payer: item.payer,
           amount: item.amount,
           merchant: item.merchant,
@@ -285,21 +443,20 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
           note: `Imported from WhatsApp — ${item.savedName}`,
           savedName: item.savedName,
           imagePath: uploaded ? storagePath : undefined,
-        };
-        const ok = await onImportMediaEntry(cycleId, entry, item.savedName, item.file);
-        if (ok) {
-          importedCount++;
-          const state = importStateRef.current;
+        });
+      }
+      const ok = await onImportMediaBatch(cycleId, entries);
+      if (ok) {
+        const state = importStateRef.current;
+        accepted.forEach((item, index) => {
           state.media[item.fingerprint] = {
             status: "imported",
             savedName: item.savedName,
             cycleId,
-            storagePath: uploaded ? `imported/${item.savedName}` : undefined,
+            storagePath: storagePaths[index] || undefined,
           };
-          persistState();
-        }
-      }
-      if (importedCount) {
+        });
+        persistState();
         setAccepted([]);
         setError("");
       } else {
@@ -348,6 +505,23 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
             </button>
             <button className="insight-row action-row" onClick={() => folderRef.current?.click()}>
               Or choose an extracted folder
+            </button>
+            <input ref={ocrInputRef} className="visually-hidden" type="file" accept=".json,application/json"
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                if (!file) { setOcrItems(null); event.target.value = ""; return; }
+                try {
+                  const items = normalizeOcrJson(JSON.parse(await file.text()));
+                  setOcrItems(items.length ? items : null);
+                  setOcrName(file.name);
+                } catch {
+                  setOcrItems(null);
+                  setError("That OCR file is not valid JSON.");
+                }
+                event.target.value = "";
+              }} />
+            <button className="insight-row action-row" onClick={() => ocrInputRef.current?.click()}>
+              {ocrItems ? `OCR results: ${ocrName} (${ocrItems.length})` : "Add OCR results (.json) — skips scanning"}
             </button>
           </div>
         </section>
@@ -427,8 +601,9 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
                     <div className="insight-row">
                       <div className="insight-copy">
                         <strong>Scanning {scanProgress.done} / {scanProgress.total}…</strong>
-                        <i>Gemini reads each image; transfers go to review below</i>
+                        <i>{workersActive > 1 ? `${workersActive} Gemini keys reading in parallel` : "Gemini is reading each image"} · originals upload to Supabase</i>
                       </div>
+                      <button className="review-exclude" onClick={() => stopScan()}>Stop</button>
                     </div>
                   ) : review.length === 0 && accepted.length === 0 ? (
                     <button className="insight-row action-row" onClick={() => void scanLiveMedia(liveSegment)}>
@@ -478,6 +653,42 @@ export default function ImportWhatsAppPage({ members, activeCycleName, onClose, 
                     {importing ? "Importing…" : `Import ${accepted.length} expenses`}
                   </button>
                 </div>
+              </section>
+            )}
+
+            {matchedMedia && (
+              <section className="push-group">
+                <p className="settings-group-label">OCR results linked · {matchedMedia.length} images</p>
+                <div className="settings-list">
+                  {matchedMedia.slice(0, 8).map(({ file, result }, index) => {
+                    const sender = file.sender ?? "Unknown";
+                    const date = file.date ?? "";
+                    const total = result.amount ?? parseTotalFromText(result.text);
+                    const merchant = result.merchant ?? guessMerchant(result.text) ?? "Receipt";
+                    return (
+                      <div className="insight-row" key={file.name + index}>
+                        <div className="insight-copy">
+                          <strong>{merchant} · {mapping[sender] ?? sender}</strong>
+                          <i>{file.name.replace(/^.*\//, "")} · {shortDate(date)}</i>
+                        </div>
+                        <span className="insight-value">{total ? money(total) : "—"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="settings-list">
+                  <button
+                    className="insight-row action-row"
+                    disabled={importing}
+                    onClick={() => void importOcrJson()}
+                  >
+                    {importing ? "Importing…" : `Save all with a total (${readyCount}) to “${activeCycleName}”`}
+                  </button>
+                </div>
+                <p className="guide-footnote with-icon">
+                  <Icon name="refresh" size={15} />
+                  Images without a recognized total stay out of the ledger and can be added manually later.
+                </p>
               </section>
             )}
 

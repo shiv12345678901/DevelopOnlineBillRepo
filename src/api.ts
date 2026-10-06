@@ -24,7 +24,7 @@ const supabase = createClient(
 );
 
 const ACTIVE_KEY = "rockdale-active-cycle";
-const STORAGE_BUCKET = "receipts";
+const STORAGE_BUCKET = "grocery-receipts";
 const storagePublicBase = `https://${projectId}.supabase.co/storage/v1/object/public/${STORAGE_BUCKET}/`;
 
 /**
@@ -248,15 +248,27 @@ export type ScanRead = {
   model: string;
 };
 
-export async function scanReceipt(imageBase64: string, mimeType: string): Promise<ScanRead> {
+export async function scanReceipt(imageBase64: string, mimeType: string, keyIndex?: number): Promise<ScanRead> {
   const response = await fetch("/api/ocr", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imageBase64, mimeType }),
+    body: JSON.stringify(keyIndex === undefined ? { imageBase64, mimeType } : { imageBase64, mimeType, keyIndex }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || `OCR failed (${response.status})`);
   return body as ScanRead;
+}
+
+/** How many Gemini keys the server holds - the batch scanner sizes its
+ *  parallel worker pool to this. */
+export async function fetchOcrKeyCount(): Promise<number> {
+  try {
+    const response = await fetch("/api/ocr");
+    const body = await response.json().catch(() => ({}));
+    return typeof body.keys === "number" && body.keys > 0 ? body.keys : 1;
+  } catch {
+    return 1;
+  }
 }
 
 /** Maps the auditor's qualitative grade to the numeric confidence the ledger stores. */
@@ -318,12 +330,22 @@ export async function savePreferences(deviceId: string, patch: Partial<Preferenc
 /** Uploads an imported chat image under its canonical name; null when the
  *  receipts bucket is not set up (entry then imports without an image). */
 export async function uploadImportedMedia(storagePath: string, blob: Blob, contentType: string): Promise<string | null> {
+  // Raw fetch with a hard 15s abort: a hung storage request must never stall
+  // the parallel scanner. 409 (already stored) counts as success.
   try {
-    const { error } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(storagePath, blob, { contentType, cacheControl: "31536000", upsert: false });
-    if (error) return null;
-    return `${storagePublicBase}${storagePath}`;
+    const res = await fetch(`https://${projectId}.supabase.co/storage/v1/object/${STORAGE_BUCKET}/${storagePath}`, {
+      method: "POST",
+      headers: {
+        apikey: publicAnonKey,
+        Authorization: `Bearer ${publicAnonKey}`,
+        "Content-Type": contentType,
+        "Cache-Control": "31536000",
+      },
+      body: blob,
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.ok || res.status === 409) return `${storagePublicBase}${storagePath}`;
+    return null;
   } catch {
     return null;
   }

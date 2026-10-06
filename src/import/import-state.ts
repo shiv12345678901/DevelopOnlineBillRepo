@@ -7,12 +7,21 @@
 
 const STATE_KEY = "rockdale-import-state";
 
-export type MediaStatus = "imported" | "excluded";
+export type MediaStatus = "classified" | "imported" | "excluded";
 
 export type MediaRecord = {
   status: MediaStatus;
   /** Canonical stored name: Sender_YYYY-MM-DD_HH-MM-SS-mmm.ext */
   savedName: string;
+  /** The auditor's verdict, persisted at scan time so an interrupted run
+   *  never pays for the same OCR twice. */
+  read?: {
+    amount: number;
+    merchant: string;
+    isBankTransfer: boolean;
+    confidence: "HIGH" | "MEDIUM" | "LOW";
+    isBlurry: boolean;
+  };
   /** Bucket path when the image was uploaded (receipts bucket). */
   storagePath?: string;
   cycleId?: string;

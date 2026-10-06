@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import { readFileSync } from 'node:fs'
-import { handleOcr } from './api/ocr-handler.mjs'
+import { handleOcr, handleKeysInfo } from './api/ocr-handler.mjs'
 
 import siteConfiguration from './.figma/make/site.json'
 
@@ -29,6 +29,13 @@ function ocrDevServer(): Plugin {
     apply: 'serve',
     configureServer(server) {
       const ocrEndpoint = (handler: (body: any) => Promise<{ status: number; body: any }>) => (req: any, res: any) => {
+        if (req.method === 'GET') {
+          const info = handleKeysInfo()
+          res.statusCode = info.status
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(info.body))
+          return
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405
           res.end(JSON.stringify({ error: 'POST only' }))

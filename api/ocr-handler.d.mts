@@ -1,6 +1,7 @@
 export declare function handleOcr(body: {
   imageBase64?: string;
   mimeType?: string;
+  keyIndex?: number;
 }): Promise<{
   status: number;
   body:
@@ -17,3 +18,4 @@ export declare function handleOcr(body: {
 }>;
 
 export declare function cleanAndParseJson(text: string): Record<string, unknown>;
+export declare function handleKeysInfo(): { status: number; body: { keys: number } };

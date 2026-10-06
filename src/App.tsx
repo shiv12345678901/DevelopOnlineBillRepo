@@ -1029,6 +1029,33 @@ export default function App() {
     }
   };
 
+  /** One batch insert for the OCR-JSON import: every image with a total
+   *  becomes a ledger entry in the chat-import cycle. */
+  const importMediaBatch = async (cycleId: string, entries: ImportedEntry[]): Promise<boolean> => {
+    setSyncStatus("saving");
+    try {
+      const created = await ledgerRepository.createEntries<LedgerEntry>(entries.map((entry) => ({
+        cycleId,
+        payer: entry.payer,
+        amount: entry.amount,
+        merchant: entry.merchant,
+        note: entry.note,
+        spentOn: entry.spentOn,
+        confidence: 1,
+        receiptUrl: entry.imagePath,
+      })));
+      setEntries((current) => [...created, ...current]);
+      setSyncStatus("online");
+      markSynced();
+      flash(`${created.length} imported`);
+      return true;
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "Could not import.");
+      return false;
+    }
+  };
+
   /** Import scanned chat-media expenses into the active cycle. */
   const importWhatsAppExpenses = async (expenses: ImportedEntry[]): Promise<boolean> => {
     if (!cycle || !expenses.length) return false;
@@ -1216,7 +1243,7 @@ export default function App() {
           onImportSegment={importWhatsAppSegment}
           onImportExpenses={importWhatsAppExpenses}
           onEnsureChatCycle={ensureChatCycle}
-          onImportMediaEntry={importMediaEntry}
+          onImportMediaBatch={importMediaBatch}
         />
       )}
 
