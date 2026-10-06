@@ -1001,3 +1001,8 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .ocr-lines .insight-row { min-height: 0; padding: 9px 15px; }
 .ocr-line { color: var(--ink); font-size: .82rem; font-variant-numeric: tabular-nums; }
 .ocr-error { color: #ff453a; font-size: .84rem; }
+
+/* WhatsApp import page */
+.mapping-list { margin-top: -10px; }
+.mapping-list .insight-row span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mapping-select select { width: 120px; height: 34px; padding: 0 6px; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; background: var(--card); font-size: .8rem; }

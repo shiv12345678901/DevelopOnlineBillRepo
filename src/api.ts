@@ -315,6 +315,20 @@ export async function savePreferences(deviceId: string, patch: Partial<Preferenc
   }
 }
 
+/** Uploads an imported chat image under its canonical name; null when the
+ *  receipts bucket is not set up (entry then imports without an image). */
+export async function uploadImportedMedia(storagePath: string, blob: Blob, contentType: string): Promise<string | null> {
+  try {
+    const { error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(storagePath, blob, { contentType, cacheControl: "31536000", upsert: false });
+    if (error) return null;
+    return `${storagePublicBase}${storagePath}`;
+  } catch {
+    return null;
+  }
+}
+
 /** Downscales an image file in-browser and returns base64 JPEG for upload. */
 export async function resizeImage(file: File, maxSide = 1600, quality = 0.84) {
   const bitmap = await createImageBitmap(file);

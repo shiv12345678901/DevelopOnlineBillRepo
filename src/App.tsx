@@ -4,6 +4,7 @@ import { applyTheme, getThemePref, watchSystemTheme, type ThemePref } from "./th
 import { loadLedgerCache, saveLedgerCache } from "./ledger-cache";
 import { resizeImage } from "./api";
 import OcrScannerSheet from "./ocr-scanner/OcrScannerSheet";
+import ImportWhatsAppPage, { type ImportedEntry, type SegmentImport } from "./import/ImportWhatsAppPage";
 
 type Tab = "home" | "settle" | "camera" | "receipts" | "settings";
 
@@ -361,6 +362,7 @@ export default function App() {
   const [editHousehold, setEditHousehold] = useState(false);
   const [editCycle, setEditCycle] = useState<Cycle | null>(null);
   const [showOcrScanner, setShowOcrScanner] = useState(false);
+  const [showImportPage, setShowImportPage] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   // False until the first successful fetch — the initial load shows the
@@ -378,7 +380,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"loading" | "online" | "saving" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId) || showCyclesPage || editHousehold || Boolean(editCycle) || showOcrScanner;
+  const overlayOpen = pending.length > 0 || showNewCycle || sheetExit || Boolean(editingEntry) || Boolean(confirmRequest) || showInstallGuide || Boolean(syncError) || Boolean(detailCycleId) || showCyclesPage || editHousehold || Boolean(editCycle) || showOcrScanner || showImportPage;
 
   const cycle = cycles.find((item) => item.id === activeId) ?? cycles[0];
 
@@ -957,6 +959,103 @@ export default function App() {
 
   const installApp = () => setShowInstallGuide(true);
 
+  /** Import a settled WhatsApp period as a closed cycle with its settlements. */
+  const importWhatsAppSegment = async (payload: SegmentImport): Promise<boolean> => {
+    setSyncStatus("saving");
+    try {
+      const created = await ledgerRepository.createCycle<Cycle>({ name: payload.name, members: payload.members, startsOn: payload.startsOn, endsOn: payload.endsOn });
+      if (payload.entries.length) {
+        const createdEntries = await ledgerRepository.createEntries<LedgerEntry>(payload.entries.map((entry) => ({
+          cycleId: created.id,
+          payer: entry.payer,
+          amount: entry.amount,
+          merchant: entry.merchant,
+          note: entry.note,
+          spentOn: entry.spentOn,
+          confidence: 1,
+        })));
+        setEntries((current) => [...createdEntries, ...current]);
+      }
+      setCycles((current) => [created, ...current]);
+      setSyncStatus("online");
+      markSynced();
+      flash("Settled cycle imported");
+      return true;
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "Could not import the cycle.");
+      return false;
+    }
+  };
+
+  /** Idempotently create (or find) the open cycle that receives chat-media
+   *  expenses for a live period, so repeated exports append to the same one. */
+  const ensureChatCycle = async (startsOn: string, name: string): Promise<string | null> => {
+    const existing = cycles.find((item) => item.name === name);
+    if (existing) return existing.id;
+    try {
+      const created = await ledgerRepository.createCycle<Cycle>({ name, members: cycle?.members ?? [], startsOn, endsOn: null });
+      setCycles((current) => [created, ...current]);
+      markSynced();
+      return created.id;
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Could not create the import cycle.");
+      return null;
+    }
+  };
+
+  /** One imported chat image = one ledger entry; the original is uploaded
+   *  under its canonical name when the receipts bucket is available. */
+  const importMediaEntry = async (cycleId: string, entry: ImportedEntry, savedName: string, file: File): Promise<boolean> => {
+    try {
+      const created = await ledgerRepository.createEntries<LedgerEntry>([{
+        cycleId,
+        payer: entry.payer,
+        amount: entry.amount,
+        merchant: entry.merchant,
+        note: entry.note,
+        spentOn: entry.spentOn,
+        confidence: 0.9,
+        receiptUrl: entry.imagePath,
+      }]);
+      setEntries((current) => [...created, ...current]);
+      markSynced();
+      void savedName;
+      void file;
+      return true;
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Could not import an expense.");
+      return false;
+    }
+  };
+
+  /** Import scanned chat-media expenses into the active cycle. */
+  const importWhatsAppExpenses = async (expenses: ImportedEntry[]): Promise<boolean> => {
+    if (!cycle || !expenses.length) return false;
+    setSyncStatus("saving");
+    try {
+      const created = await ledgerRepository.createEntries<LedgerEntry>(expenses.map((entry) => ({
+        cycleId: cycle.id,
+        payer: entry.payer,
+        amount: entry.amount,
+        merchant: entry.merchant,
+        note: entry.note,
+        spentOn: entry.spentOn,
+        confidence: 0.9,
+      })));
+      setEntries((current) => [...created, ...current]);
+      setSyncStatus("online");
+      markSynced();
+      flash(`${created.length} expense${created.length === 1 ? "" : "s"} imported`);
+      return true;
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "Could not import the expenses.");
+      return false;
+    }
+  };
+
+
   const title = tab === "home" ? greeting() : tab === "settle" ? "Settle up" : tab === "receipts" ? "Receipts" : "Settings";
 
   return (
@@ -1016,6 +1115,7 @@ export default function App() {
             onEditHousehold={() => setEditHousehold(true)}
             household={household}
             onOpenOcrScanner={() => setShowOcrScanner(true)}
+            onImportWhatsApp={() => setShowImportPage(true)}
             syncStatus={syncStatus}
             themePref={themePref}
             onThemeChange={setThemePref}
@@ -1107,6 +1207,18 @@ export default function App() {
       {showInstallGuide && <InstallGuide onClose={() => setShowInstallGuide(false)} />}
 
       {showOcrScanner && <OcrScannerSheet onClose={() => setShowOcrScanner(false)} />}
+
+      {showImportPage && (
+        <ImportWhatsAppPage
+          members={cycle?.members ?? []}
+          activeCycleName={cycle?.name ?? "the active cycle"}
+          onClose={() => setShowImportPage(false)}
+          onImportSegment={importWhatsAppSegment}
+          onImportExpenses={importWhatsAppExpenses}
+          onEnsureChatCycle={ensureChatCycle}
+          onImportMediaEntry={importMediaEntry}
+        />
+      )}
 
       {showCyclesPage && (
         <CyclesPage
@@ -1778,7 +1890,7 @@ function EditSheet({ entry, members, saving, onClose, onSave }: {
   );
 }
 
-function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall, onOpenCycle, onOpenCycles, onEditHousehold, household, onOpenOcrScanner, syncStatus, themePref, onThemeChange, lastSyncedAt, isRefreshing }: {
+function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall, onOpenCycle, onOpenCycles, onEditHousehold, household, onOpenOcrScanner, onImportWhatsApp, syncStatus, themePref, onThemeChange, lastSyncedAt, isRefreshing }: {
   cycles: Cycle[];
   activeId: string | null;
   onNew: () => void;
@@ -1789,6 +1901,7 @@ function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall,
   onOpenCycles: () => void;
   onEditHousehold: () => void;
   household: string;
+  onImportWhatsApp: () => void;
   onOpenOcrScanner: () => void;
   syncStatus: "loading" | "online" | "saving" | "error";
   themePref: ThemePref;
@@ -1910,6 +2023,11 @@ function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall,
             <span className="settings-row-copy"><strong>Export Ledger</strong></span>
             <Icon name="chevron" size={17} />
           </button>
+          <button className="settings-row" onClick={onImportWhatsApp}>
+            <span className="settings-icon settings-icon-indigo"><Icon name="arrow" size={19} /></span>
+            <span className="settings-row-copy"><strong>Import WhatsApp Export</strong><small>Rebuild settlements from chat</small></span>
+            <Icon name="chevron" size={17} />
+          </button>
           <button className="settings-row" onClick={onInstall}>
             <span className="settings-icon settings-icon-blue"><Icon name="home" size={19} /></span>
             <span className="settings-row-copy"><strong>Add to Home Screen</strong></span>
@@ -1927,7 +2045,7 @@ function SettingsView({ cycles, activeId, onNew, onRefresh, onExport, onInstall,
  * threshold it slides out and pops, otherwise it springs back. Vertical
  * scrolling is preserved via an axis lock on the first movement.
  */
-function useEdgeSwipeBack(onClose: () => void) {
+export function useEdgeSwipeBack(onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
