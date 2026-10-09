@@ -12,6 +12,7 @@ export default function App() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
   const [loading, setLoading] = useState(true);
+  const [online, setOnline] = useState(navigator.onLine);
   const [collapsed, setCollapsed] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
   const lastY = useRef(0);
@@ -41,6 +42,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     Promise.all([fetchCurrentSettlement(), fetchReceipts(), fetchPeriods()])
       .then(([s, r, p]) => { setSettlement(s); setReceipts(r); setPeriods(p); })
       .finally(() => setLoading(false));
@@ -55,6 +67,7 @@ export default function App() {
       <header className="nav-bar">
         <div className="nav-title">{tabTitle}</div>
       </header>
+      {!online && <div className="offline-banner">Offline — showing last synced data</div>}
 
       <main key={tab} ref={mainRef} className="tab-enter">
         {loading ? (

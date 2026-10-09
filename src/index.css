@@ -234,3 +234,14 @@ main { flex: 1; padding: 8px 16px 120px; position: relative; z-index: 1; }
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
   .glass-shine { display: none; }
 }
+
+.offline-banner {
+  position: sticky; top: 0; z-index: 19;
+  text-align: center; font-size: 13px; font-weight: 600;
+  padding: 8px 16px;
+  background: #FF9F0A; color: #000;
+  animation: tabIn .3s ease;
+}
+@media (prefers-color-scheme: dark) {
+  .offline-banner { background: #FF9F0A; color: #000; }
+}
