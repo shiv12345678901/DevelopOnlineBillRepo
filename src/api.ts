@@ -1,365 +1,70 @@
 import { createClient } from "@supabase/supabase-js";
-import { projectId, publicAnonKey } from "../utils/supabase/info";
 
-/**
- * Data layer — talks to the project's Supabase tables directly:
- *   settlement_cycles (id, name, members, starts_on, ends_on)
- *   grocery_ledger    (id, cycle_id, payer, amount, merchant, note,
- *                      ai_confidence, spent_on)
- *
- * The active cycle is a per-device preference kept in localStorage; the
- * database holds no global pointer so two people can use the app at once.
- */
+const SUPABASE_URL = "https://oisbygwncnperuxfkvfd.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pc2J5Z3duY25wZXJ1eGZrdmZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTExNzg0ODcsImV4cCI6MjEwNjc1NDQ4N30.Zp4mhbNt2DPT1ricYwf0BlWbEz22pJBk4AfQoFDQUyQ";
 
-export type LedgerSnapshot<Cycle, Entry> = {
-  cycles: Cycle[];
-  entries: Entry[];
-  activeId: string | null;
-};
-
-const supabase = createClient(
-  `https://${projectId}.supabase.co`,
-  publicAnonKey,
-  { auth: { persistSession: false } },
-);
-
-const ACTIVE_KEY = "rockdale-active-cycle";
-const STORAGE_BUCKET = "grocery-receipts";
-const storagePublicBase = `https://${projectId}.supabase.co/storage/v1/object/public/${STORAGE_BUCKET}/`;
-
-/**
- * Uploads a receipt image to the public `receipts` storage bucket and
- * returns its public URL, or null when the bucket isn't set up yet
- * (see supabase/storage-setup.sql) — callers then fall back to storing
- * the compressed image inline in the database.
- */
-export async function uploadReceipt(cycleId: string, imageBase64: string, mimeType: string): Promise<string | null> {
-  try {
-    const binary = atob(imageBase64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const path = `cycle-${cycleId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
-    const { error } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(path, bytes, { contentType: mimeType, cacheControl: "31536000", upsert: false });
-    if (error) return null;
-    return `${storagePublicBase}${path}`;
-  } catch {
-    return null;
-  }
-}
-
-const toCycle = (row: Record<string, unknown>) => ({
-  id: String(row.id),
-  name: String(row.name),
-  members: (row.members as string[]) ?? [],
-  startsOn: String(row.starts_on),
-  endsOn: (row.ends_on as string | null) ?? null,
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: false },
 });
 
-const toEntry = (row: Record<string, unknown>) => ({
-  id: String(row.id),
-  cycleId: String(row.cycle_id),
-  payer: String(row.payer),
-  amount: Number(row.amount),
-  merchant: (row.merchant as string | null) ?? undefined,
-  note: (row.note as string | null) ?? "",
-  spentOn: String(row.spent_on),
-  confidence: Number(row.ai_confidence ?? 0),
-  receiptUrl: (row.receipt_path as string | null)
-    ? `${storagePublicBase}${String(row.receipt_path)}`
-    : ((row.receipt_image as string | null) ?? undefined),
-});
-
-/**
- * PostgREST caps unpaginated responses (Supabase default: 1000 rows) — past
- * that, older rows silently disappear. Walk the table with range windows
- * until a short page marks the end. buildPage() must return a FRESH query
- * builder for every page; builders are single-use.
- */
-const PAGE_SIZE = 1000;
-
-async function fetchAllRows<T>(buildPage: () => { range(from: number, to: number): PromiseLike<{ data: T[] | null; error: { message: string } | null }> }): Promise<T[]> {
-  const rows: T[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await buildPage().range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(error.message);
-    const chunk = data ?? [];
-    rows.push(...chunk);
-    if (chunk.length < PAGE_SIZE) return rows;
-  }
-}
-
-export const ledgerRepository = {
-  async fetch<Cycle, Entry>(): Promise<LedgerSnapshot<Cycle, Entry>> {
-    const [cyclesRows, entriesRows] = await Promise.all([
-      // .retry(false): the app layer owns retry policy (quiet retries on
-      // initial load, a visible error dialog on manual refresh) — without
-      // this, postgrest-js adds its own 1s/2s/4s backoff on top.
-      fetchAllRows<any>(() =>
-        supabase
-          .from("settlement_cycles")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .retry(false),
-      ),
-      fetchAllRows<any>(() =>
-        supabase
-          .from("grocery_ledger")
-          .select("*")
-          .order("spent_on", { ascending: false })
-          .order("id", { ascending: false })
-          .retry(false),
-      ),
-    ]);
-
-    return {
-      cycles: (cyclesRows ?? []).map(toCycle) as unknown as Cycle[],
-      entries: (entriesRows ?? []).map(toEntry) as unknown as Entry[],
-      activeId: localStorage.getItem(ACTIVE_KEY),
-    };
-  },
-
-  async createCycle<Cycle>(input: Record<string, unknown>) {
-    const { data, error } = await supabase
-      .from("settlement_cycles")
-      .insert({
-        name: input.name,
-        members: input.members,
-        starts_on: input.startsOn,
-        ends_on: input.endsOn ?? null,
-      })
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    return toCycle(data) as unknown as Cycle;
-  },
-
-  async updateCycle<Cycle>(id: string, update: Record<string, unknown>) {
-    const patch: Record<string, unknown> = {};
-    if ("name" in update) patch.name = update.name;
-    if ("members" in update) patch.members = update.members;
-    if ("startsOn" in update) patch.starts_on = update.startsOn;
-    if ("endsOn" in update) patch.ends_on = update.endsOn;
-    const { data, error } = await supabase
-      .from("settlement_cycles")
-      .update(patch)
-      .eq("id", Number(id))
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    return toCycle(data) as unknown as Cycle;
-  },
-
-  async setActiveCycle(id: string | null) {
-    if (id) localStorage.setItem(ACTIVE_KEY, id);
-    else localStorage.removeItem(ACTIVE_KEY);
-  },
-
-  async createEntries<Entry>(entries: Array<Record<string, unknown>>) {
-    const rows = entries.map((e) => ({
-      cycle_id: Number(e.cycleId),
-      payer: e.payer,
-      amount: e.amount,
-      merchant: (e.merchant as string) || null,
-      note: (e.note as string) || null,
-      ai_confidence: e.confidence ?? null,
-      spent_on: e.spentOn,
-      receipt_path: (e.receiptUrl as string | null) ?? null,
-      receipt_image: e.receiptImageBase64
-        ? `data:${e.receiptMimeType || "image/jpeg"};base64,${e.receiptImageBase64}`
-        : null,
-    }));
-    // Optional columns are stripped one by one if the table predates them.
-    const optionalColumns = ["receipt_path", "merchant", "receipt_image"] as const;
-    let attemptRows: Array<Record<string, unknown>> = rows;
-    let result = await supabase.from("grocery_ledger").insert(attemptRows).select();
-    for (const column of optionalColumns) {
-      if (!result.error || !new RegExp(column, "i").test(result.error.message)) continue;
-      attemptRows = attemptRows.map((row) => {
-        const { [column]: dropped, ...rest } = row;
-        void dropped;
-        return rest;
-      });
-      result = await supabase.from("grocery_ledger").insert(attemptRows).select();
-    }
-    if (result.error) throw new Error(result.error.message);
-    return (result.data ?? []).map(toEntry) as unknown as Entry[];
-  },
-
-  async deleteEntry(id: string) {
-    const { error } = await supabase
-      .from("grocery_ledger")
-      .delete()
-      .eq("id", Number(id));
-    if (error) throw new Error(error.message);
-  },
-
-  /** Removes a cycle and every receipt in it, in that order. */
-  async deleteCycle(id: string) {
-    const { error: entriesError } = await supabase
-      .from("grocery_ledger")
-      .delete()
-      .eq("cycle_id", Number(id));
-    if (entriesError) throw new Error(entriesError.message);
-    const { error: cycleError } = await supabase
-      .from("settlement_cycles")
-      .delete()
-      .eq("id", Number(id));
-    if (cycleError) throw new Error(cycleError.message);
-  },
-
-  async updateEntry<Entry>(id: string, update: Record<string, unknown>) {
-    const patch: Record<string, unknown> = {};
-    if ("payer" in update) patch.payer = update.payer;
-    if ("amount" in update) patch.amount = update.amount;
-    if ("merchant" in update) patch.merchant = update.merchant || null;
-    if ("note" in update) patch.note = update.note || null;
-    if ("spentOn" in update) patch.spent_on = update.spentOn;
-    let result = await supabase
-      .from("grocery_ledger")
-      .update(patch)
-      .eq("id", Number(id))
-      .select()
-      .single();
-    // Table without the merchant column yet: retry without it.
-    if (result.error && /merchant/i.test(result.error.message)) {
-      const { merchant, ...rest } = patch;
-      void merchant;
-      result = await supabase
-        .from("grocery_ledger")
-        .update(rest)
-        .eq("id", Number(id))
-        .select()
-        .single();
-    }
-    if (result.error) throw new Error(result.error.message);
-    return toEntry(result.data) as unknown as Entry;
-  },
-};
-
-export type ScanRead = {
+export type Receipt = {
+  id: string;
   merchant: string;
-  amount: number;
-  category: "Groceries" | "Utilities" | "Dining" | "Household Supplies" | "Other";
-  isBankTransfer: boolean;
-  confidence: "HIGH" | "MEDIUM" | "LOW";
-  isBlurry: boolean;
-  model: string;
+  amount_cents: number;
+  payer: string;
+  category: string;
+  date: string;
+  is_excluded: boolean;
+  image_url: string | null;
 };
 
-export async function scanReceipt(imageBase64: string, mimeType: string, keyIndex?: number): Promise<ScanRead> {
-  const response = await fetch("/api/ocr", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(keyIndex === undefined ? { imageBase64, mimeType } : { imageBase64, mimeType, keyIndex }),
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `OCR failed (${response.status})`);
-  return body as ScanRead;
-}
-
-/** How many Gemini keys the server holds - the batch scanner sizes its
- *  parallel worker pool to this. */
-export async function fetchOcrKeyCount(): Promise<number> {
-  try {
-    const response = await fetch("/api/ocr");
-    const body = await response.json().catch(() => ({}));
-    return typeof body.keys === "number" && body.keys > 0 ? body.keys : 1;
-  } catch {
-    return 1;
-  }
-}
-
-/** Maps the auditor's qualitative grade to the numeric confidence the ledger stores. */
-export function confidenceScore(grade: ScanRead["confidence"]): number {
-  if (grade === "HIGH") return 0.95;
-  if (grade === "MEDIUM") return 0.7;
-  return 0.45;
-}
-
-/**
- * Per-device preferences (active cycle, theme), persisted in the database so
- * the experience follows the user like an account switch. All functions
- * degrade quietly when the user_preferences table hasn't been created yet
- * (see supabase/preferences-setup.sql).
- */
-
-export type Preferences = {
-  activeCycleId: string | null;
-  theme: "auto" | "light" | "dark";
-  householdName: string | null;
+export type Settlement = {
+  id: string;
+  period_id: string;
+  total_cents: number;
+  per_person_cents: number;
+  member_totals: Record<string, number>;
+  receipt_count: number;
+  calculated_at: string;
 };
 
-export async function fetchPreferences(deviceId: string): Promise<Preferences | null> {
-  try {
-    const { data, error } = await supabase
-      .from("user_preferences")
-      .select("active_cycle_id, theme, household_name")
-      .eq("id", deviceId)
-      .maybeSingle()
-      .retry(false);
-    if (error || !data) return null;
-    const theme = data.theme === "light" || data.theme === "dark" ? data.theme : "auto";
-    return {
-      activeCycleId: data.active_cycle_id != null ? String(data.active_cycle_id) : null,
-      theme,
-      householdName: typeof data.household_name === "string" && data.household_name.trim() ? data.household_name : null,
-    };
-  } catch {
-    return null;
-  }
+export type Period = {
+  id: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+  total_cents: number;
+  per_person_cents: number;
+  receipt_count: number;
+};
+
+export async function fetchCurrentSettlement(): Promise<Settlement | null> {
+  const { data } = await supabase
+    .from("settlements")
+    .select("*")
+    .order("calculated_at", { ascending: false })
+    .limit(1)
+    .single();
+  return data;
 }
 
-export async function savePreferences(deviceId: string, patch: Partial<Preferences>): Promise<boolean> {
-  try {
-    const row: Record<string, unknown> = {
-      id: deviceId,
-      updated_at: new Date().toISOString(),
-      ...(patch.activeCycleId !== undefined ? { active_cycle_id: patch.activeCycleId == null ? null : Number(patch.activeCycleId) } : {}),
-      ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
-      ...(patch.householdName !== undefined ? { household_name: patch.householdName?.trim() || null } : {}),
-    };
-    const { error } = await supabase.from("user_preferences").upsert(row);
-    return !error;
-  } catch {
-    return false;
-  }
+export async function fetchReceipts(limit = 100): Promise<Receipt[]> {
+  const { data } = await supabase
+    .from("receipts")
+    .select("*")
+    .eq("is_excluded", false)
+    .order("date", { ascending: false })
+    .limit(limit);
+  return data || [];
 }
 
-/** Uploads an imported chat image under its canonical name; null when the
- *  receipts bucket is not set up (entry then imports without an image). */
-export async function uploadImportedMedia(storagePath: string, blob: Blob, contentType: string): Promise<string | null> {
-  // Raw fetch with a hard 15s abort: a hung storage request must never stall
-  // the parallel scanner. 409 (already stored) counts as success.
-  try {
-    const res = await fetch(`https://${projectId}.supabase.co/storage/v1/object/${STORAGE_BUCKET}/${storagePath}`, {
-      method: "POST",
-      headers: {
-        apikey: publicAnonKey,
-        Authorization: `Bearer ${publicAnonKey}`,
-        "Content-Type": contentType,
-        "Cache-Control": "31536000",
-      },
-      body: blob,
-      signal: AbortSignal.timeout(15000),
-    });
-    if (res.ok || res.status === 409) return `${storagePublicBase}${storagePath}`;
-    return null;
-  } catch {
-    return null;
-  }
+export async function fetchPeriods(): Promise<Period[]> {
+  const { data } = await supabase
+    .from("periods")
+    .select("*")
+    .order("start_date", { ascending: false });
+  return data || [];
 }
 
-/** Downscales an image file in-browser and returns base64 JPEG for upload. */
-export async function resizeImage(file: File, maxSide = 1600, quality = 0.84) {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  const dataUrl = canvas.toDataURL("image/jpeg", quality);
-  return { imageBase64: dataUrl.split(",")[1], mimeType: "image/jpeg" };
-}
+export const fmt = (cents: number) =>
+  "$" + (cents / 100).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
