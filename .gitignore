@@ -8,6 +8,8 @@ vite.config.*.timestamp-*
 *.tsbuildinfo
 *-debug.log*
 logs/
+/.playwright-cli/
+/output/
 *.log
 .claude-replay.*
 .tmp-*

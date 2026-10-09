@@ -6,6 +6,37 @@ out who owes who for each settlement cycle.
 
 Built with React 19 + Vite 8 + Tailwind CSS v4, backed by Supabase.
 
+## Private household access
+
+1. Remove old accounts in Supabase Authentication, then create the four household accounts with the supported Admin API script below.
+2. Disable new-user sign-ups so accounts cannot be created from outside the household.
+3. Run `supabase/private-access.sql` in the Supabase SQL editor.
+4. Enable Passkeys in Supabase Authentication. Use `Bill For Us` as the display name, `billforus.netlify.app` as the RP ID, and `https://billforus.netlify.app` as the RP origin.
+
+The app only provides sign-in. Display names are saved to Supabase Auth metadata.
+Profile photos are resized before upload and stored privately in Supabase Storage.
+
+### Create the four accounts once
+
+Supabase does not support creating password users safely with direct SQL inserts into `auth.users`.
+Use the server-only Admin API script instead. In PowerShell, set the project URL, a Supabase
+secret/service-role key, and the four passwords without putting them in the repository:
+
+```powershell
+$env:SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
+$env:SUPABASE_SECRET_KEY = "YOUR_SERVER_ONLY_SECRET_KEY"
+$env:SHIVA_PASSWORD = "choose-a-password"
+$env:ARPAN_PASSWORD = "choose-a-password"
+$env:ARJUN_PASSWORD = "choose-a-password"
+$env:SWASTI_PASSWORD = "choose-a-password"
+npm run create:household-users
+```
+
+This creates `shiva@billforus.netlify.app`, `arpan@billforus.netlify.app`,
+`arjun@billforus.netlify.app`, and `swasti@billforus.netlify.app` with confirmed emails.
+Delete or clear the password environment variables after the script finishes. Never expose the
+secret/service-role key in browser code.
+
 ## Receipt scanning workflow
 
 1. **Snap** - pick one or many receipt photos (camera or gallery).
