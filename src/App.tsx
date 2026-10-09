@@ -7,6 +7,7 @@ const SF = {
   clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v5l3.5 2",
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z M12 2v2.5 M12 19.5V22 M2 12h2.5 M19.5 12H22 M4.9 4.9l1.8 1.8 M17.3 17.3l1.8 1.8 M19.1 4.9l-1.8 1.8 M6.7 17.3l-1.8 1.8",
   moon: "M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z",
+  circleHalf: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 3v18",
 };
 
 function SFSymbol({ name, filled }: { name: keyof typeof SF; filled?: boolean }) {
@@ -37,7 +38,6 @@ export default function App() {
     () => (localStorage.getItem("splitmate-theme") as "auto" | "light" | "dark") || "auto"
   );
   const [collapsed, setCollapsed] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
   const lastY = useRef(0);
   const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,7 +49,6 @@ export default function App() {
       const y = window.scrollY;
       const dy = y - lastY.current;
       lastY.current = y;
-      setScrolled(y > 8);
       if (collapseTimer.current) clearTimeout(collapseTimer.current);
       if (dy > 8 && y > 120) {
         setCollapsed(true); // scrolling down -> contract
@@ -76,9 +75,6 @@ export default function App() {
     localStorage.setItem("splitmate-theme", theme);
   }, [theme]);
 
-  const cycleTheme = () =>
-    setTheme((t) => (t === "auto" ? "light" : t === "light" ? "dark" : "auto"));
-
   useEffect(() => {
     const goOnline = () => setOnline(true);
     const goOffline = () => setOnline(false);
@@ -96,24 +92,18 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
-  const tabTitle = tab === "home" ? "SplitMate" : tab === "receipts" ? "Receipts" : "History";
-
   return (
     <div className="app">
       <div className="bg-wash" aria-hidden="true" />
 
-      <header className={`nav-bar${scrolled ? " scrolled" : ""}`}>
-        <div className="nav-title">{tabTitle}</div>
-        <button
-          className="theme-btn"
-          onClick={cycleTheme}
-          aria-label={`Theme: ${theme}. Tap to change.`}
-          title={`Theme: ${theme}`}
-        >
-          <SFSymbol name={theme === "dark" ? "moon" : theme === "light" ? "sun" : "sun"} filled={theme !== "auto"} />
-        </button>
-      </header>
       {!online && <div className="offline-banner">Offline — showing last synced data</div>}
+
+      {/* Floating theme switcher pill */}
+      <div className="theme-pill" role="group" aria-label="Appearance">
+        <ThemeSeg active={theme === "light"} onClick={() => setTheme("light")} icon="sun" label="Light" />
+        <ThemeSeg active={theme === "auto"} onClick={() => setTheme("auto")} icon="circleHalf" label="Auto" />
+        <ThemeSeg active={theme === "dark"} onClick={() => setTheme("dark")} icon="moon" label="Dark" />
+      </div>
 
       <main key={tab} ref={mainRef} className="tab-enter">
         {loading ? (
@@ -123,9 +113,9 @@ export default function App() {
           </div>
         ) : (
           <>
-            {tab === "home" && <HomeTab settlement={settlement} scrolled={scrolled} />}
-            {tab === "receipts" && <ReceiptsTab receipts={receipts} scrolled={scrolled} />}
-            {tab === "history" && <HistoryTab periods={periods} scrolled={scrolled} />}
+            {tab === "home" && <HomeTab settlement={settlement} />}
+            {tab === "receipts" && <ReceiptsTab receipts={receipts} />}
+            {tab === "history" && <HistoryTab periods={periods} />}
           </>
         )}
       </main>
@@ -143,6 +133,15 @@ export default function App() {
   );
 }
 
+function ThemeSeg({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: keyof typeof SF; label: string }) {
+  return (
+    <button className={`theme-seg${active ? " active" : ""}`} onClick={onClick} aria-pressed={active} aria-label={label}>
+      <SFSymbol name={icon} filled={active} />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: keyof typeof SF; label: string }) {
   return (
     <button className={`tab-btn${active ? " active" : ""}`} onClick={onClick}>
@@ -152,13 +151,13 @@ function TabButton({ active, onClick, icon, label }: { active: boolean; onClick:
   );
 }
 
-function HomeTab({ settlement, scrolled }: { settlement: Settlement | null; scrolled: boolean }) {
+function HomeTab({ settlement }: { settlement: Settlement | null }) {
   if (!settlement) return <div className="empty">No settlement yet.</div>;
   const members = Object.entries(settlement.member_totals || {});
 
   return (
     <div>
-      <h1 className={`large-title${scrolled ? " mini" : ""}`}>SplitMate</h1>
+      <h1 className="large-title">SplitMate</h1>
       <p className="caption">Rockdale Homies Grocery</p>
 
       <div className="glass-hero">
@@ -195,12 +194,12 @@ function HomeTab({ settlement, scrolled }: { settlement: Settlement | null; scro
   );
 }
 
-function ReceiptsTab({ receipts, scrolled }: { receipts: Receipt[]; scrolled: boolean }) {
+function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
   if (!receipts.length) return <div className="empty">No receipts.</div>;
   let lastDate = "";
   return (
     <div>
-      <h1 className={`large-title${scrolled ? " mini" : ""}`}>Receipts</h1>
+      <h1 className="large-title">Receipts</h1>
       <p className="caption">{receipts.length} receipts this period</p>
       <div className="glass-list">
         {receipts.map((r, i) => {
@@ -225,11 +224,11 @@ function ReceiptsTab({ receipts, scrolled }: { receipts: Receipt[]; scrolled: bo
   );
 }
 
-function HistoryTab({ periods, scrolled }: { periods: Period[]; scrolled: boolean }) {
+function HistoryTab({ periods }: { periods: Period[] }) {
   if (!periods.length) return <div className="empty">No past periods.</div>;
   return (
     <div>
-      <h1 className={`large-title${scrolled ? " mini" : ""}`}>History</h1>
+      <h1 className="large-title">History</h1>
       <p className="caption">Past settlement periods</p>
       <div className="glass-list">
         {periods.map((p, i) => (
