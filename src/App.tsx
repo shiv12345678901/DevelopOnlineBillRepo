@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   fetchCurrentSettlement, fetchReceipts, fetchPeriods, fmt,
   type Receipt, type Settlement, type Period,
@@ -12,6 +12,33 @@ export default function App() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
   const [loading, setLoading] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const lastY = useRef(0);
+  const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const dy = y - lastY.current;
+      lastY.current = y;
+      if (collapseTimer.current) clearTimeout(collapseTimer.current);
+      if (dy > 8 && y > 120) {
+        setCollapsed(true); // scrolling down -> contract
+      } else if (dy < -8) {
+        setCollapsed(false); // scrolling up -> expand
+      }
+      // re-expand after idle so it's tappable
+      collapseTimer.current = setTimeout(() => setCollapsed(false), 1800);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (collapseTimer.current) clearTimeout(collapseTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     Promise.all([fetchCurrentSettlement(), fetchReceipts(), fetchPeriods()])
@@ -29,7 +56,7 @@ export default function App() {
         <div className="nav-title">{tabTitle}</div>
       </header>
 
-      <main key={tab} className="tab-enter">
+      <main key={tab} ref={mainRef} className="tab-enter">
         {loading ? (
           <div className="loading">
             <div className="spinner" />
@@ -44,7 +71,11 @@ export default function App() {
         )}
       </main>
 
-      <nav className="tab-bar">
+      <nav
+        className={`tab-bar${collapsed ? " collapsed" : ""}`}
+        onPointerEnter={() => setCollapsed(false)}
+        onTouchStart={() => setCollapsed(false)}
+      >
         <TabButton active={tab === "home"} onClick={() => setTab("home")} path="M3 10.5 12 3l9 7.5V21H3z M9 21v-6h6v6" label="Home" />
         <TabButton active={tab === "receipts"} onClick={() => setTab("receipts")} path="M6 2h9l5 5v15H6z M14 2v6h6 M9 13h8 M9 17h8" label="Receipts" />
         <TabButton active={tab === "history"} onClick={() => setTab("history")} path="M3 12a9 9 0 1 0 3-6.7 M3 4v5h5 M12 7v5l3 3" label="History" />
