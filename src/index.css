@@ -251,7 +251,7 @@ main {
 .screen--spending { --screen-color: var(--positive); }
 .screen--history { --screen-color: var(--lavender); }
 .screen--search { --screen-color: var(--light-blue); }
-.screen--settings { --screen-color: var(--purple); }
+.screen--settings { --screen-color: var(--purple); padding-bottom: 28px; }
 .screen--home .page-header { animation: homeHeaderIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .home-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .home-header-meta { display: grid; flex: none; gap: 3px; padding-top: 4px; color: var(--label-tertiary); font-size: 0.75rem; line-height: 1rem; text-align: right; }
@@ -738,7 +738,8 @@ main {
 .passkey-sign-in:focus-visible,
 .theme-options button:focus-visible,
 .passkey-card > button:focus-visible,
-.sign-out-button:focus-visible,
+.sync-action-button:focus-visible,
+.account-sign-out-button:focus-visible,
 .profile-camera:focus-within {
   outline: 3px solid color-mix(in srgb, var(--accent) 38%, transparent);
   outline-offset: 2px;
@@ -1005,16 +1006,27 @@ main {
 .profile-fields .profile-email { overflow: hidden; color: var(--label-secondary); font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
 .settings-message { margin: 8px 5px 0; color: var(--label-secondary); font-size: 0.75rem; }
 .sync-spinning { animation: spin .9s linear infinite; }
-.sync-row { min-height: 78px; }
-.sync-row > .settings-icon { align-self: start; margin-top: 2px; }
+.sync-row { min-height: 70px; row-gap: 8px; }
 .sync-row > .settings-icon svg { width: 20px; height: 20px; }
-.sync-action { display: grid; min-width: 94px; justify-items: end; gap: 6px; }
 .sync-action-button { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; padding: 0 11px; cursor: pointer; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font: inherit; font-size: .72rem; font-weight: 750; box-shadow: 0 5px 12px color-mix(in srgb, var(--accent) 20%, transparent); transition: opacity .2s ease, transform .15s ease; }
 .sync-action-button:active { transform: scale(.97); }
 .sync-action-button:disabled { cursor: wait; opacity: .72; }
-.last-scanned-line { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin: 0; color: var(--label-secondary); font-size: .68rem; line-height: 1.2; white-space: nowrap; }
-.last-scanned-line svg { width: 14px; height: 14px; flex: 0 0 auto; }
-.settings-message.sync-error { color: var(--red); }
+.last-scanned-line { display: flex; min-width: 0; align-items: center; gap: 4px; margin-top: 3px; overflow: hidden; color: var(--label-secondary); font-size: .7rem; line-height: 1rem; text-overflow: ellipsis; white-space: nowrap; }
+.last-scanned-line svg { width: 13px; height: 13px; flex: 0 0 auto; }
+.sync-result { display: grid; grid-column: 2 / -1; grid-template-columns: 17px minmax(0, 1fr); gap: 8px; align-items: start; padding: 9px 10px; border-radius: 11px; font-size: .72rem; line-height: 1.05rem; }
+.sync-result > svg { width: 17px; height: 17px; margin-top: 1px; }
+.sync-result > span { display: grid; min-width: 0; gap: 1px; }
+.sync-result strong { color: var(--label); font-size: .74rem; }
+.sync-result span span { overflow-wrap: anywhere; color: var(--label-secondary); }
+.sync-result--success { background: color-mix(in srgb, var(--positive) 10%, var(--surface-raised)); color: var(--positive); }
+.sync-result--error { background: color-mix(in srgb, var(--red) 10%, var(--surface-raised)); color: var(--red); }
+.account-sign-out-item { position: relative; list-style: none; }
+.account-sign-out-item::before { content: ""; position: absolute; top: 0; right: 0; left: 62px; z-index: 1; height: 1px; background: var(--separator); }
+.account-sign-out-button { display: grid; width: 100%; min-height: 68px; grid-template-columns: 36px minmax(0, 1fr) 18px; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; border: 0; background: transparent; color: var(--label-tertiary); font: inherit; text-align: left; transition: background-color .16s ease; }
+.account-sign-out-button:active { background: color-mix(in srgb, var(--red) 8%, transparent); }
+.account-sign-out-button .settings-title { color: var(--red); }
+.account-sign-out-button > svg { width: 17px; height: 17px; }
+.account-sign-out-button .settings-icon svg { width: 20px; height: 20px; }
 .settlement-setting-card { display: grid; grid-template-columns: 36px minmax(0, 1fr) minmax(0, 190px); gap: 11px; align-items: center; padding: 12px 14px; border: 1px solid var(--material-border); border-radius: 16px; background: var(--surface); }
 .settlement-picker-label { color: var(--label); font-size: .9rem; font-weight: 650; }
 .settlement-setting-card select { width: 100%; min-width: 0; max-width: 190px; padding: 9px 10px; cursor: pointer; border: 1px solid var(--separator); border-radius: 11px; outline: 0; background: var(--surface-raised); color: var(--label); font: inherit; font-size: .75rem; font-weight: 650; }
@@ -1085,21 +1097,6 @@ main {
   font-weight: 700;
 }
 .passkey-card > button:disabled { cursor: default; opacity: 0.45; }
-.sign-out-button {
-  display: flex;
-  width: 100%;
-  min-height: 52px;
-  align-items: center;
-  gap: 11px;
-  padding: 0 16px;
-  cursor: pointer;
-  border: 1px solid color-mix(in srgb, var(--red) 24%, var(--material-border));
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--red) 7%, var(--surface));
-  color: var(--red);
-  font-weight: 650;
-}
-.sign-out-button svg { width: 20px; height: 20px; }
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -1201,6 +1198,8 @@ main {
   .settings-row { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; padding-inline: 12px; }
   .settings-icon { width: 34px; height: 34px; border-radius: 9px; }
   .settings-row + .settings-row::before { left: 56px; }
+  .account-sign-out-button { grid-template-columns: 34px minmax(0, 1fr) 18px; gap: 10px; padding-inline: 12px; }
+  .account-sign-out-item::before { left: 56px; }
   .settings-value { max-width: 96px; }
 }
 

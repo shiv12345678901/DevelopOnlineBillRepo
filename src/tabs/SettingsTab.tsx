@@ -1,6 +1,6 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import type { PasskeyListItem, User } from "@supabase/supabase-js";
-import { Camera, Clock3, Fingerprint, LogOut, RefreshCw } from "lucide-react";
+import { Camera, CheckCircle2, ChevronRight, CircleAlert, Clock3, Fingerprint, LogOut, RefreshCw } from "lucide-react";
 import { supabase } from "../api";
 import { AppIcon, type AppIconName } from "../components/AppIcon";
 import { formatRelativeTime } from "../components/format";
@@ -107,7 +107,7 @@ export function SettingsTab({
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyMessage, setPasskeyMessage] = useState("");
   const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState("");
+  const [syncResult, setSyncResult] = useState<{ type: "success" | "error"; detail: string } | null>(null);
   const [relativeTimeNow, setRelativeTimeNow] = useState(() => Date.now());
   const passkeySupported = typeof window !== "undefined" && "PublicKeyCredential" in window;
   const selectedPeriod = periods.find((period) => period.id === selectedPeriodId)
@@ -126,12 +126,18 @@ export function SettingsTab({
 
   async function handleSyncNow() {
     setSyncing(true);
-    setSyncMessage("");
+    setSyncResult(null);
     try {
       const summary = await onSyncNow();
-      setSyncMessage(`Sync complete${summary ? `: ${summary}` : ""}`);
+      setSyncResult({
+        type: "success",
+        detail: summary ? summary.replace(/,\s*/g, " · ") : "Your data is up to date.",
+      });
     } catch (error) {
-      setSyncMessage(`Sync failed: ${error instanceof Error ? error.message : "Please try again."}`);
+      setSyncResult({
+        type: "error",
+        detail: error instanceof Error ? error.message : "Please try again.",
+      });
     } finally {
       setSyncing(false);
     }
@@ -351,26 +357,39 @@ export function SettingsTab({
             </span>
             <span className="settings-copy">
               <span className="settings-title">Sync data</span>
-              <span className="settings-subtitle">Refresh receipts and settlement</span>
-            </span>
-            <span className="sync-action">
-              <button className="sync-action-button" type="button" onClick={handleSyncNow} disabled={syncing}>
-                <span>{syncing ? "Syncing…" : "Sync Now"}</span>
-              </button>
-              {scanLabel && (
+              {scanLabel ? (
                 <span className="last-scanned-line" role="status">
                   <Clock3 aria-hidden="true" />
                   {scanLabel}
                 </span>
+              ) : (
+                <span className="settings-subtitle">Refresh receipts and settlement</span>
               )}
             </span>
+            <button className="sync-action-button" type="button" onClick={handleSyncNow} disabled={syncing}>
+              <span>{syncing ? "Syncing…" : "Sync Now"}</span>
+            </button>
+            {syncResult && (
+              <div className={`sync-result sync-result--${syncResult.type}`} role={syncResult.type === "error" ? "alert" : "status"}>
+                {syncResult.type === "success" ? <CheckCircle2 aria-hidden="true" /> : <CircleAlert aria-hidden="true" />}
+                <span>
+                  <strong>{syncResult.type === "success" ? "Sync complete" : "Sync failed"}</strong>
+                  <span>{syncResult.detail}</span>
+                </span>
+              </div>
+            )}
+          </li>
+          <li className="account-sign-out-item">
+            <button className="account-sign-out-button" type="button" onClick={() => supabase.auth.signOut()}>
+              <span className="settings-icon tile-red" aria-hidden="true"><LogOut /></span>
+              <span className="settings-copy">
+                <span className="settings-title">Sign out</span>
+                <span className="settings-subtitle">End session on this device</span>
+              </span>
+              <ChevronRight aria-hidden="true" />
+            </button>
           </li>
         </ul>
-        {syncMessage && <p className={`settings-message ${syncMessage.startsWith("Sync failed") ? "sync-error" : ""}`} role="status">{syncMessage}</p>}
-        <button className="sign-out-button" type="button" onClick={() => supabase.auth.signOut()}>
-          <LogOut aria-hidden="true" />
-          <span>Sign out</span>
-        </button>
       </section>
     </div>
   );
