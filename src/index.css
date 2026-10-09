@@ -18,23 +18,50 @@
   color-scheme: dark;
 }
 
-/* Light mode — follows system preference */
+/* Light theme vars — shared by system preference and manual toggle */
+:root {
+  --light-blue: #007AFF;
+  --light-bg-base: #F2F2F7;
+  --light-bg-elevated: #FFFFFF;
+  --light-bg-elevated-2: #F2F2F7;
+  --light-label: #000000;
+  --light-label-2: rgba(60,60,67,.6);
+  --light-label-3: rgba(60,60,67,.3);
+  --light-separator: rgba(60,60,67,.12);
+  --light-glass-bg: rgba(248,248,248,.72);
+  --light-glass-border: rgba(0,0,0,.06);
+}
+
+/* System light preference (only when user hasn't chosen) */
 @media (prefers-color-scheme: light) {
-  :root {
-    --blue: #007AFF;
-    --bg-base: #F2F2F7;
-    --bg-elevated: #FFFFFF;
-    --bg-elevated-2: #F2F2F7;
-    --label: #000000;
-    --label-2: rgba(60,60,67,.6);
-    --label-3: rgba(60,60,67,.3);
-    --separator: rgba(60,60,67,.12);
-    --glass-bg: rgba(248,248,248,.72);
-    --glass-border: rgba(0,0,0,.06);
-    --hero-text: #FFFFFF;
-    --hero-sub: rgba(255,255,255,.8);
+  :root:not([data-theme]) {
+    --blue: var(--light-blue);
+    --bg-base: var(--light-bg-base);
+    --bg-elevated: var(--light-bg-elevated);
+    --bg-elevated-2: var(--light-bg-elevated-2);
+    --label: var(--light-label);
+    --label-2: var(--light-label-2);
+    --label-3: var(--light-label-3);
+    --separator: var(--light-separator);
+    --glass-bg: var(--light-glass-bg);
+    --glass-border: var(--light-glass-border);
     color-scheme: light;
   }
+}
+
+/* Manual light override */
+:root[data-theme="light"] {
+  --blue: var(--light-blue);
+  --bg-base: var(--light-bg-base);
+  --bg-elevated: var(--light-bg-elevated);
+  --bg-elevated-2: var(--light-bg-elevated-2);
+  --label: var(--light-label);
+  --label-2: var(--light-label-2);
+  --label-3: var(--light-label-3);
+  --separator: var(--light-separator);
+  --glass-bg: var(--light-glass-bg);
+  --glass-border: var(--light-glass-border);
+  color-scheme: light;
 }
 
 html, body { height: 100%; }
@@ -75,6 +102,18 @@ body {
   border-bottom: 1px solid var(--separator);
 }
 .nav-title { font-size: 17px; font-weight: 600; text-align: center; letter-spacing: -.2px; }
+
+/* Theme switcher button */
+.theme-btn {
+  position: absolute; right: 16px; top: calc(14px + env(safe-area-inset-top));
+  width: 44px; height: 44px; border-radius: 50%;
+  background: none; border: none; color: var(--label-2);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: transform .15s ease, color .2s ease;
+}
+.theme-btn:active { transform: scale(.88); }
+.theme-btn .sf-icon { width: 22px; height: 22px; }
 
 main { flex: 1; padding: 8px 16px 104px; position: relative; z-index: 1; }
 
@@ -203,7 +242,7 @@ main { flex: 1; padding: 8px 16px 104px; position: relative; z-index: 1; }
   opacity: 0; max-height: 0; margin: 0;
   transform: translateY(4px);
 }
-.tab-bar.collapsed .tab-icon { width: 22px; height: 22px; }
+.tab-bar.collapsed .sf-icon { width: 22px; height: 22px; }
 .tab-btn {
   background: none; border: none; color: var(--label-3);
   display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -213,8 +252,8 @@ main { flex: 1; padding: 8px 16px 104px; position: relative; z-index: 1; }
 }
 .tab-btn:active { transform: scale(.92); }
 .tab-btn.active { color: var(--blue); }
-.tab-icon { width: 26px; height: 26px; transition: transform .25s cubic-bezier(.32,.72,0,1); }
-.tab-btn.active .tab-icon { transform: scale(1.12); }
+.sf-icon { width: 26px; height: 26px; transition: transform .25s cubic-bezier(.32,.72,0,1); }
+.tab-btn.active .sf-icon { transform: scale(1.12); }
 .tab-label {
   font-size: 10px; font-weight: 600; letter-spacing: .2px;
   max-height: 16px; overflow: hidden;

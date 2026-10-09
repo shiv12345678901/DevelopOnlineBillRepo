@@ -1,4 +1,24 @@
 import { useEffect, useRef, useState } from "react";
+
+/* SF Symbols — Apple's icon library, inline SVG (no web CDN exists) */
+const SF = {
+  house: "M12 3l9 8h-3v9h-4v-6H10v6H6v-9H3z",
+  docText: "M7 3h7l5 5v13H7z M14 3v5h5 M10 13h6 M10 16.5h6 M10 20h4",
+  clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v5l3.5 2",
+  sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z M12 2v2.5 M12 19.5V22 M2 12h2.5 M19.5 12H22 M4.9 4.9l1.8 1.8 M17.3 17.3l1.8 1.8 M19.1 4.9l-1.8 1.8 M6.7 17.3l-1.8 1.8",
+  moon: "M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z",
+};
+
+function SFSymbol({ name, filled }: { name: keyof typeof SF; filled?: boolean }) {
+  return (
+    <svg className="sf-icon" viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor" strokeWidth={filled ? 0 : 1.8}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={SF[name]} />
+    </svg>
+  );
+}
 import {
   fetchCurrentSettlement, fetchReceipts, fetchPeriods, fmt,
   type Receipt, type Settlement, type Period,
@@ -13,6 +33,9 @@ export default function App() {
   const [periods, setPeriods] = useState<Period[]>([]);
   const [loading, setLoading] = useState(true);
   const [online, setOnline] = useState(navigator.onLine);
+  const [theme, setTheme] = useState<"auto" | "light" | "dark">(
+    () => (localStorage.getItem("splitmate-theme") as "auto" | "light" | "dark") || "auto"
+  );
   const [collapsed, setCollapsed] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
   const lastY = useRef(0);
@@ -42,6 +65,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "auto") {
+      root.removeAttribute("data-theme");
+    } else {
+      root.setAttribute("data-theme", theme);
+    }
+    localStorage.setItem("splitmate-theme", theme);
+  }, [theme]);
+
+  const cycleTheme = () =>
+    setTheme((t) => (t === "auto" ? "light" : t === "light" ? "dark" : "auto"));
+
+  useEffect(() => {
     const goOnline = () => setOnline(true);
     const goOffline = () => setOnline(false);
     window.addEventListener("online", goOnline);
@@ -66,6 +102,14 @@ export default function App() {
 
       <header className="nav-bar">
         <div className="nav-title">{tabTitle}</div>
+        <button
+          className="theme-btn"
+          onClick={cycleTheme}
+          aria-label={`Theme: ${theme}. Tap to change.`}
+          title={`Theme: ${theme}`}
+        >
+          <SFSymbol name={theme === "dark" ? "moon" : theme === "light" ? "sun" : "sun"} filled={theme !== "auto"} />
+        </button>
       </header>
       {!online && <div className="offline-banner">Offline — showing last synced data</div>}
 
@@ -89,20 +133,18 @@ export default function App() {
         onPointerEnter={() => setCollapsed(false)}
         onTouchStart={() => setCollapsed(false)}
       >
-        <TabButton active={tab === "home"} onClick={() => setTab("home")} path="M3 10.5 12 3l9 7.5V21H3z M9 21v-6h6v6" label="Home" />
-        <TabButton active={tab === "receipts"} onClick={() => setTab("receipts")} path="M6 2h9l5 5v15H6z M14 2v6h6 M9 13h8 M9 17h8" label="Receipts" />
-        <TabButton active={tab === "history"} onClick={() => setTab("history")} path="M3 12a9 9 0 1 0 3-6.7 M3 4v5h5 M12 7v5l3 3" label="History" />
+        <TabButton active={tab === "home"} onClick={() => setTab("home")} icon="house" label="Home" />
+        <TabButton active={tab === "receipts"} onClick={() => setTab("receipts")} icon="docText" label="Receipts" />
+        <TabButton active={tab === "history"} onClick={() => setTab("history")} icon="clock" label="History" />
       </nav>
     </div>
   );
 }
 
-function TabButton({ active, onClick, path, label }: { active: boolean; onClick: () => void; path: string; label: string }) {
+function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: keyof typeof SF; label: string }) {
   return (
     <button className={`tab-btn${active ? " active" : ""}`} onClick={onClick}>
-      <svg className="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d={path} />
-      </svg>
+      <SFSymbol name={icon} filled={active} />
       <span className="tab-label">{label}</span>
     </button>
   );
