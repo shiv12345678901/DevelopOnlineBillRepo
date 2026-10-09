@@ -37,6 +37,7 @@ export default function App() {
     () => (localStorage.getItem("splitmate-theme") as "auto" | "light" | "dark") || "auto"
   );
   const [collapsed, setCollapsed] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
   const lastY = useRef(0);
   const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -48,6 +49,7 @@ export default function App() {
       const y = window.scrollY;
       const dy = y - lastY.current;
       lastY.current = y;
+      setScrolled(y > 32);
       if (collapseTimer.current) clearTimeout(collapseTimer.current);
       if (dy > 8 && y > 120) {
         setCollapsed(true); // scrolling down -> contract
@@ -100,7 +102,7 @@ export default function App() {
     <div className="app">
       <div className="bg-wash" aria-hidden="true" />
 
-      <header className="nav-bar">
+      <header className={`nav-bar${scrolled ? " scrolled" : ""}`}>
         <div className="nav-title">{tabTitle}</div>
         <button
           className="theme-btn"
@@ -121,9 +123,9 @@ export default function App() {
           </div>
         ) : (
           <>
-            {tab === "home" && <HomeTab settlement={settlement} />}
-            {tab === "receipts" && <ReceiptsTab receipts={receipts} />}
-            {tab === "history" && <HistoryTab periods={periods} />}
+            {tab === "home" && <HomeTab settlement={settlement} scrolled={scrolled} />}
+            {tab === "receipts" && <ReceiptsTab receipts={receipts} scrolled={scrolled} />}
+            {tab === "history" && <HistoryTab periods={periods} scrolled={scrolled} />}
           </>
         )}
       </main>
@@ -150,13 +152,13 @@ function TabButton({ active, onClick, icon, label }: { active: boolean; onClick:
   );
 }
 
-function HomeTab({ settlement }: { settlement: Settlement | null }) {
+function HomeTab({ settlement, scrolled }: { settlement: Settlement | null; scrolled: boolean }) {
   if (!settlement) return <div className="empty">No settlement yet.</div>;
   const members = Object.entries(settlement.member_totals || {});
 
   return (
     <div>
-      <h1 className="large-title">SplitMate</h1>
+      <h1 className={`large-title${scrolled ? " mini" : ""}`}>SplitMate</h1>
       <p className="caption">Rockdale Homies Grocery</p>
 
       <div className="glass-hero">
@@ -193,12 +195,12 @@ function HomeTab({ settlement }: { settlement: Settlement | null }) {
   );
 }
 
-function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
+function ReceiptsTab({ receipts, scrolled }: { receipts: Receipt[]; scrolled: boolean }) {
   if (!receipts.length) return <div className="empty">No receipts.</div>;
   let lastDate = "";
   return (
     <div>
-      <h1 className="large-title">Receipts</h1>
+      <h1 className={`large-title${scrolled ? " mini" : ""}`}>Receipts</h1>
       <p className="caption">{receipts.length} receipts this period</p>
       <div className="glass-list">
         {receipts.map((r, i) => {
@@ -223,11 +225,11 @@ function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
   );
 }
 
-function HistoryTab({ periods }: { periods: Period[] }) {
+function HistoryTab({ periods, scrolled }: { periods: Period[]; scrolled: boolean }) {
   if (!periods.length) return <div className="empty">No past periods.</div>;
   return (
     <div>
-      <h1 className="large-title">History</h1>
+      <h1 className={`large-title${scrolled ? " mini" : ""}`}>History</h1>
       <p className="caption">Past settlement periods</p>
       <div className="glass-list">
         {periods.map((p, i) => (
