@@ -306,6 +306,14 @@ body, .tab-bar, .glass-row, .glass-card, .avatar,
   font-size: 13px; font-weight: 700; line-height: 18px; letter-spacing: -0.08px;
 }
 .theme-seg.active {
-  background: var(--blue); color: #fff;
-  box-shadow: 0 2px 10px rgba(10,132,255,.4);
+  background: transparent; color: #fff;
 }
+.theme-thumb {
+  position: absolute; top: 4px; bottom: 4px; left: 0;
+  background: var(--blue);
+  border-radius: 999px;
+  box-shadow: 0 2px 10px rgba(10,132,255,.45);
+  transition: transform .38s cubic-bezier(.32,.72,0,1), width .38s cubic-bezier(.32,.72,0,1);
+  pointer-events: none;
+}
+.theme-seg { position: relative; z-index: 1; }
