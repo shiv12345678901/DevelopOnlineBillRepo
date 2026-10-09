@@ -101,7 +101,7 @@ body {
   backdrop-filter: blur(24px) saturate(1.6);
   border-bottom: 1px solid var(--separator);
 }
-.nav-title { font-size: 17px; font-weight: 600; text-align: center; letter-spacing: -.2px; }
+.nav-title { font-size: 17px; font-weight: 600; line-height: 22px; letter-spacing: -0.43px; text-align: center; }
 
 /* Theme switcher button */
 .theme-btn {
@@ -124,10 +124,10 @@ main { flex: 1; padding: 8px 16px 104px; position: relative; z-index: 1; }
   to { opacity: 1; transform: none; }
 }
 
-.large-title { font-size: 34px; font-weight: 700; letter-spacing: -.5px; margin-top: 12px; animation: titleIn .5s cubic-bezier(.32,.72,0,1); }
+.large-title { font-size: 34px; font-weight: 700; line-height: 41px; letter-spacing: 0.4px; margin-top: 12px; animation: titleIn .5s cubic-bezier(.32,.72,0,1); }
 @keyframes titleIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.caption { color: var(--label-2); font-size: 14px; margin: 2px 0 18px; }
-.section-title { font-size: 20px; font-weight: 700; letter-spacing: -.3px; margin: 26px 4px 12px; }
+.caption { color: var(--label-2); font-size: 13px; line-height: 18px; letter-spacing: -0.08px; margin: 2px 0 18px; }
+.section-title { font-size: 22px; font-weight: 700; line-height: 28px; letter-spacing: -0.26px; margin: 26px 4px 12px; }
 
 /* Compact hero card (content layer — solid brand gradient) */
 .glass-hero {
@@ -149,15 +149,15 @@ main { flex: 1; padding: 8px 16px 104px; position: relative; z-index: 1; }
 }
 @keyframes shine { 0%, 100% { left: -60%; } 50% { left: 120%; } }
 .hero-main { flex: 1; }
-.hero-label { font-size: 13px; color: var(--hero-sub); font-weight: 500; }
+.hero-label { font-size: 15px; line-height: 20px; letter-spacing: -0.23px; color: var(--hero-sub); }
 .hero-amount {
-  display: block; font-size: 38px; font-weight: 700; letter-spacing: -1px;
+  display: block; font-size: 44px; font-weight: 700; line-height: 48px; letter-spacing: 0.37px;
   color: var(--hero-text); margin: 2px 0;
   font-variant-numeric: tabular-nums;
   animation: amountIn .7s .1s cubic-bezier(.32,.72,0,1) backwards;
 }
 @keyframes amountIn { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: scale(1); } }
-.hero-sub { font-size: 13px; color: var(--hero-sub); }
+.hero-sub { font-size: 13px; line-height: 18px; letter-spacing: -0.08px; color: var(--hero-sub); }
 .hero-badge {
   flex: none; width: 64px; height: 64px; border-radius: 20px;
   background: rgba(255,255,255,.18);
@@ -188,26 +188,26 @@ main { flex: 1; padding: 8px 16px 104px; position: relative; z-index: 1; }
   font-weight: 700; font-size: 18px; color: #fff;
 }
 .row-main { flex: 1; min-width: 0; }
-.row-main b { display: block; font-size: 16px; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row-main small { color: var(--label-2); font-size: 13px; }
-.row-amount { font-size: 17px; font-variant-numeric: tabular-nums; font-weight: 600; }
-.row-sub { font-size: 12px; color: var(--label-2); margin-top: 2px; }
+.row-main b { display: block; font-size: 17px; font-weight: 600; line-height: 22px; letter-spacing: -0.43px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-main small { color: var(--label-2); font-size: 15px; line-height: 20px; letter-spacing: -0.23px; }
+.row-amount { font-size: 17px; font-weight: 600; line-height: 22px; letter-spacing: -0.43px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row-sub { font-size: 13px; line-height: 18px; letter-spacing: -0.08px; color: var(--label-2); margin-top: 2px; }
 
-.date-header { font-size: 13px; font-weight: 600; color: var(--label-2); margin: 14px 4px 6px; text-transform: uppercase; letter-spacing: .6px; }
+.date-header { font-size: 12px; font-weight: 600; line-height: 16px; letter-spacing: 0.6px; color: var(--label-2); margin: 14px 4px 6px; text-transform: uppercase; }
 
 /* History cards */
 .glass-card { flex-direction: column; align-items: stretch; }
 .period-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.period-top b { font-size: 15px; letter-spacing: -.2px; }
-.period-top small { display: block; color: var(--label-2); font-size: 13px; margin-top: 2px; }
+.period-top b { font-size: 17px; font-weight: 600; line-height: 22px; letter-spacing: -0.43px; }
+.period-top small { display: block; color: var(--label-2); font-size: 13px; line-height: 18px; letter-spacing: -0.08px; margin-top: 2px; }
 .period-amounts { display: flex; gap: 24px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--separator); }
-.period-amounts small { display: block; color: var(--label-2); font-size: 12px; }
-.period-amounts b { font-size: 19px; font-variant-numeric: tabular-nums; }
+.period-amounts small { display: block; color: var(--label-2); font-size: 12px; line-height: 16px; letter-spacing: 0; }
+.period-amounts b { font-size: 20px; font-weight: 600; line-height: 25px; letter-spacing: -0.45px; font-variant-numeric: tabular-nums; }
 .period-amounts .accent { color: var(--blue); }
 .badge {
   background: rgba(10,132,255,.14); color: var(--blue);
-  font-size: 11px; font-weight: 700; padding: 5px 11px; border-radius: 99px;
-  text-transform: uppercase; letter-spacing: .5px; flex: none;
+  font-size: 11px; font-weight: 700; line-height: 13px; letter-spacing: 0.6px; padding: 5px 11px; border-radius: 99px;
+  text-transform: uppercase; flex: none;
   border: 1px solid rgba(10,132,255,.25);
 }
 
@@ -255,7 +255,7 @@ main { flex: 1; padding: 8px 16px 104px; position: relative; z-index: 1; }
 .sf-icon { width: 26px; height: 26px; transition: transform .25s cubic-bezier(.32,.72,0,1); }
 .tab-btn.active .sf-icon { transform: scale(1.12); }
 .tab-label {
-  font-size: 10px; font-weight: 600; letter-spacing: .2px;
+  font-size: 11px; font-weight: 600; line-height: 13px; letter-spacing: 0.06px;
   max-height: 16px; overflow: hidden;
   transition: opacity .3s ease, max-height .35s ease, transform .35s ease;
 }
@@ -276,7 +276,7 @@ main { flex: 1; padding: 8px 16px 104px; position: relative; z-index: 1; }
 
 .offline-banner {
   position: sticky; top: 0; z-index: 19;
-  text-align: center; font-size: 13px; font-weight: 600;
+  text-align: center; font-size: 13px; font-weight: 600; line-height: 18px; letter-spacing: -0.08px;
   padding: 8px 16px;
   background: #FF9F0A; color: #000;
   animation: tabIn .3s ease;
