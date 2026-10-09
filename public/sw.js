@@ -1,6 +1,6 @@
 /* SplitMate service worker — offline-first PWA.
- * App shell: cache-first. Supabase API: stale-while-revalidate so the
- * app opens instantly offline with last-known data, then refreshes. */
+ * App shell: cache-first. Supabase API: network-first so sync status and
+ * settlement data are fresh, with cached data as an offline fallback. */
 const SHELL_CACHE = "splitmate-shell-v1";
 const DATA_CACHE = "splitmate-data-v1";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest"];
@@ -28,16 +28,18 @@ self.addEventListener("fetch", (e) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
 
-  // Supabase data: serve cache immediately, refresh in background
+  // Supabase data: use the network first so completed syncs are visible,
+  // then fall back to the last response when the device is offline.
   if (isApi(url)) {
     e.respondWith(
       caches.open(DATA_CACHE).then(async (cache) => {
-        const cached = await cache.match(request);
-        const refresh = fetch(request).then((res) => {
-          if (res.ok) cache.put(request, res.clone());
-          return res;
-        }).catch(() => null);
-        return cached || refresh || Response.error();
+        try {
+          const response = await fetch(request, { cache: "no-store" });
+          if (response.ok) await cache.put(request, response.clone());
+          return response;
+        } catch {
+          return (await cache.match(request)) || Response.error();
+        }
       })
     );
     return;

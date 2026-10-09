@@ -1004,11 +1004,16 @@ main {
 .profile-fields input:focus { border-bottom-color: var(--accent); }
 .profile-fields .profile-email { overflow: hidden; color: var(--label-secondary); font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
 .settings-message { margin: 8px 5px 0; color: var(--label-secondary); font-size: 0.75rem; }
-.sync-now-button { display: flex; width: 100%; min-height: 48px; align-items: center; justify-content: center; gap: 9px; cursor: pointer; border: 0; border-radius: 14px; background: var(--accent); color: #fff; font: inherit; font-size: .88rem; font-weight: 750; box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 20%, transparent); transition: opacity .2s ease, transform .15s ease; }
-.sync-now-button:active { transform: scale(.98); }
-.sync-now-button:disabled { cursor: wait; opacity: .72; }
-.sync-now-button svg { width: 19px; height: 19px; }
 .sync-spinning { animation: spin .9s linear infinite; }
+.sync-row { min-height: 78px; }
+.sync-row > .settings-icon { align-self: start; margin-top: 2px; }
+.sync-row > .settings-icon svg { width: 20px; height: 20px; }
+.sync-action { display: grid; min-width: 94px; justify-items: end; gap: 6px; }
+.sync-action-button { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; padding: 0 11px; cursor: pointer; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font: inherit; font-size: .72rem; font-weight: 750; box-shadow: 0 5px 12px color-mix(in srgb, var(--accent) 20%, transparent); transition: opacity .2s ease, transform .15s ease; }
+.sync-action-button:active { transform: scale(.97); }
+.sync-action-button:disabled { cursor: wait; opacity: .72; }
+.last-scanned-line { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin: 0; color: var(--label-secondary); font-size: .68rem; line-height: 1.2; white-space: nowrap; }
+.last-scanned-line svg { width: 14px; height: 14px; flex: 0 0 auto; }
 .settings-message.sync-error { color: var(--red); }
 .settlement-setting-card { display: grid; grid-template-columns: 36px minmax(0, 1fr) minmax(0, 190px); gap: 11px; align-items: center; padding: 12px 14px; border: 1px solid var(--material-border); border-radius: 16px; background: var(--surface); }
 .settlement-picker-label { color: var(--label); font-size: .9rem; font-weight: 650; }

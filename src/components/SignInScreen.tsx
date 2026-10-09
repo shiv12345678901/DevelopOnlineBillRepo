@@ -5,7 +5,7 @@ import { HOUSEHOLD_MEMBERS, memberEmail } from "../household";
 import { ProfileAvatar } from "./ProfileAvatar";
 
 export function SignInScreen() {
-  const [selectedUsername, setSelectedUsername] = useState(HOUSEHOLD_MEMBERS[0].username);
+  const [selectedUsername, setSelectedUsername] = useState<(typeof HOUSEHOLD_MEMBERS)[number]["username"]>(HOUSEHOLD_MEMBERS[0].username);
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [passkeySubmitting, setPasskeySubmitting] = useState(false);

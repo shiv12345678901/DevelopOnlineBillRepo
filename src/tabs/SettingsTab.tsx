@@ -1,8 +1,9 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import type { PasskeyListItem, User } from "@supabase/supabase-js";
-import { Camera, Fingerprint, LogOut, RefreshCw } from "lucide-react";
+import { Camera, Clock3, Fingerprint, LogOut, RefreshCw } from "lucide-react";
 import { supabase } from "../api";
 import { AppIcon, type AppIconName } from "../components/AppIcon";
+import { formatRelativeTime } from "../components/format";
 import { ProfileAvatar } from "../components/ProfileAvatar";
 import type { Theme } from "../theme";
 import type { Period } from "../api";
@@ -107,7 +108,21 @@ export function SettingsTab({
   const [passkeyMessage, setPasskeyMessage] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [relativeTimeNow, setRelativeTimeNow] = useState(() => Date.now());
   const passkeySupported = typeof window !== "undefined" && "PublicKeyCredential" in window;
+  const selectedPeriod = periods.find((period) => period.id === selectedPeriodId)
+    || periods.find((period) => period.status === "CURRENT");
+  const hasScanField = selectedPeriod && Object.prototype.hasOwnProperty.call(selectedPeriod, "last_scanned_at");
+  const relativeScanTime = selectedPeriod?.last_scanned_at
+    ? formatRelativeTime(selectedPeriod.last_scanned_at, relativeTimeNow)
+    : null;
+  const scanLabel = !hasScanField
+    ? null
+    : selectedPeriod?.last_scanned_at === null
+      ? "Never scanned yet"
+      : relativeScanTime
+        ? `Last scanned: ${relativeScanTime}`
+        : null;
 
   async function handleSyncNow() {
     setSyncing(true);
@@ -123,6 +138,10 @@ export function SettingsTab({
   }
 
   useEffect(() => setName(displayNameFor(user)), [user]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setRelativeTimeNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   useEffect(() => {
     const nextName = name.trim();
     if (!nextName || nextName === displayNameFor(user)) return;
@@ -325,10 +344,28 @@ export function SettingsTab({
         <div className="section-heading compact">
           <h2 id="account-settings-heading">Account</h2>
         </div>
-        <button className="sync-now-button" type="button" onClick={handleSyncNow} disabled={syncing}>
-          <RefreshCw aria-hidden="true" className={syncing ? "sync-spinning" : ""} />
-          <span>{syncing ? "Syncing…" : "Sync Now"}</span>
-        </button>
+        <ul className="settings-list sync-settings-list">
+          <li className="settings-row sync-row">
+            <span className="settings-icon tile-green" aria-hidden="true">
+              <RefreshCw className={syncing ? "sync-spinning" : ""} />
+            </span>
+            <span className="settings-copy">
+              <span className="settings-title">Sync data</span>
+              <span className="settings-subtitle">Refresh receipts and settlement</span>
+            </span>
+            <span className="sync-action">
+              <button className="sync-action-button" type="button" onClick={handleSyncNow} disabled={syncing}>
+                <span>{syncing ? "Syncing…" : "Sync Now"}</span>
+              </button>
+              {scanLabel && (
+                <span className="last-scanned-line" role="status">
+                  <Clock3 aria-hidden="true" />
+                  {scanLabel}
+                </span>
+              )}
+            </span>
+          </li>
+        </ul>
         {syncMessage && <p className={`settings-message ${syncMessage.startsWith("Sync failed") ? "sync-error" : ""}`} role="status">{syncMessage}</p>}
         <button className="sign-out-button" type="button" onClick={() => supabase.auth.signOut()}>
           <LogOut aria-hidden="true" />

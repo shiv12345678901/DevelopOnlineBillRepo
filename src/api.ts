@@ -41,6 +41,7 @@ export type Period = {
   total_cents: number;
   per_person_cents: number;
   receipt_count: number;
+  last_scanned_at?: string | null;
 };
 
 export type BankTransferReceipt = {
