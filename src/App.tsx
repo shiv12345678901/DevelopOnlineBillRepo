@@ -23,11 +23,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <div className="bg-orbs" aria-hidden="true">
-        <span className="orb orb-a" />
-        <span className="orb orb-b" />
-        <span className="orb orb-c" />
-      </div>
+      <div className="bg-wash" aria-hidden="true" />
 
       <header className="nav-bar">
         <div className="nav-title">{tabTitle}</div>
@@ -71,7 +67,6 @@ function TabButton({ active, onClick, path, label }: { active: boolean; onClick:
 function HomeTab({ settlement }: { settlement: Settlement | null }) {
   if (!settlement) return <div className="empty">No settlement yet.</div>;
   const members = Object.entries(settlement.member_totals || {});
-  const max = Math.max(1, ...members.map(([, c]) => c));
 
   return (
     <div>
@@ -80,22 +75,12 @@ function HomeTab({ settlement }: { settlement: Settlement | null }) {
 
       <div className="glass-hero">
         <div className="glass-shine" />
-        <span className="hero-label">You each owe</span>
-        <span className="hero-amount">{fmt(settlement.per_person_cents)}</span>
-        <div className="hero-stats">
-          <div className="hero-stat">
-            <b>{fmt(settlement.total_cents)}</b>
-            <small>Total spent</small>
-          </div>
-          <div className="hero-stat">
-            <b>{settlement.receipt_count}</b>
-            <small>Receipts</small>
-          </div>
-          <div className="hero-stat">
-            <b>{members.length}</b>
-            <small>Members</small>
-          </div>
+        <div className="hero-main">
+          <span className="hero-label">You each owe</span>
+          <span className="hero-amount">{fmt(settlement.per_person_cents)}</span>
+          <span className="hero-sub">{fmt(settlement.total_cents)} total · {settlement.receipt_count} receipts</span>
         </div>
+        <div className="hero-badge">$</div>
       </div>
 
       <h2 className="section-title">Paid so far</h2>
@@ -105,11 +90,16 @@ function HomeTab({ settlement }: { settlement: Settlement | null }) {
             <span className="avatar">{name.trim()[0].toUpperCase()}</span>
             <div className="row-main">
               <b>{name}</b>
-              <div className="bar-track">
-                <div className="bar-fill" style={{ width: `${Math.round((cents / max) * 100)}%`, animationDelay: `${i * 60}ms` }} />
-              </div>
+              <div className="row-sub">Paid {fmt(cents)}</div>
             </div>
-            <strong className="row-amount">{fmt(cents)}</strong>
+            {(() => {
+              const bal = settlement.per_person_cents - cents;
+              return bal > 0
+                ? <span className="row-amount">Owes {fmt(bal)}</span>
+                : bal < 0
+                  ? <span className="row-amount" style={{ color: "var(--blue)" }}>Owed {fmt(-bal)}</span>
+                  : <span className="row-amount">Settled</span>;
+            })()}
           </div>
         ))}
       </div>
