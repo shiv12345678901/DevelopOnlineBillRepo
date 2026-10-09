@@ -49,7 +49,7 @@ export default function App() {
       const y = window.scrollY;
       const dy = y - lastY.current;
       lastY.current = y;
-      setScrolled(y > 32);
+      setScrolled(y > 8);
       if (collapseTimer.current) clearTimeout(collapseTimer.current);
       if (dy > 8 && y > 120) {
         setCollapsed(true); // scrolling down -> contract

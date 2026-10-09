@@ -116,7 +116,7 @@ body {
 
 /* Large title shrinks into nav on scroll */
 .large-title { transition: font-size .3s cubic-bezier(.32,.72,0,1), line-height .3s cubic-bezier(.32,.72,0,1), opacity .3s ease; }
-.large-title.mini { font-size: 28px; line-height: 34px; opacity: .92; }
+.large-title.mini { font-size: 28px; line-height: 34px; opacity: 0; transform: translateY(-8px); }
 
 /* Theme switcher button */
 .theme-btn {
