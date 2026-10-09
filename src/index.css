@@ -1004,6 +1004,12 @@ main {
 .profile-fields input:focus { border-bottom-color: var(--accent); }
 .profile-fields .profile-email { overflow: hidden; color: var(--label-secondary); font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
 .settings-message { margin: 8px 5px 0; color: var(--label-secondary); font-size: 0.75rem; }
+.sync-now-button { display: flex; width: 100%; min-height: 48px; align-items: center; justify-content: center; gap: 9px; cursor: pointer; border: 0; border-radius: 14px; background: var(--accent); color: #fff; font: inherit; font-size: .88rem; font-weight: 750; box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 20%, transparent); transition: opacity .2s ease, transform .15s ease; }
+.sync-now-button:active { transform: scale(.98); }
+.sync-now-button:disabled { cursor: wait; opacity: .72; }
+.sync-now-button svg { width: 19px; height: 19px; }
+.sync-spinning { animation: spin .9s linear infinite; }
+.settings-message.sync-error { color: var(--red); }
 .settlement-setting-card { display: grid; grid-template-columns: 36px minmax(0, 1fr) minmax(0, 190px); gap: 11px; align-items: center; padding: 12px 14px; border: 1px solid var(--material-border); border-radius: 16px; background: var(--surface); }
 .settlement-picker-label { color: var(--label); font-size: .9rem; font-weight: 650; }
 .settlement-setting-card select { width: 100%; min-width: 0; max-width: 190px; padding: 9px 10px; cursor: pointer; border: 1px solid var(--separator); border-radius: 11px; outline: 0; background: var(--surface-raised); color: var(--label); font: inherit; font-size: .75rem; font-weight: 650; }

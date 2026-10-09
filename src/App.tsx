@@ -77,21 +77,7 @@ export default function App() {
 
     let cancelled = false;
     setLoading(true);
-    fetchPeriods()
-      .then(async (p) => {
-        if (cancelled) return;
-        setPeriods(p);
-        const currentPeriod = p.find((period) => period.status === "CURRENT") || p[0];
-        const targetPeriod = p.find((period) => period.id === selectedPeriodId) || currentPeriod;
-        if (!targetPeriod) return;
-        const [s, r] = await Promise.all([
-          fetchSettlementForPeriod(targetPeriod.id),
-          fetchReceiptsForPeriod(targetPeriod.id),
-        ]);
-        if (cancelled) return;
-        setSettlement(s);
-        setReceipts(r);
-      })
+    refreshData()
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -106,6 +92,63 @@ export default function App() {
       return;
     }
     setSelectedPeriodId(null);
+  }
+
+  async function refreshData() {
+    const nextPeriods = await fetchPeriods();
+    setPeriods(nextPeriods);
+    const currentPeriod = nextPeriods.find((period) => period.status === "CURRENT") || nextPeriods[0];
+    const targetPeriod = nextPeriods.find((period) => period.id === selectedPeriodId) || currentPeriod;
+    if (!targetPeriod) {
+      setSettlement(null);
+      setReceipts([]);
+      return;
+    }
+    const [nextSettlement, nextReceipts] = await Promise.all([
+      fetchSettlementForPeriod(targetPeriod.id),
+      fetchReceiptsForPeriod(targetPeriod.id),
+    ]);
+    setSettlement(nextSettlement);
+    setReceipts(nextReceipts);
+  }
+
+  async function handleSyncNow() {
+    const { data, error } = await supabase
+      .from("sync_requests")
+      .insert({ requested_by: "netlify-app", status: "pending" })
+      .select("id")
+      .single();
+    if (error || !data) throw error || new Error("Could not start sync.");
+    const requestId = data.id;
+    return new Promise<string>((resolve, reject) => {
+      let finished = false;
+      const poll = setInterval(async () => {
+        const { data: request, error: pollError } = await supabase
+          .from("sync_requests")
+          .select("status, result_summary, error")
+          .eq("id", requestId)
+          .single();
+        if (pollError || !request || finished) return;
+        if (request.status === "done") {
+          finished = true;
+          clearInterval(poll);
+          clearTimeout(timeout);
+          await refreshData();
+          resolve(request.result_summary || "Data refreshed");
+        } else if (request.status === "failed") {
+          finished = true;
+          clearInterval(poll);
+          clearTimeout(timeout);
+          reject(new Error(request.error || "Sync failed."));
+        }
+      }, 5000);
+      const timeout = setTimeout(() => {
+        if (finished) return;
+        finished = true;
+        clearInterval(poll);
+        reject(new Error("Sync timed out after 5 minutes."));
+      }, 300000);
+    });
   }
 
   function confirmPeriodChange() {
@@ -158,6 +201,7 @@ export default function App() {
                 periods={periods}
                 selectedPeriodId={selectedPeriodId || periods.find((period) => period.status === "CURRENT")?.id || ""}
                 onPeriodChange={handlePeriodChange}
+                onSyncNow={handleSyncNow}
                 user={session.user}
                 onUserUpdated={handleUserUpdated}
               />

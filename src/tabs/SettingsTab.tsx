@@ -1,6 +1,6 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import type { PasskeyListItem, User } from "@supabase/supabase-js";
-import { Camera, Fingerprint, LogOut } from "lucide-react";
+import { Camera, Fingerprint, LogOut, RefreshCw } from "lucide-react";
 import { supabase } from "../api";
 import { AppIcon, type AppIconName } from "../components/AppIcon";
 import { ProfileAvatar } from "../components/ProfileAvatar";
@@ -85,6 +85,7 @@ export function SettingsTab({
   periods,
   selectedPeriodId,
   onPeriodChange,
+  onSyncNow,
 }: {
   theme: Theme;
   setTheme: (theme: Theme) => void;
@@ -94,6 +95,7 @@ export function SettingsTab({
   periods: Period[];
   selectedPeriodId: string;
   onPeriodChange: (periodId: string) => void;
+  onSyncNow: () => Promise<string>;
 }) {
   const initialName = displayNameFor(user);
   const [name, setName] = useState(initialName);
@@ -103,7 +105,22 @@ export function SettingsTab({
   const [passkeys, setPasskeys] = useState<PasskeyListItem[]>([]);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyMessage, setPasskeyMessage] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
   const passkeySupported = typeof window !== "undefined" && "PublicKeyCredential" in window;
+
+  async function handleSyncNow() {
+    setSyncing(true);
+    setSyncMessage("");
+    try {
+      const summary = await onSyncNow();
+      setSyncMessage(`Sync complete${summary ? `: ${summary}` : ""}`);
+    } catch (error) {
+      setSyncMessage(`Sync failed: ${error instanceof Error ? error.message : "Please try again."}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   useEffect(() => setName(displayNameFor(user)), [user]);
   useEffect(() => {
@@ -308,6 +325,11 @@ export function SettingsTab({
         <div className="section-heading compact">
           <h2 id="account-settings-heading">Account</h2>
         </div>
+        <button className="sync-now-button" type="button" onClick={handleSyncNow} disabled={syncing}>
+          <RefreshCw aria-hidden="true" className={syncing ? "sync-spinning" : ""} />
+          <span>{syncing ? "Syncing…" : "Sync Now"}</span>
+        </button>
+        {syncMessage && <p className={`settings-message ${syncMessage.startsWith("Sync failed") ? "sync-error" : ""}`} role="status">{syncMessage}</p>}
         <button className="sign-out-button" type="button" onClick={() => supabase.auth.signOut()}>
           <LogOut aria-hidden="true" />
           <span>Sign out</span>
