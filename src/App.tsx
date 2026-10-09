@@ -71,14 +71,14 @@ export default function App() {
           </div>
         ) : (
           <>
-            {tab === "home" && <HomeTab settlement={settlement} />}
+            {tab === "home" && <HomeTab settlement={settlement} theme={theme} />}
             {tab === "receipts" && <ReceiptsTab receipts={receipts} />}
             {tab === "history" && <HistoryTab periods={periods} />}
           </>
         )}
       </main>
 
-      <TabBar tab={tab} setTab={setTab} />
+      <TabBar tab={tab} setTab={setTab} theme={theme} />
     </div>
   );
 }

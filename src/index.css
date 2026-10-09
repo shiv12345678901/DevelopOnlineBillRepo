@@ -112,13 +112,13 @@ main { flex: 1; padding: calc(env(safe-area-inset-top, 0px) + 64px) 16px 104px; 
 
 /* Compact hero card (content layer — solid brand gradient) */
 .glass-hero {
-  position: relative; overflow: hidden;
-  border-radius: 24px; padding: 22px 20px;
-  background: linear-gradient(135deg, #0A84FF, #5E5CE6);
-  border: 1px solid rgba(255,255,255,.12);
-  box-shadow: 0 12px 32px rgba(10,132,255,.28), inset 0 1px 0 rgba(255,255,255,.25);
+  position: relative;
   animation: heroIn .6s cubic-bezier(.32,.72,0,1);
+}
+.hero-content {
+  position: relative;
   display: flex; align-items: center; gap: 18px;
+  padding: 22px 20px;
 }
 @keyframes heroIn { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
 .glass-shine {
@@ -130,21 +130,21 @@ main { flex: 1; padding: calc(env(safe-area-inset-top, 0px) + 64px) 16px 104px; 
 }
 @keyframes shine { 0%, 100% { left: -60%; } 50% { left: 120%; } }
 .hero-main { flex: 1; }
-.hero-label { font-size: 15px; line-height: 20px; letter-spacing: -0.23px; color: var(--hero-sub); }
+.hero-label { font-size: 15px; line-height: 20px; letter-spacing: -0.23px; color: var(--label-2); }
 .hero-amount {
   display: block; font-size: 44px; font-weight: 700; line-height: 48px; letter-spacing: 0.37px;
-  color: var(--hero-text); margin: 2px 0;
+  color: var(--label); margin: 2px 0;
   font-variant-numeric: tabular-nums;
   animation: amountIn .7s .1s cubic-bezier(.32,.72,0,1) backwards;
 }
 @keyframes amountIn { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: scale(1); } }
-.hero-sub { font-size: 13px; line-height: 18px; letter-spacing: -0.08px; color: var(--hero-sub); }
+.hero-sub { font-size: 13px; line-height: 18px; letter-spacing: -0.08px; color: var(--label-2); }
 .hero-badge {
   flex: none; width: 64px; height: 64px; border-radius: 20px;
-  background: rgba(255,255,255,.18);
-  border: 1px solid rgba(255,255,255,.25);
+  background: color-mix(in srgb, var(--label) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--label) 18%, transparent);
   display: flex; align-items: center; justify-content: center;
-  font-size: 28px; font-weight: 700; color: #fff;
+  font-size: 28px; font-weight: 700; color: var(--label);
 }
 
 /* Content rows — solid elevated surfaces */
@@ -200,24 +200,16 @@ main { flex: 1; padding: calc(env(safe-area-inset-top, 0px) + 64px) 16px 104px; 
   bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
   margin: 0 auto;
   max-width: 420px;
+  transition: max-width .45s cubic-bezier(.32,.72,0,1);
+}
+.tab-row {
   display: grid; grid-template-columns: repeat(3, 1fr);
-  background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(30px) saturate(1.8);
-  backdrop-filter: blur(30px) saturate(1.8);
-  border: 1px solid var(--separator);
-  border-radius: 999px;
   padding: 8px 10px;
-  box-shadow: 0 12px 40px rgba(0,0,0,.28);
-  transition: transform .45s cubic-bezier(.32,.72,0,1), border-radius .45s cubic-bezier(.32,.72,0,1),
-              padding .45s cubic-bezier(.32,.72,0,1), max-width .45s cubic-bezier(.32,.72,0,1),
-              background .3s ease;
+  transition: padding .45s cubic-bezier(.32,.72,0,1);
 }
 /* Contracted state: small floating pill when scrolling down */
-.tab-bar.collapsed {
-  max-width: 148px;
-  padding: 8px 6px;
-  border-radius: 999px;
-}
+.tab-bar.collapsed { max-width: 148px; }
+.tab-bar.collapsed .tab-row { padding: 8px 6px; }
 .tab-bar.collapsed .tab-btn { padding: 6px 2px; min-height: 44px; }
 .tab-bar.collapsed .tab-label {
   opacity: 0; max-height: 0; margin: 0;
@@ -225,7 +217,7 @@ main { flex: 1; padding: calc(env(safe-area-inset-top, 0px) + 64px) 16px 104px; 
 }
 .tab-bar.collapsed .sf-icon { width: 22px; height: 22px; }
 .tab-btn {
-  background: none; border: none; color: var(--label-3);
+  background: none; border: none; color: var(--label-2);
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   padding: 6px; cursor: pointer; border-radius: 14px;
   transition: color .25s ease, transform .15s ease;
@@ -276,21 +268,26 @@ body, .tab-bar, .glass-row, .glass-card, .avatar,
 .theme-btn .sf-icon { transition: transform .35s cubic-bezier(.32,.72,0,1), opacity .25s ease; }
 .theme-btn:active .sf-icon { transform: rotate(40deg) scale(.85); }
 
+/* Liquid Glass anchoring — the library forces centering transforms on its
+   layers; neutralize them so our own wrappers own positioning. */
+.lg-flat { transform: none !important; }
+/* The library's extra tint/shadow layers rely on Tailwind utilities
+   (bg-black, opacity-*, mix-blend-*) that aren't bundled here — without
+   them they render as ghost duplicates. Hide them; the true liquid-glass
+   refraction lives in .lg-flat itself. */
+.lg-anchor > div:not(.lg-flat),
+.lg-anchor > span {
+  display: none !important;
+}
+
 /* Floating theme switcher pill */
 .theme-pill {
   position: fixed; z-index: 30;
   top: calc(env(safe-area-inset-top, 0px) + 10px);
   right: max(16px, env(safe-area-inset-right));
-  display: flex; gap: 2px;
-  background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  backdrop-filter: blur(24px) saturate(1.6);
-  border: 1px solid var(--separator);
-  border-radius: 999px;
-  padding: 4px;
-  box-shadow: 0 8px 28px rgba(0,0,0,.22);
   animation: pillIn .5s .2s cubic-bezier(.32,.72,0,1) backwards;
 }
+.theme-seg-row { display: flex; gap: 2px; position: relative; padding: 4px; }
 @keyframes pillIn { from { opacity: 0; transform: translateY(-10px) scale(.94); } to { opacity: 1; transform: none; } }
 .theme-seg {
   background: none; border: none; cursor: pointer;

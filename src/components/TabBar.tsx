@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import LiquidGlass from "liquid-glass-react";
 import { SFSymbol, type SFSymbolName } from "./SFSymbol";
+import { useOverLight } from "./useOverLight";
+import type { Theme } from "./ThemePill";
 
 export type TabId = "home" | "receipts" | "history";
 
@@ -8,6 +11,14 @@ const TABS: { id: TabId; icon: SFSymbolName; label: string }[] = [
   { id: "receipts", icon: "docText", label: "Receipts" },
   { id: "history", icon: "clock", label: "History" },
 ];
+
+const GLASS = {
+  displacementScale: 64,
+  blurAmount: 0.28,
+  saturation: 170,
+  aberrationIntensity: 1.6,
+  elasticity: 0.25,
+} as const;
 
 function TabButton({
   active, onClick, icon, label,
@@ -23,14 +34,19 @@ function TabButton({
 }
 
 /**
- * Floating pill tab bar.
+ * Floating pill tab bar in real Liquid Glass.
  * Contracts to icons-only while scrolling down; expands on scroll up,
  * touch, or after 1.8s idle.
  */
-export function TabBar({ tab, setTab }: { tab: TabId; setTab: (t: TabId) => void }) {
+export function TabBar({
+  tab, setTab, theme,
+}: {
+  tab: TabId; setTab: (t: TabId) => void; theme: Theme;
+}) {
   const [collapsed, setCollapsed] = useState(false);
   const lastY = useRef(0);
   const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overLight = useOverLight(theme);
 
   useEffect(() => {
     const onScroll = () => {
@@ -53,21 +69,25 @@ export function TabBar({ tab, setTab }: { tab: TabId; setTab: (t: TabId) => void
   }, []);
 
   return (
-    <nav
-      className={`tab-bar${collapsed ? " collapsed" : ""}`}
-      onPointerEnter={() => setCollapsed(false)}
-      onTouchStart={() => setCollapsed(false)}
-      aria-label="Sections"
-    >
-      {TABS.map((t) => (
-        <TabButton
-          key={t.id}
-          active={tab === t.id}
-          onClick={() => setTab(t.id)}
-          icon={t.icon}
-          label={t.label}
-        />
-      ))}
-    </nav>
+    <div className={`tab-bar lg-anchor${collapsed ? " collapsed" : ""}`}>
+      <LiquidGlass cornerRadius={999} overLight={overLight} className="lg-flat" padding="0" {...GLASS}>
+        <nav
+          className="tab-row"
+          aria-label="Sections"
+          onPointerEnter={() => setCollapsed(false)}
+          onTouchStart={() => setCollapsed(false)}
+        >
+          {TABS.map((t) => (
+            <TabButton
+              key={t.id}
+              active={tab === t.id}
+              onClick={() => setTab(t.id)}
+              icon={t.icon}
+              label={t.label}
+            />
+          ))}
+        </nav>
+      </LiquidGlass>
+    </div>
   );
 }

@@ -1,4 +1,15 @@
+import LiquidGlass from "liquid-glass-react";
 import { fmt, type Settlement } from "../api";
+import { useOverLight } from "../components/useOverLight";
+import type { Theme } from "../components/ThemePill";
+
+const GLASS = {
+  displacementScale: 72,
+  blurAmount: 0.1,
+  saturation: 160,
+  aberrationIntensity: 2,
+  elasticity: 0.15,
+} as const;
 
 function Balance({ perPerson, paid }: { perPerson: number; paid: number }) {
   const bal = perPerson - paid;
@@ -12,7 +23,12 @@ function Balance({ perPerson, paid }: { perPerson: number; paid: number }) {
   return <span className="row-amount">Settled</span>;
 }
 
-export function HomeTab({ settlement }: { settlement: Settlement | null }) {
+export function HomeTab({
+  settlement, theme,
+}: {
+  settlement: Settlement | null; theme: Theme;
+}) {
+  const overLight = useOverLight(theme);
   if (!settlement) return <div className="empty">No settlement yet.</div>;
   const members = Object.entries(settlement.member_totals || {});
 
@@ -21,16 +37,20 @@ export function HomeTab({ settlement }: { settlement: Settlement | null }) {
       <h1 className="large-title">SplitMate</h1>
       <p className="caption">Rockdale Homies Grocery</p>
 
-      <div className="glass-hero">
-        <div className="glass-shine" />
-        <div className="hero-main">
-          <span className="hero-label">You each owe</span>
-          <span className="hero-amount">{fmt(settlement.per_person_cents)}</span>
-          <span className="hero-sub">
-            {fmt(settlement.total_cents)} total · {settlement.receipt_count} receipts
-          </span>
-        </div>
-        <div className="hero-badge">$</div>
+      <div className="glass-hero lg-anchor">
+        <LiquidGlass cornerRadius={24} overLight={overLight} className="lg-flat" padding="0" {...GLASS}>
+          <div className="hero-content">
+            <div className="glass-shine" />
+            <div className="hero-main">
+              <span className="hero-label">You each owe</span>
+              <span className="hero-amount">{fmt(settlement.per_person_cents)}</span>
+              <span className="hero-sub">
+                {fmt(settlement.total_cents)} total · {settlement.receipt_count} receipts
+              </span>
+            </div>
+            <div className="hero-badge">$</div>
+          </div>
+        </LiquidGlass>
       </div>
 
       <h2 className="section-title">Paid so far</h2>
