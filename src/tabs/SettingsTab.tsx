@@ -1,12 +1,13 @@
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent, type PointerEvent } from "react";
 import type { PasskeyListItem, User } from "@supabase/supabase-js";
-import { Camera, CheckCircle2, ChevronRight, CircleAlert, Clock3, Fingerprint, LogOut, RefreshCw } from "lucide-react";
+import { Camera, CheckCircle2, ChevronRight, CircleAlert, Clock3, Crop, Fingerprint, LogOut, RefreshCw, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
 import { supabase } from "../api";
 import { AppIcon, type AppIconName } from "../components/AppIcon";
 import { formatRelativeTime } from "../components/format";
 import { ProfileAvatar } from "../components/ProfileAvatar";
 import type { Theme } from "../theme";
 import type { Period } from "../api";
+import { isSyncUiActive, type SyncState } from "../sync";
 
 function displayNameFor(user: User) {
   return (
@@ -22,7 +23,19 @@ function settlementLabel(period: Period) {
   return `${shortDate(period.start_date)} – ${period.status === "CURRENT" ? "Today" : shortDate(period.end_date)}`;
 }
 
-function resizeProfileImage(file: File) {
+type CropOffset = { x: number; y: number };
+
+function drawProfileCrop(context: CanvasRenderingContext2D, image: HTMLImageElement, size: number, zoom: number, offset: CropOffset) {
+  const crop = Math.min(image.naturalWidth, image.naturalHeight) / zoom;
+  const sourceX = (image.naturalWidth - crop) / 2 - offset.x * (image.naturalWidth - crop) / 2;
+  const sourceY = (image.naturalHeight - crop) / 2 - offset.y * (image.naturalHeight - crop) / 2;
+  context.clearRect(0, 0, size, size);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(image, sourceX, sourceY, crop, crop, 0, 0, size, size);
+}
+
+function cropProfileImage(file: Blob, zoom: number, offset: CropOffset) {
   return new Promise<Blob>((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("Could not read that image."));
@@ -37,10 +50,7 @@ function resizeProfileImage(file: File) {
         const context = canvas.getContext("2d");
         if (!context) return reject(new Error("Could not prepare that image."));
 
-        const crop = Math.min(image.naturalWidth, image.naturalHeight);
-        const sourceX = (image.naturalWidth - crop) / 2;
-        const sourceY = (image.naturalHeight - crop) / 2;
-        context.drawImage(image, sourceX, sourceY, crop, crop, 0, 0, size, size);
+        drawProfileCrop(context, image, size, zoom, offset);
         canvas.toBlob(
           (blob) => blob ? resolve(blob) : reject(new Error("Could not prepare that image.")),
           "image/jpeg",
@@ -82,34 +92,47 @@ export function SettingsTab({
   setTheme,
   memberCount,
   user,
+  avatarUrl,
+  onAvatarUrlChange,
   onUserUpdated,
   periods,
   selectedPeriodId,
   onPeriodChange,
   onSyncNow,
+  syncState,
 }: {
   theme: Theme;
   setTheme: (theme: Theme) => void;
   memberCount: number;
   user: User;
+  avatarUrl: string;
+  onAvatarUrlChange: (url: string) => void;
   onUserUpdated: (user: User) => void;
   periods: Period[];
   selectedPeriodId: string;
   onPeriodChange: (periodId: string) => void;
-  onSyncNow: (onStage?: (stage: string | null, message: string | null) => void) => Promise<string>;
+  onSyncNow: () => Promise<void>;
+  syncState: SyncState;
 }) {
   const initialName = displayNameFor(user);
   const [name, setName] = useState(initialName);
-  const [avatarUrl, setAvatarUrl] = useState("");
   const [message, setMessage] = useState("");
   const [nameStatus, setNameStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [pendingPhoto, setPendingPhoto] = useState<{ file: File; previewUrl: string } | null>(null);
+  const [cropZoom, setCropZoom] = useState(1);
+  const [cropOffset, setCropOffset] = useState<CropOffset>({ x: 0, y: 0 });
   const [passkeys, setPasskeys] = useState<PasskeyListItem[]>([]);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyMessage, setPasskeyMessage] = useState("");
-  const [syncing, setSyncing] = useState(false);
-  const [syncStage, setSyncStage] = useState<string | null>(null);
-  const [syncResult, setSyncResult] = useState<{ type: "success" | "error"; detail: string } | null>(null);
   const [relativeTimeNow, setRelativeTimeNow] = useState(() => Date.now());
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const cropCanvasRef = useRef<HTMLCanvasElement>(null);
+  const cropImageRef = useRef<HTMLImageElement | null>(null);
+  const longPressTimer = useRef<number | null>(null);
+  const longPressTriggered = useRef(false);
+  const cropDrag = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const passkeySupported = typeof window !== "undefined" && "PublicKeyCredential" in window;
   const selectedPeriod = periods.find((period) => period.id === selectedPeriodId)
     || periods.find((period) => period.status === "CURRENT");
@@ -125,29 +148,12 @@ export function SettingsTab({
         ? `Last scanned: ${relativeScanTime}`
         : null;
 
-  async function handleSyncNow() {
-    setSyncing(true);
-    setSyncStage(null);
-    setSyncResult(null);
-    try {
-      const summary = await onSyncNow((_stage, message) => {
-        setSyncStage(message || _stage);
-      });
-      setSyncStage(null);
-      setSyncResult({
-        type: "success",
-        detail: summary ? summary.replace(/,\s*/g, " · ") : "Your data is up to date.",
-      });
-    } catch (error) {
-      setSyncResult({
-        type: "error",
-        detail: error instanceof Error ? error.message : "Please try again.",
-      });
-    } finally {
-      setSyncing(false);
-      setSyncStage(null);
-    }
-  }
+  const syncing = isSyncUiActive(syncState);
+  const syncButtonLabel = syncing
+    ? syncState.stageMessage || "Syncing…"
+    : syncState.status === "failed"
+      ? "Try again"
+      : "Sync Now";
 
   useEffect(() => setName(displayNameFor(user)), [user]);
   useEffect(() => {
@@ -175,15 +181,42 @@ export function SettingsTab({
     return () => window.clearTimeout(timer);
   }, [name, onUserUpdated, user]);
   useEffect(() => {
-    const avatarPath = user.user_metadata.avatar_path;
-    if (!avatarPath) {
-      setAvatarUrl("");
+    if (!profileModalOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [profileModalOpen]);
+  useEffect(() => () => {
+    if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl);
+  }, [pendingPhoto]);
+  useEffect(() => {
+    const source = pendingPhoto?.previewUrl || avatarUrl;
+    if (!profileModalOpen || !source) {
+      cropImageRef.current = null;
       return;
     }
 
-    supabase.storage.from("avatars").createSignedUrl(avatarPath, 60 * 60 * 24 * 7)
-      .then(({ data }) => setAvatarUrl(data?.signedUrl || ""));
-  }, [user]);
+    let cancelled = false;
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      if (cancelled) return;
+      cropImageRef.current = image;
+      const canvas = cropCanvasRef.current;
+      const context = canvas?.getContext("2d");
+      if (canvas && context) drawProfileCrop(context, image, canvas.width, cropZoom, cropOffset);
+    };
+    image.src = source;
+    return () => { cancelled = true; };
+  }, [avatarUrl, pendingPhoto?.previewUrl, profileModalOpen]);
+  useEffect(() => {
+    const canvas = cropCanvasRef.current;
+    const image = cropImageRef.current;
+    const context = canvas?.getContext("2d");
+    if (canvas && image && context) drawProfileCrop(context, image, canvas.width, cropZoom, cropOffset);
+  }, [cropOffset, cropZoom]);
 
   useEffect(() => {
     if (!passkeySupported) return;
@@ -208,14 +241,49 @@ export function SettingsTab({
     setPasskeyBusy(false);
   }
 
-  async function handleImage(event: ChangeEvent<HTMLInputElement>) {
+  function handleImage(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    setMessage("");
+    setPendingPhoto({ file, previewUrl: URL.createObjectURL(file) });
+    setCropZoom(1);
+    setCropOffset({ x: 0, y: 0 });
+    setProfileModalOpen(true);
+    event.target.value = "";
+  }
+
+  function closeProfileModal() {
+    if (photoBusy) return;
+    setPendingPhoto(null);
+    setCropZoom(1);
+    setCropOffset({ x: 0, y: 0 });
+    setProfileModalOpen(false);
+  }
+
+  function openProfileModal() {
+    setCropZoom(1);
+    setCropOffset({ x: 0, y: 0 });
+    setProfileModalOpen(true);
+  }
+
+  async function saveProfileImage() {
+    if (!pendingPhoto && cropZoom === 1) {
+      imageInputRef.current?.click();
+      return;
+    }
+
+    setPhotoBusy(true);
     setMessage("");
 
     try {
       setMessage("Uploading photo…");
-      const resizedImage = await resizeProfileImage(file);
+      let sourceImage: Blob | undefined = pendingPhoto?.file;
+      if (!sourceImage) sourceImage = await fetch(avatarUrl).then((response) => {
+        if (!response.ok) throw new Error("Could not load the current image.");
+        return response.blob();
+      });
+      if (!sourceImage) throw new Error("Choose a photo first.");
+      const resizedImage = await cropProfileImage(sourceImage, cropZoom, cropOffset);
       const avatarPath = `${user.id}/profile.jpg`;
       const { error: uploadError } = await supabase.storage.from("avatars").upload(
         avatarPath,
@@ -233,14 +301,93 @@ export function SettingsTab({
         avatarPath,
         60 * 60 * 24 * 7,
       );
-      setAvatarUrl(signedData?.signedUrl || "");
+      const signedUrl = signedData?.signedUrl;
+      onAvatarUrlChange(signedUrl ? `${signedUrl}&v=${Date.now()}` : "");
       if (updateData.user) onUserUpdated(updateData.user);
       setMessage("Profile photo saved.");
+      setPendingPhoto(null);
+      setCropZoom(1);
+      setCropOffset({ x: 0, y: 0 });
+      setProfileModalOpen(false);
     } catch (error) {
       setMessage("Your photo could not be saved. Check the profile storage setup.");
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function deleteProfileImage() {
+    const avatarPath = user.user_metadata.avatar_path;
+    if (!avatarPath) {
+      closeProfileModal();
+      setMessage("There is no uploaded photo to remove.");
+      return;
     }
 
-    event.target.value = "";
+    setPhotoBusy(true);
+    setMessage("");
+    try {
+      const { error: removeError } = await supabase.storage.from("avatars").remove([avatarPath]);
+      if (removeError) throw removeError;
+      const { data, error: updateError } = await supabase.auth.updateUser({ data: { avatar_path: null } });
+      if (updateError) throw updateError;
+      onAvatarUrlChange("");
+      if (data.user) onUserUpdated(data.user);
+      setProfileModalOpen(false);
+      setMessage("Profile photo removed.");
+    } catch (error) {
+      setMessage("Your photo could not be removed. Check the profile storage setup.");
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  function startProfileLongPress(event: PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    longPressTriggered.current = false;
+    if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+    longPressTimer.current = window.setTimeout(() => {
+      longPressTriggered.current = true;
+      openProfileModal();
+    }, 550);
+  }
+
+  function endProfileLongPress() {
+    if (longPressTimer.current) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
+
+  function handleCameraClick(event: MouseEvent<HTMLLabelElement>) {
+    event.stopPropagation();
+    if (!longPressTriggered.current) return;
+    event.preventDefault();
+    longPressTriggered.current = false;
+  }
+
+  function startCropDrag(event: PointerEvent<HTMLButtonElement>) {
+    if (cropZoom <= 1 || photoBusy) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    cropDrag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+  }
+
+  function moveCrop(event: PointerEvent<HTMLButtonElement>) {
+    const drag = cropDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId || cropZoom <= 1) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const maxTravel = Math.max(1, (cropZoom - 1) * bounds.width / 2);
+    const deltaX = (event.clientX - drag.x) / maxTravel;
+    const deltaY = (event.clientY - drag.y) / maxTravel;
+    cropDrag.current = { ...drag, x: event.clientX, y: event.clientY };
+    setCropOffset((current) => ({
+      x: Math.max(-1, Math.min(1, current.x + deltaX)),
+      y: Math.max(-1, Math.min(1, current.y + deltaY)),
+    }));
+  }
+
+  function endCropDrag(event: PointerEvent<HTMLButtonElement>) {
+    if (cropDrag.current?.pointerId === event.pointerId) cropDrag.current = null;
   }
 
   return (
@@ -254,11 +401,19 @@ export function SettingsTab({
           <h2 id="profile-settings-heading">Profile</h2>
         </div>
         <div className="profile-settings-card">
-          <div className="profile-photo-control">
+          <div
+            className="profile-photo-control"
+            onPointerDown={startProfileLongPress}
+            onPointerUp={endProfileLongPress}
+            onPointerCancel={endProfileLongPress}
+            onPointerLeave={endProfileLongPress}
+            onClick={openProfileModal}
+            title="Long press to manage your profile photo"
+          >
             <ProfileAvatar name={name || initialName} src={avatarUrl} />
-            <label className="profile-camera" aria-label="Choose profile photo" title="Choose profile photo">
+            <label className="profile-camera" aria-label="Choose profile photo" title="Choose profile photo" onClick={handleCameraClick}>
               <Camera aria-hidden="true" />
-              <input type="file" accept="image/*" onChange={handleImage} />
+              <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImage} />
             </label>
           </div>
           <div className="profile-fields">
@@ -372,24 +527,36 @@ export function SettingsTab({
                 <span className="settings-subtitle">Refresh receipts and settlement</span>
               )}
             </span>
-            <button className="sync-action-button" type="button" onClick={handleSyncNow} disabled={syncing}>
-              <span>{syncing ? "Syncing…" : "Sync Now"}</span>
+            <button
+              className="sync-action-button"
+              type="button"
+              onClick={() => void onSyncNow()}
+              aria-disabled={syncing}
+              title={syncing ? "Reconnect to this running sync" : undefined}
+            >
+              <span>{syncButtonLabel}</span>
             </button>
-            {syncing && syncStage && (
-              <div className="sync-stage" role="status">
-                <span>{syncStage}</span>
+            {syncing && (
+              <div className="sync-live-stage" role="status" aria-live="polite">
+                <span className="sync-live-dot" aria-hidden="true" />
+                <span>{syncState.stageMessage || "Syncing…"}</span>
               </div>
             )}
-            {syncResult && (
-              <div className={`sync-result sync-result--${syncResult.type}`} role={syncResult.type === "error" ? "alert" : "status"}>
-                {syncResult.type === "success" ? <CheckCircle2 aria-hidden="true" /> : <CircleAlert aria-hidden="true" />}
+            {(syncState.status === "done" || syncState.status === "failed" || syncState.status === "unreachable") && (
+              <div className={`sync-result sync-result--${syncState.status === "done" ? "success" : "error"}`} role={syncState.status === "done" ? "status" : "alert"}>
+                {syncState.status === "done" ? <CheckCircle2 aria-hidden="true" /> : <CircleAlert aria-hidden="true" />}
                 <span>
-                  <strong>{syncResult.type === "success" ? "Sync complete" : "Sync failed"}</strong>
-                  <span>{syncResult.detail}</span>
+                  <strong>{syncState.status === "done" ? "Sync complete" : syncState.status === "failed" ? "Sync failed" : "Reconnecting"}</strong>
+                  <span>{(syncState.status === "done" ? syncState.resultSummary : syncState.error).replace(/,\s*/g, " · ")}</span>
                 </span>
+                {syncState.status === "failed" && (
+                  <button type="button" className="sync-retry-button" onClick={() => void onSyncNow()}>Try again</button>
+                )}
               </div>
             )}
           </li>
+        </ul>
+        <ul className="settings-list sign-out-settings-list">
           <li className="account-sign-out-item">
             <button className="account-sign-out-button" type="button" onClick={() => supabase.auth.signOut()}>
               <span className="settings-icon tile-red" aria-hidden="true"><LogOut /></span>
@@ -402,6 +569,57 @@ export function SettingsTab({
           </li>
         </ul>
       </section>
+
+      {profileModalOpen && (
+        <div className="profile-modal-backdrop" role="presentation" onClick={closeProfileModal}>
+          <section className="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-photo-modal-title" onClick={(event) => event.stopPropagation()}>
+            <div className="profile-modal-header">
+              <div>
+                <p className="profile-modal-kicker">Profile photo</p>
+                <h2 id="profile-photo-modal-title">Edit your picture</h2>
+              </div>
+              <div className="profile-modal-header-actions">
+                <button className="profile-modal-delete" type="button" aria-label="Delete profile photo" title="Delete photo" onClick={deleteProfileImage} disabled={photoBusy || !user.user_metadata.avatar_path}><Trash2 aria-hidden="true" /></button>
+                <button className="profile-modal-close" type="button" aria-label="Close photo editor" onClick={closeProfileModal} disabled={photoBusy}><X aria-hidden="true" /></button>
+              </div>
+            </div>
+            <button
+              className={`profile-crop-stage${cropZoom > 1 ? " can-pan" : ""}`}
+              type="button"
+              onClick={() => cropZoom <= 1 && imageInputRef.current?.click()}
+              onPointerDown={startCropDrag}
+              onPointerMove={moveCrop}
+              onPointerUp={endCropDrag}
+              onPointerCancel={endCropDrag}
+              aria-label={cropZoom > 1 ? "Drag to reposition profile photo" : "Choose a different profile photo"}
+              disabled={photoBusy}
+            >
+              {(pendingPhoto?.previewUrl || avatarUrl) ? (
+                <canvas ref={cropCanvasRef} width="512" height="512" aria-hidden="true" />
+              ) : (
+                <ProfileAvatar name={name || initialName} />
+              )}
+              <span className="profile-crop-guide" aria-hidden="true" />
+            </button>
+            <div className="profile-zoom-control">
+              <ZoomOut aria-hidden="true" />
+              <input type="range" min="1" max="2.5" step="0.01" value={cropZoom} onChange={(event) => {
+                const nextZoom = Number(event.target.value);
+                setCropZoom(nextZoom);
+                if (nextZoom === 1) setCropOffset({ x: 0, y: 0 });
+              }} aria-label="Photo zoom" disabled={photoBusy || (!pendingPhoto && !avatarUrl)} />
+              <ZoomIn aria-hidden="true" />
+            </div>
+            <p className="profile-modal-help">Zoom, then drag the photo to centre your face inside the circle.</p>
+            <div className="profile-modal-actions">
+              <button className="profile-modal-primary" type="button" onClick={saveProfileImage} disabled={photoBusy}>
+                <Crop aria-hidden="true" />
+                {photoBusy ? "Saving…" : pendingPhoto || cropZoom !== 1 ? "Save crop" : "Choose new photo"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

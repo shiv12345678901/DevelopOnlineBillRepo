@@ -124,5 +124,63 @@ export async function fetchBankTransferReceipts(periodId: string): Promise<BankT
   return data || [];
 }
 
+const evidenceUrlCache = new Map<string, { url: string; expiresAt: number }>();
+const avatarUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
+export function memberNameKey(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+/**
+ * Resolve the household members' private avatar paths through the Supabase RPC,
+ * then turn them into short-lived signed URLs for the current session.
+ * Missing schema/policies are treated as an empty result so the initials icon
+ * remains a safe fallback until the SQL setup has been applied.
+ */
+export async function fetchMemberAvatarUrls(): Promise<Record<string, string>> {
+  const { data, error } = await supabase.rpc("get_member_avatar_paths");
+  if (error || !Array.isArray(data)) return {};
+
+  const entries = await Promise.all(
+    data
+      .filter((row): row is { member_name: string; avatar_path: string } => Boolean(row?.member_name && row?.avatar_path))
+      .map(async (row) => {
+        const cached = avatarUrlCache.get(row.avatar_path);
+        if (cached && cached.expiresAt > Date.now()) {
+          return [memberNameKey(row.member_name), cached.url] as const;
+        }
+
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from("avatars")
+          .createSignedUrl(row.avatar_path, 60 * 60 * 24 * 7);
+        if (signedError || !signedData?.signedUrl) return null;
+        avatarUrlCache.set(row.avatar_path, {
+          url: signedData.signedUrl,
+          expiresAt: Date.now() + 6 * 24 * 60 * 60 * 1000,
+        });
+        return [memberNameKey(row.member_name), signedData.signedUrl] as const;
+      }),
+  );
+
+  return Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry)));
+}
+
+export async function createEvidenceSignedUrl(locator: string, expiresIn = 600) {
+  const cached = evidenceUrlCache.get(locator);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+  const match = /^storage:\/\/([^/]+)\/(.+)$/.exec(locator);
+  if (!match) throw new Error("This evidence link is invalid.");
+  const [, bucket, objectPath] = match;
+  if (bucket !== "bill-evidence" || !objectPath || objectPath.includes("..")) {
+    throw new Error("This evidence link is not allowed.");
+  }
+
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(objectPath, expiresIn);
+  if (error || !data?.signedUrl) throw error || new Error("Could not open this evidence image.");
+  evidenceUrlCache.set(locator, { url: data.signedUrl, expiresAt: Date.now() + (expiresIn - 30) * 1000 });
+  return data.signedUrl;
+}
+
 export const fmt = (cents: number) =>
   "$" + (cents / 100).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

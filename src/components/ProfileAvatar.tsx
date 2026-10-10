@@ -2,17 +2,8 @@ import { useEffect, useState } from "react";
 import { UserRound } from "lucide-react";
 import { toneClass } from "./format";
 
-const PROFILE_FILES: Record<string, string> = {
-  shiva: "shiva.png",
-  arpan: "arpan.png",
-  arjun: "arjun.png",
-  swasti: "swasti.png",
-};
-
 export function ProfileAvatar({ name, src }: { name: string; src?: string }) {
-  const firstName = name.trim().split(/\s+/)[0].toLocaleLowerCase();
-  const fileName = PROFILE_FILES[firstName];
-  const imageSource = src || (fileName ? `/profile-images/${fileName}` : "");
+  const imageSource = src || "";
   const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => setImageFailed(false), [imageSource]);

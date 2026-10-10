@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
-import { SlidersHorizontal } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Image, SlidersHorizontal } from "lucide-react";
 import { fmt, type Receipt } from "../api";
 import { formatDate } from "../components/format";
 import { AppIcon } from "../components/AppIcon";
+import { EvidenceDetailPage, type EvidenceDetails } from "../components/EvidenceViewer";
 import { MerchantIcon } from "../components/MerchantIcon";
 
 export function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
@@ -10,6 +11,8 @@ export function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("newest");
+  const [selectedEvidence, setSelectedEvidence] = useState<EvidenceDetails | null>(null);
+  const savedScrollY = useRef<number | null>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const categories = useMemo(() => Array.from(new Set(receipts.map((receipt) => receipt.category).filter(Boolean))).sort(), [receipts]);
   const filteredReceipts = useMemo(() => {
@@ -33,6 +36,45 @@ export function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
     groups.set(receipt.date, group);
     return groups;
   }, new Map());
+
+  function openReceipt(receipt: Receipt) {
+    if (!receipt.image_url) return;
+    savedScrollY.current = window.scrollY;
+    setSelectedEvidence({
+      locator: receipt.image_url,
+      kind: "Receipt",
+      title: receipt.merchant,
+      subtitle: `Paid by ${receipt.payer} · ${formatDate(receipt.date)}`,
+      amount: fmt(receipt.amount_cents),
+      facts: [
+        { label: "Merchant", value: receipt.merchant },
+        { label: "Amount", value: fmt(receipt.amount_cents) },
+        { label: "Paid by", value: receipt.payer },
+        { label: "Date", value: formatDate(receipt.date) },
+        { label: "Category", value: receipt.category || "Uncategorised" },
+      ],
+    });
+  }
+
+  useLayoutEffect(() => {
+    if (selectedEvidence) {
+      window.scrollTo({ top: 0, behavior: "instant" });
+      return;
+    }
+    if (savedScrollY.current === null) return;
+    const top = savedScrollY.current;
+    savedScrollY.current = null;
+    window.scrollTo({ top, behavior: "instant" });
+  }, [selectedEvidence]);
+
+  function receiptKeyDown(event: React.KeyboardEvent, receipt: Receipt) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openReceipt(receipt);
+    }
+  }
+
+  if (selectedEvidence) return <EvidenceDetailPage evidence={selectedEvidence} onBack={() => setSelectedEvidence(null)} />;
 
   return (
     <div className="screen screen--receipts">
@@ -69,25 +111,29 @@ export function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
               {dateReceipts.map((receipt, itemIndex) => (
               <li
                 key={receipt.id}
-                className="list-row stagger"
+                className={`list-row stagger${receipt.image_url ? " evidence-row" : ""}`}
                 style={{ animationDelay: `${Math.min(groupIndex * 2 + itemIndex, 12) * 35}ms` }}
+                role={receipt.image_url ? "button" : undefined}
+                tabIndex={receipt.image_url ? 0 : undefined}
+                onClick={() => openReceipt(receipt)}
+                onKeyDown={(event) => receiptKeyDown(event, receipt)}
               >
                 <MerchantIcon merchant={receipt.merchant} category={receipt.category} />
                 <div className="row-main">
                   <span className="row-title">{receipt.merchant}</span>
                   <span className="row-sub">Paid by {receipt.payer} · {receipt.category}</span>
                 </div>
-                <strong className="row-amount">{fmt(receipt.amount_cents)}</strong>
+                <span className="evidence-row-tail"><strong className="row-amount">{fmt(receipt.amount_cents)}</strong>{receipt.image_url && <Image aria-label="View receipt image" />}</span>
               </li>
               ))}
             </ul>
           </section>
         ))}
       </div> : <ul className="grouped-list">{visibleReceipts.map((receipt, index) => (
-        <li key={receipt.id} className="list-row stagger" style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}>
+        <li key={receipt.id} className={`list-row stagger${receipt.image_url ? " evidence-row" : ""}`} style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }} role={receipt.image_url ? "button" : undefined} tabIndex={receipt.image_url ? 0 : undefined} onClick={() => openReceipt(receipt)} onKeyDown={(event) => receiptKeyDown(event, receipt)}>
           <MerchantIcon merchant={receipt.merchant} category={receipt.category} />
           <div className="row-main"><span className="row-title">{receipt.merchant}</span><span className="row-sub">Paid by {receipt.payer} · {formatDate(receipt.date)}</span></div>
-          <strong className="row-amount">{fmt(receipt.amount_cents)}</strong>
+          <span className="evidence-row-tail"><strong className="row-amount">{fmt(receipt.amount_cents)}</strong>{receipt.image_url && <Image aria-label="View receipt image" />}</span>
         </li>
       ))}</ul>}
     </div>

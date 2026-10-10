@@ -1,5 +1,6 @@
 import { CalendarRange, ChevronRight, WalletCards } from "lucide-react";
-import { fmt, type Period, type Settlement } from "../api";
+import type { User } from "@supabase/supabase-js";
+import { fmt, memberNameKey, type Period, type Settlement } from "../api";
 import { ProfileAvatar } from "../components/ProfileAvatar";
 import { formatDate } from "../components/format";
 
@@ -19,13 +20,28 @@ function shortDate(value: string) {
   return new Date(`${value}T12:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
 }
 
+function greetingForHour(hour: number) {
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function firstName(user: User) {
+  const displayName = user.user_metadata.display_name || user.user_metadata.full_name || user.email?.split("@")[0] || "there";
+  return String(displayName).trim().split(/\s+/)[0] || "there";
+}
+
 export function HomeTab({
   settlement,
   periods,
+  memberAvatarUrls = {},
+  user,
   onOpenHistory,
 }: {
   settlement: Settlement | null;
   periods: Period[];
+  memberAvatarUrls?: Record<string, string>;
+  user: User;
   onOpenHistory: () => void;
 }) {
   if (!settlement) return <div className="empty">No settlement yet.</div>;
@@ -35,7 +51,7 @@ export function HomeTab({
   return (
     <div className="screen screen--home">
       <header className="page-header home-header">
-        <h1 className="large-title" id="home-title">SplitMate</h1>
+        <h1 className="large-title" id="home-title">{greetingForHour(new Date().getHours())}, {firstName(user)}</h1>
         <div className="home-header-meta">
           <span>Rockdale Homies</span>
           {currentPeriod && (
@@ -72,7 +88,7 @@ export function HomeTab({
             className="list-row stagger"
             style={{ animationDelay: `${i * 60}ms` }}
           >
-            <ProfileAvatar name={name} />
+            <ProfileAvatar name={name} src={memberAvatarUrls[memberNameKey(name)]} />
             <div className="row-main">
               <span className="row-title">{name}</span>
               <span className="row-sub">Paid {fmt(cents)}</span>
