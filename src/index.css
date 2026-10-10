@@ -1020,6 +1020,7 @@ main {
 .sync-result span span { overflow-wrap: anywhere; color: var(--label-secondary); }
 .sync-result--success { background: color-mix(in srgb, var(--positive) 10%, var(--surface-raised)); color: var(--positive); }
 .sync-result--error { background: color-mix(in srgb, var(--red) 10%, var(--surface-raised)); color: var(--red); }
+.sync-stage { grid-column: 2 / -1; font-size: .72rem; line-height: 1.05rem; color: var(--label-secondary); padding: 2px 2px 0; overflow-wrap: anywhere; }
 .account-sign-out-item { position: relative; list-style: none; }
 .account-sign-out-item::before { content: ""; position: absolute; top: 0; right: 0; left: 62px; z-index: 1; height: 1px; background: var(--separator); }
 .account-sign-out-button { display: grid; width: 100%; min-height: 68px; grid-template-columns: 36px minmax(0, 1fr) 18px; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; border: 0; background: transparent; color: var(--label-tertiary); font: inherit; text-align: left; transition: background-color .16s ease; }

@@ -112,7 +112,7 @@ export default function App() {
     setReceipts(nextReceipts);
   }
 
-  async function handleSyncNow() {
+  async function handleSyncNow(onStage?: (stage: string | null, message: string | null) => void) {
     const { data, error } = await supabase
       .from("sync_requests")
       .insert({ requested_by: "netlify-app", status: "pending" })
@@ -122,13 +122,19 @@ export default function App() {
     const requestId = data.id;
     return new Promise<string>((resolve, reject) => {
       let finished = false;
+      let lastStage = "";
       const poll = setInterval(async () => {
         const { data: request, error: pollError } = await supabase
           .from("sync_requests")
-          .select("status, result_summary, error")
+          .select("status, stage, stage_message, result_summary, error")
           .eq("id", requestId)
           .single();
         if (pollError || !request || finished) return;
+        const stageKey = `${request.stage || ""}|${request.stage_message || ""}`;
+        if (stageKey !== lastStage) {
+          lastStage = stageKey;
+          onStage?.(request.stage ?? null, request.stage_message ?? null);
+        }
         if (request.status === "done") {
           finished = true;
           clearInterval(poll);

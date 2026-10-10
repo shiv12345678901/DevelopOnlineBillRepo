@@ -96,7 +96,7 @@ export function SettingsTab({
   periods: Period[];
   selectedPeriodId: string;
   onPeriodChange: (periodId: string) => void;
-  onSyncNow: () => Promise<string>;
+  onSyncNow: (onStage?: (stage: string | null, message: string | null) => void) => Promise<string>;
 }) {
   const initialName = displayNameFor(user);
   const [name, setName] = useState(initialName);
@@ -107,6 +107,7 @@ export function SettingsTab({
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyMessage, setPasskeyMessage] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const [syncStage, setSyncStage] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<{ type: "success" | "error"; detail: string } | null>(null);
   const [relativeTimeNow, setRelativeTimeNow] = useState(() => Date.now());
   const passkeySupported = typeof window !== "undefined" && "PublicKeyCredential" in window;
@@ -126,9 +127,13 @@ export function SettingsTab({
 
   async function handleSyncNow() {
     setSyncing(true);
+    setSyncStage(null);
     setSyncResult(null);
     try {
-      const summary = await onSyncNow();
+      const summary = await onSyncNow((_stage, message) => {
+        setSyncStage(message || _stage);
+      });
+      setSyncStage(null);
       setSyncResult({
         type: "success",
         detail: summary ? summary.replace(/,\s*/g, " · ") : "Your data is up to date.",
@@ -140,6 +145,7 @@ export function SettingsTab({
       });
     } finally {
       setSyncing(false);
+      setSyncStage(null);
     }
   }
 
@@ -369,6 +375,11 @@ export function SettingsTab({
             <button className="sync-action-button" type="button" onClick={handleSyncNow} disabled={syncing}>
               <span>{syncing ? "Syncing…" : "Sync Now"}</span>
             </button>
+            {syncing && syncStage && (
+              <div className="sync-stage" role="status">
+                <span>{syncStage}</span>
+              </div>
+            )}
             {syncResult && (
               <div className={`sync-result sync-result--${syncResult.type}`} role={syncResult.type === "error" ? "alert" : "status"}>
                 {syncResult.type === "success" ? <CheckCircle2 aria-hidden="true" /> : <CircleAlert aria-hidden="true" />}
