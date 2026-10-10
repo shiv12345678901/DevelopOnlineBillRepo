@@ -4,8 +4,9 @@ import { fetchBankTransferReceipts, fmt, memberNameKey, type BankTransferReceipt
 import { EvidenceDetailPage, type EvidenceDetails } from "../components/EvidenceViewer";
 import { formatDate } from "../components/format";
 import { ProfileAvatar } from "../components/ProfileAvatar";
+import { assignBankReceipts, type ExpectedPayment } from "../settlementMatching";
 
-type Payment = { id: string; from: string; to: string; cents: number; self?: boolean };
+type Payment = ExpectedPayment;
 
 function firstName(value: string) {
   return value.trim().split(/\s+/)[0] || value;
@@ -13,42 +14,6 @@ function firstName(value: string) {
 
 function getCoordinator(memberNames: string[]) {
   return memberNames.find((name) => name.toLocaleLowerCase().includes("arjun")) || memberNames[0] || "Coordinator";
-}
-
-function samePerson(left: string, right: string) {
-  const normalize = (value: string) => value.trim().toLocaleLowerCase();
-  return normalize(left) === normalize(right) || normalize(left).split(/\s+/)[0] === normalize(right).split(/\s+/)[0];
-}
-
-function isGrocery(value: string) {
-  return value.trim().toLocaleLowerCase() === "grocery";
-}
-
-function assignBankReceipts(payments: Payment[], receipts: BankTransferReceipt[]) {
-  const assignments = new Map<string, BankTransferReceipt>();
-  const usedStepIds = new Set<string>();
-  const candidates = receipts
-    .filter((receipt) => !samePerson(receipt.from_name, receipt.to_name))
-    .sort((left, right) => Number(Boolean(right.receipt_url)) - Number(Boolean(left.receipt_url)));
-
-  for (const recipientKind of ["exact", "grocery"] as const) {
-    for (const payment of payments) {
-      if (assignments.has(payment.id)) continue;
-      const receipt = candidates.find((candidate) => {
-        if (usedStepIds.has(candidate.step_id)) return false;
-        if (!samePerson(candidate.from_name, payment.from)) return false;
-        if (Math.abs(candidate.amount_cents - payment.cents) > 10) return false;
-        return recipientKind === "exact"
-          ? samePerson(candidate.to_name, payment.to)
-          : isGrocery(candidate.to_name);
-      });
-      if (!receipt) continue;
-      assignments.set(payment.id, receipt);
-      usedStepIds.add(receipt.step_id);
-    }
-  }
-
-  return assignments;
 }
 
 function buildPlan(settlement: Settlement) {
@@ -59,6 +24,7 @@ function buildPlan(settlement: Settlement) {
     from: name,
     to: coordinator,
     cents: settlement.per_person_cents,
+    stage: "contribute" as const,
     self: name === coordinator,
   }));
   const reimbursements = spending.map(([name, cents]) => ({
@@ -66,6 +32,7 @@ function buildPlan(settlement: Settlement) {
     from: coordinator,
     to: name,
     cents,
+    stage: "reimburse" as const,
     self: name === coordinator,
   }));
   return { coordinator, contributions, reimbursements };

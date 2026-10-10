@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "build": "node scripts/write-version.mjs && vite build && node scripts/write-sw-version.mjs",
     "preview": "vite preview",
     "format": "oxfmt",
