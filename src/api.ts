@@ -14,6 +14,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 
 export type Receipt = {
   id: string;
+  period_id: string;
   merchant: string;
   amount_cents: number;
   payer: string;
@@ -90,18 +91,11 @@ export async function fetchReceipts(limit = 100): Promise<Receipt[]> {
 }
 
 export async function fetchReceiptsForPeriod(periodId: string, limit = 100): Promise<Receipt[]> {
-  const { data: period } = await supabase
-    .from("periods")
-    .select("start_date, end_date")
-    .eq("id", periodId)
-    .maybeSingle();
-  if (!period) return [];
   const { data } = await supabase
     .from("receipts")
     .select("*")
+    .eq("period_id", periodId)
     .eq("is_excluded", false)
-    .gte("date", period.start_date)
-    .lte("date", period.end_date)
     .order("date", { ascending: false })
     .limit(limit);
   return data || [];

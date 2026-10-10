@@ -55,6 +55,7 @@ export default function App() {
   const startingSyncRef = useRef(false);
   const refreshDataRef = useRef<() => Promise<void>>(async () => undefined);
   const recoverSyncRef = useRef<() => Promise<void>>(async () => undefined);
+  const previousTabRef = useRef<TabId>(tab);
 
   // Theme → <html data-theme>, persisted
   useLayoutEffect(() => {
@@ -106,6 +107,22 @@ export default function App() {
 
     return () => { cancelled = true; };
   }, [selectedPeriodId, session?.user.id]);
+
+  // Receipts and settlement evidence may change after a backend sync while
+  // another page is open. Re-read Supabase whenever either data page opens.
+  useEffect(() => {
+    const previousTab = previousTabRef.current;
+    previousTabRef.current = tab;
+    if (!session || previousTab === tab || (tab !== "receipts" && tab !== "settle")) return;
+
+    let cancelled = false;
+    setLoading(true);
+    refreshData().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [tab, session?.user.id]);
 
   function handlePeriodChange(nextPeriodId: string) {
     const currentPeriodId = periods.find((period) => period.status === "CURRENT")?.id;
