@@ -100,6 +100,7 @@ export function SettingsTab({
   onPeriodChange,
   onSyncNow,
   syncState,
+  online,
 }: {
   theme: Theme;
   setTheme: (theme: Theme) => void;
@@ -113,6 +114,7 @@ export function SettingsTab({
   onPeriodChange: (periodId: string) => void;
   onSyncNow: () => Promise<void>;
   syncState: SyncState;
+  online: boolean;
 }) {
   const initialName = displayNameFor(user);
   const [name, setName] = useState(initialName);
@@ -151,6 +153,8 @@ export function SettingsTab({
   const syncing = isSyncUiActive(syncState);
   const syncButtonLabel = syncing
     ? syncState.stageMessage || "Syncing…"
+    : !online
+      ? "Offline"
     : syncState.status === "failed"
       ? "Try again"
       : "Sync Now";
@@ -531,8 +535,9 @@ export function SettingsTab({
               className="sync-action-button"
               type="button"
               onClick={() => void onSyncNow()}
-              aria-disabled={syncing}
-              title={syncing ? "Reconnect to this running sync" : undefined}
+              disabled={!online}
+              aria-disabled={!online}
+              title={!online ? "Connect to the internet to sync" : syncing ? "Reconnect to this running sync" : undefined}
             >
               <span>{syncButtonLabel}</span>
             </button>

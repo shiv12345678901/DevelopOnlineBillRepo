@@ -4,27 +4,7 @@ import { Calculator, ReceiptText, Tags, TrendingUp } from "lucide-react";
 import { fmt, type Receipt, type Settlement } from "../api";
 import { MerchantIcon } from "../components/MerchantIcon";
 import { formatDate } from "../components/format";
-
-function normalize(value: string) {
-  return value.trim().toLocaleLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function isOwnReceipt(receipt: Receipt, user: User) {
-  const payer = normalize(receipt.payer);
-  const emailName = user.email?.split("@")[0] || "";
-  const names = [
-    user.user_metadata.member_key,
-    user.user_metadata.display_name,
-    user.user_metadata.full_name,
-    emailName,
-  ].filter(Boolean) as string[];
-
-  return names.some((name) => {
-    const fullName = normalize(name);
-    const firstName = normalize(name.split(/\s+/)[0]);
-    return payer === fullName || payer === firstName || payer.startsWith(firstName);
-  });
-}
+import { payerMatchesUser } from "../payerMatching";
 
 function pointOnCircle(angle: number, radius = 52) {
   const radians = ((angle - 90) * Math.PI) / 180;
@@ -51,7 +31,7 @@ export function MySpendingTab({
   user: User;
 }) {
   const [groupBy, setGroupBy] = useState<"category" | "merchant">("category");
-  const ownReceipts = receipts.filter((receipt) => isOwnReceipt(receipt, user));
+  const ownReceipts = receipts.filter((receipt) => payerMatchesUser(receipt.payer, user));
   const total = ownReceipts.reduce((sum, receipt) => sum + receipt.amount_cents, 0);
   const average = ownReceipts.length ? Math.round(total / ownReceipts.length) : 0;
   const largest = ownReceipts.reduce<Receipt | null>(

@@ -20,6 +20,7 @@ import {
   fetchLatestActiveSync,
   fetchSyncRequest,
   isActiveSyncStatus,
+  syncStageMessage,
   type SyncRequestRow,
   type SyncState,
 } from "./sync";
@@ -42,6 +43,7 @@ export default function App() {
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
   const [pendingPeriodId, setPendingPeriodId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dataError, setDataError] = useState("");
   const [session, setSession] = useState<Session | null>();
   const [online, setOnline] = useState(navigator.onLine);
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
@@ -56,6 +58,8 @@ export default function App() {
   const refreshDataRef = useRef<() => Promise<void>>(async () => undefined);
   const recoverSyncRef = useRef<() => Promise<void>>(async () => undefined);
   const previousTabRef = useRef<TabId>(tab);
+  const refreshGenerationRef = useRef(0);
+  const syncPendingSinceRef = useRef<number | null>(null);
 
   // Theme → <html data-theme>, persisted
   useLayoutEffect(() => {
@@ -94,6 +98,7 @@ export default function App() {
   // Initial data load
   useEffect(() => {
     if (!session) {
+      refreshGenerationRef.current += 1;
       setLoading(false);
       return;
     }
@@ -121,7 +126,10 @@ export default function App() {
       if (!cancelled) setLoading(false);
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      refreshGenerationRef.current += 1;
+    };
   }, [tab, session?.user.id]);
 
   function handlePeriodChange(nextPeriodId: string) {
@@ -134,21 +142,36 @@ export default function App() {
   }
 
   async function refreshData() {
-    const nextPeriods = await fetchPeriods();
-    setPeriods(nextPeriods);
-    const currentPeriod = nextPeriods.find((period) => period.status === "CURRENT") || nextPeriods[0];
-    const targetPeriod = nextPeriods.find((period) => period.id === selectedPeriodId) || currentPeriod;
-    if (!targetPeriod) {
-      setSettlement(null);
-      setReceipts([]);
-      return;
+    const generation = ++refreshGenerationRef.current;
+    try {
+      const nextPeriods = await fetchPeriods();
+      const currentPeriod = nextPeriods.find((period) => period.status === "CURRENT") || nextPeriods[0];
+      const targetPeriod = nextPeriods.find((period) => period.id === selectedPeriodId) || currentPeriod;
+      const [nextSettlement, nextReceipts] = targetPeriod
+        ? await Promise.all([
+            fetchSettlementForPeriod(targetPeriod.id),
+            fetchReceiptsForPeriod(targetPeriod.id),
+          ])
+        : [null, [] as Receipt[]];
+
+      if (generation !== refreshGenerationRef.current) return;
+      setPeriods(nextPeriods);
+      setSettlement(nextSettlement);
+      setReceipts(nextReceipts);
+      setDataError("");
+    } catch (error) {
+      if (generation !== refreshGenerationRef.current) return;
+      const detail = error && typeof error === "object" && "message" in error
+        ? String(error.message)
+        : "Please check your connection and try again.";
+      setDataError(`Couldn’t refresh your bills. ${detail}`);
     }
-    const [nextSettlement, nextReceipts] = await Promise.all([
-      fetchSettlementForPeriod(targetPeriod.id),
-      fetchReceiptsForPeriod(targetPeriod.id),
-    ]);
-    setSettlement(nextSettlement);
-    setReceipts(nextReceipts);
+  }
+
+  async function retryDataLoad() {
+    setLoading(true);
+    await refreshData();
+    setLoading(false);
   }
 
   refreshDataRef.current = refreshData;
@@ -161,13 +184,18 @@ export default function App() {
   }
 
   function stageMessageFor(request: SyncRequestRow) {
-    if (request.stage_message) return request.stage_message;
-    if (request.status === "pending") return "Waiting for the sync service…";
-    return "Sync in progress…";
+    if (request.status === "pending" && syncPendingSinceRef.current === null) {
+      const createdAt = request.created_at ? Date.parse(request.created_at) : Number.NaN;
+      syncPendingSinceRef.current = Number.isFinite(createdAt) ? createdAt : Date.now();
+    } else if (request.status !== "pending") {
+      syncPendingSinceRef.current = null;
+    }
+    return syncStageMessage(request, syncPendingSinceRef.current ?? Date.now());
   }
 
   async function finishSync(request: SyncRequestRow) {
     clearSyncTimers();
+    syncPendingSinceRef.current = null;
     activeSyncIdRef.current = null;
     localStorage.removeItem(ACTIVE_SYNC_STORAGE_KEY);
 
@@ -394,6 +422,7 @@ export default function App() {
   }, [avatarUrl, session?.user.id, session?.user.user_metadata.display_name]);
 
   async function handleSyncNow() {
+    if (!navigator.onLine) return;
     if (startingSyncRef.current) return;
     startingSyncRef.current = true;
     try {
@@ -457,6 +486,12 @@ export default function App() {
       {!online && (
         <div className="offline-banner">Offline — showing last synced data</div>
       )}
+      {dataError && (
+        <div className="data-error-banner" role="alert">
+          <span>{dataError}</span>
+          <button type="button" onClick={() => void retryDataLoad()}>Retry</button>
+        </div>
+      )}
 
       <main key={tab} className="tab-enter">
         {loading ? (
@@ -481,6 +516,7 @@ export default function App() {
                 onPeriodChange={handlePeriodChange}
                 onSyncNow={handleSyncNow}
                 syncState={syncState}
+                online={online}
                 user={session.user}
                 avatarUrl={avatarUrl}
                 onAvatarUrlChange={setAvatarUrl}

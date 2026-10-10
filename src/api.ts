@@ -15,6 +15,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 export type Receipt = {
   id: string;
   period_id: string;
+  captured_at: string | null;
   merchant: string;
   amount_cents: number;
   payer: string;
@@ -49,21 +50,26 @@ export type BankTransferReceipt = {
   id: string;
   period_id: string;
   step_id: string;
-  from_name: string;
-  to_name: string;
+  from_name: string | null;
+  to_name: string | null;
   amount_cents: number;
   transfer_date: string;
   receipt_url: string | null;
 };
 
+export function throwIfSupabaseError(error: unknown): void {
+  if (error) throw error;
+}
+
 export async function fetchCurrentPeriod(): Promise<Period | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("periods")
     .select("*")
     .eq("status", "CURRENT")
     .order("start_date", { ascending: false })
     .limit(1)
     .maybeSingle();
+  throwIfSupabaseError(error);
   return data;
 }
 
@@ -74,13 +80,14 @@ export async function fetchCurrentSettlement(): Promise<Settlement | null> {
 }
 
 export async function fetchSettlementForPeriod(periodId: string): Promise<Settlement | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("settlements")
     .select("*")
     .eq("period_id", periodId)
     .order("calculated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  throwIfSupabaseError(error);
   return data;
 }
 
@@ -91,30 +98,33 @@ export async function fetchReceipts(limit = 100): Promise<Receipt[]> {
 }
 
 export async function fetchReceiptsForPeriod(periodId: string, limit = 100): Promise<Receipt[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("receipts")
     .select("*")
     .eq("period_id", periodId)
     .eq("is_excluded", false)
     .order("date", { ascending: false })
     .limit(limit);
+  throwIfSupabaseError(error);
   return data || [];
 }
 
 export async function fetchPeriods(): Promise<Period[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("periods")
     .select("*")
     .order("start_date", { ascending: false });
+  throwIfSupabaseError(error);
   return data || [];
 }
 
 export async function fetchBankTransferReceipts(periodId: string): Promise<BankTransferReceipt[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("bank_transfer_receipts")
     .select("*")
     .eq("period_id", periodId)
     .order("transfer_date", { ascending: false });
+  throwIfSupabaseError(error);
   return data || [];
 }
 

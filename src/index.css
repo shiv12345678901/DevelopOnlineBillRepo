@@ -955,6 +955,40 @@ main {
 .settle-proof-status { display: inline-flex; align-items: center; gap: 4px; color: var(--label-tertiary); font-size: .67rem; font-weight: 700; white-space: nowrap; }
 .settle-proof-status.verified { color: var(--positive); }
 .settle-proof-status svg { width: 15px; height: 15px; }
+.settle-status-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin .75s linear infinite;
+}
+.transfer-loading { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.settle-transfer-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -4px 0 20px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--red) 38%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--red) 10%, var(--surface));
+  color: var(--label-secondary);
+  font-size: .76rem;
+  line-height: 1.1rem;
+}
+.settle-transfer-alert button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 11px;
+  background: var(--red);
+  color: #fff;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
 .settle-pending-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 16%, transparent); }
 .settle-check { width: 18px; height: 18px; color: var(--positive); }
 .settle-explainer { margin: -4px 2px 10px; color: var(--label-secondary); font-size: .78rem; line-height: 1.4; }
@@ -1303,6 +1337,33 @@ main {
   font-weight: 650;
   line-height: 1.125rem;
   text-align: center;
+}
+.data-error-banner {
+  position: sticky;
+  top: 0;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 9px 16px;
+  background: color-mix(in srgb, var(--red) 16%, var(--surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--red) 42%, transparent);
+  color: var(--label);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.15rem;
+}
+.data-error-banner span { min-width: 0; }
+.data-error-banner button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: var(--red);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
 }
 
 .tab-enter { animation: contentIn 0.3s cubic-bezier(0.32, 0.72, 0, 1); }

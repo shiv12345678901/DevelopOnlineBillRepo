@@ -1,7 +1,8 @@
-import { supabase } from "./api";
+import { supabase } from "./api.ts";
 
 export const ACTIVE_SYNC_STORAGE_KEY = "splitmate-active-sync-request-id";
 export const ACTIVE_SYNC_MAX_AGE_MS = 30 * 60 * 1000;
+export const SYNC_PENDING_WARNING_MS = 3 * 60 * 1000;
 
 export type SyncRequestRow = {
   id: string;
@@ -37,6 +38,15 @@ export function isActiveSyncStatus(status: string) {
 
 export function isSyncUiActive(state: SyncState) {
   return ["starting", "pending", "processing", "unreachable"].includes(state.status);
+}
+
+export function syncStageMessage(request: SyncRequestRow, pendingSince: number, now = Date.now()) {
+  if (request.status === "pending" && now - pendingSince >= SYNC_PENDING_WARNING_MS) {
+    return "Sync service looks offline — still waiting and checking…";
+  }
+  if (request.stage_message) return request.stage_message;
+  if (request.status === "pending") return "Waiting for the sync service…";
+  return "Sync in progress…";
 }
 
 export async function fetchSyncRequest(requestId: string): Promise<SyncRequestRow | null> {

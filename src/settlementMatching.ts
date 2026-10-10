@@ -9,25 +9,27 @@ export type ExpectedPayment = {
 
 export type TransferEvidence = {
   step_id: string;
-  from_name: string;
-  to_name: string;
+  from_name: string | null;
+  to_name: string | null;
   amount_cents: number;
   receipt_url?: string | null;
 };
 
-function samePerson(left: string, right: string) {
-  const normalize = (value: string) => value.trim().toLocaleLowerCase();
+function samePerson(left: string | null | undefined, right: string | null | undefined) {
+  const normalize = (value: string | null | undefined) => (value ?? "").trim().toLocaleLowerCase();
+  if (!normalize(left) || !normalize(right)) return false;
   return normalize(left) === normalize(right) || normalize(left).split(/\s+/)[0] === normalize(right).split(/\s+/)[0];
 }
 
-function isGrocery(value: string) {
-  return value.trim().toLocaleLowerCase() === "grocery";
+function isGrocery(value: string | null | undefined) {
+  return (value ?? "").trim().toLocaleLowerCase() === "grocery";
 }
 
 export function assignBankReceipts<T extends TransferEvidence>(payments: ExpectedPayment[], receipts: T[]) {
   const assignments = new Map<string, T>();
   const usedStepIds = new Set<string>();
   const candidates = receipts
+    .filter((receipt) => Boolean(receipt.from_name?.trim() && receipt.to_name?.trim()))
     .filter((receipt) => !samePerson(receipt.from_name, receipt.to_name))
     .sort((left, right) => Number(Boolean(right.receipt_url)) - Number(Boolean(left.receipt_url)));
 

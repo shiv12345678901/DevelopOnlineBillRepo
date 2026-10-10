@@ -28,3 +28,12 @@ test("a genuine member self-transfer does not verify a payment", () => {
 
   assert.equal(assignBankReceipts([payment], [selfTransfer]).size, 0);
 });
+
+test("transfer rows with missing names are ignored safely", () => {
+  const payment = { id: "reimburse-Arjun", from: "Arjun", to: "Arjun", cents: 64976, stage: "reimburse", self: true };
+  const missingSender = { ...groceryToArjun, step_id: "missing-sender", from_name: null };
+  const missingRecipient = { ...groceryToArjun, step_id: "missing-recipient", to_name: null };
+
+  assert.doesNotThrow(() => assignBankReceipts([payment], [missingSender, missingRecipient]));
+  assert.equal(assignBankReceipts([payment], [missingSender, missingRecipient]).size, 0);
+});
