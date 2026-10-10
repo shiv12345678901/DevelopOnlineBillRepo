@@ -24,14 +24,31 @@ function isGrocery(value: string) {
   return value.trim().toLocaleLowerCase() === "grocery";
 }
 
-function findBankReceipt(payment: Payment, stage: "contribute" | "reimburse", receipts: BankTransferReceipt[]) {
-  return receipts.find((receipt) => {
-    const correctDirection = stage === "contribute"
-      ? samePerson(receipt.from_name, payment.from) && (isGrocery(receipt.to_name) || samePerson(receipt.to_name, payment.to))
-      : (samePerson(receipt.from_name, payment.from) || isGrocery(receipt.from_name)) &&
-        (samePerson(receipt.to_name, payment.to) || (payment.self && isGrocery(receipt.to_name)));
-    return correctDirection && Math.abs(receipt.amount_cents - payment.cents) <= 10;
-  });
+function assignBankReceipts(payments: Payment[], receipts: BankTransferReceipt[]) {
+  const assignments = new Map<string, BankTransferReceipt>();
+  const usedStepIds = new Set<string>();
+  const candidates = receipts
+    .filter((receipt) => !samePerson(receipt.from_name, receipt.to_name))
+    .sort((left, right) => Number(Boolean(right.receipt_url)) - Number(Boolean(left.receipt_url)));
+
+  for (const recipientKind of ["exact", "grocery"] as const) {
+    for (const payment of payments) {
+      if (assignments.has(payment.id)) continue;
+      const receipt = candidates.find((candidate) => {
+        if (usedStepIds.has(candidate.step_id)) return false;
+        if (!samePerson(candidate.from_name, payment.from)) return false;
+        if (Math.abs(candidate.amount_cents - payment.cents) > 10) return false;
+        return recipientKind === "exact"
+          ? samePerson(candidate.to_name, payment.to)
+          : isGrocery(candidate.to_name);
+      });
+      if (!receipt) continue;
+      assignments.set(payment.id, receipt);
+      usedStepIds.add(receipt.step_id);
+    }
+  }
+
+  return assignments;
 }
 
 function buildPlan(settlement: Settlement) {
@@ -59,12 +76,21 @@ export function SettleTab({ settlement, periods, memberAvatarUrls = {} }: { sett
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceDetails | null>(null);
   const savedScrollY = useRef<number | null>(null);
   const plan = useMemo(() => settlement ? buildPlan(settlement) : null, [settlement]);
+  const transferAssignments = useMemo(
+    () => plan ? assignBankReceipts([...plan.contributions, ...plan.reimbursements], bankReceipts) : new Map<string, BankTransferReceipt>(),
+    [bankReceipts, plan],
+  );
   const currentPeriod = periods.find((period) => period.id === settlement?.period_id) || periods.find((period) => period.status === "CURRENT") || periods[0];
   const memberNames = Object.keys(settlement?.member_totals || {}).slice(0, 4);
   const avatarFor = (name: string) => memberAvatarUrls[memberNameKey(name)];
   useEffect(() => {
     if (!settlement) return;
-    fetchBankTransferReceipts(settlement.period_id).then(setBankReceipts);
+    let cancelled = false;
+    setBankReceipts([]);
+    fetchBankTransferReceipts(settlement.period_id).then((receipts) => {
+      if (!cancelled) setBankReceipts(receipts);
+    });
+    return () => { cancelled = true; };
   }, [settlement]);
 
   function openTransfer(receipt: BankTransferReceipt) {
@@ -141,8 +167,8 @@ export function SettleTab({ settlement, periods, memberAvatarUrls = {} }: { sett
       <section className="content-section" aria-labelledby="contribute-heading">
         <div className="section-heading"><h2 id="contribute-heading">1. Send equal share</h2><span>{fmt(settlement.per_person_cents)} each</span></div>
         <ul className="grouped-list settle-transfer-list">{plan.contributions.map((payment, index) => {
-          const bankReceipt = findBankReceipt(payment, "contribute", bankReceipts);
-          const isComplete = Boolean(bankReceipt);
+          const bankReceipt = transferAssignments.get(payment.id);
+          const isComplete = Boolean(bankReceipt?.receipt_url);
           return <li className={`list-row settle-transfer-row${isComplete ? " settled" : ""}${bankReceipt?.receipt_url ? " evidence-row" : ""}`} key={payment.id} style={{ animationDelay: `${index * 55}ms` }} role={bankReceipt?.receipt_url ? "button" : undefined} tabIndex={bankReceipt?.receipt_url ? 0 : undefined} onClick={() => bankReceipt && openTransfer(bankReceipt)} onKeyDown={(event) => bankReceipt && transferKeyDown(event, bankReceipt)}>
             <ProfileAvatar name={firstName(payment.from)} src={avatarFor(payment.from)} />
             <div className="row-main"><span className="row-title">{payment.self ? `${firstName(payment.from)} → Grocery` : `${firstName(payment.from)} → ${firstName(payment.to)}`}</span><span className={`row-sub settle-proof-status${isComplete ? " verified" : ""}`}>{isComplete ? <><Check aria-hidden="true" /> Verified</> : <><span className="settle-pending-dot" aria-hidden="true" />Pending</>}</span></div>
@@ -154,8 +180,8 @@ export function SettleTab({ settlement, periods, memberAvatarUrls = {} }: { sett
       <section className="content-section" aria-labelledby="reimburse-heading">
         <div className="section-heading"><h2 id="reimburse-heading">2. Reimburse spending</h2><span>{firstName(plan.coordinator)}</span></div>
         <ul className="grouped-list settle-transfer-list">{plan.reimbursements.map((payment, index) => {
-          const bankReceipt = findBankReceipt(payment, "reimburse", bankReceipts);
-          const isComplete = Boolean(bankReceipt);
+          const bankReceipt = transferAssignments.get(payment.id);
+          const isComplete = Boolean(bankReceipt?.receipt_url);
           return <li className={`list-row settle-transfer-row${isComplete ? " settled" : ""}${bankReceipt?.receipt_url ? " evidence-row" : ""}`} key={payment.id} style={{ animationDelay: `${index * 55}ms` }} role={bankReceipt?.receipt_url ? "button" : undefined} tabIndex={bankReceipt?.receipt_url ? 0 : undefined} onClick={() => bankReceipt && openTransfer(bankReceipt)} onKeyDown={(event) => bankReceipt && transferKeyDown(event, bankReceipt)}>
             <ProfileAvatar name={firstName(payment.to)} src={avatarFor(payment.to)} />
             <div className="row-main"><span className="row-title">{payment.self ? `Grocery → ${firstName(payment.to)}` : `${firstName(payment.from)} → ${firstName(payment.to)}`}</span><span className={`row-sub settle-proof-status${isComplete ? " verified" : ""}`}>{isComplete ? <><Check aria-hidden="true" /> Verified</> : <><span className="settle-pending-dot" aria-hidden="true" />Pending</>}</span></div>
