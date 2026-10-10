@@ -118,10 +118,15 @@ export function EvidenceDetailPage({ evidence, onBack }: { evidence: EvidenceDet
       onPointerUp={finishSwipe}
       onPointerCancel={cancelSwipe}
     >
-      <header className="evidence-page-header">
-        <button type="button" onClick={onBack} aria-label={`Back to ${evidence.kind === "Receipt" ? "receipts" : "settlement"}`}><ArrowLeft aria-hidden="true" /></button>
-        <span>{evidence.kind}</span>
-      </header>
+      <button
+        className="evidence-floating-back"
+        type="button"
+        onClick={onBack}
+        aria-label={`Back to ${evidence.kind === "Receipt" ? "receipts" : "settlement"}`}
+      >
+        <ArrowLeft aria-hidden="true" />
+        <span>Back</span>
+      </button>
 
       <section className="evidence-detail-hero" aria-labelledby="evidence-title">
         <div>

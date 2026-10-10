@@ -26,17 +26,17 @@ function TabButton({
       title={label}
     >
       <AppIcon name={icon} active={active} />
+      <span className="tab-label">{label === "My spending" ? "Spending" : label}</span>
     </button>
   );
 }
 
 export function TabBar({ tab, setTab }: { tab: TabId; setTab: (t: TabId) => void }) {
-  const [compact, setCompact] = useState(false);
   const [morphing, setMorphing] = useState(false);
   const activeTab = tab === "history" ? "home" : tab;
   const activeIndex = TABS.findIndex((item) => item.id === activeTab);
   const previousActiveIndex = useRef(activeIndex);
-  const pillCorrection = activeIndex * (compact ? 1.6 : 2.4);
+  const pillCorrection = activeIndex * 2.4;
   const pillLeft = activeIndex === 0
     ? "var(--nav-inset)"
     : `calc(var(--nav-inset) + ${activeIndex * 20}% - ${pillCorrection}px)`;
@@ -53,55 +53,8 @@ export function TabBar({ tab, setTab }: { tab: TabId; setTab: (t: TabId) => void
     };
   }, [activeIndex]);
 
-  useEffect(() => {
-    let previousScrollY = window.scrollY;
-    let direction = 0;
-    let travelled = 0;
-    let animationFrame = 0;
-
-    const updateFromScroll = () => {
-      const currentScrollY = window.scrollY;
-      const delta = currentScrollY - previousScrollY;
-      const nextDirection = Math.sign(delta);
-
-      if (nextDirection && nextDirection !== direction) {
-        direction = nextDirection;
-        travelled = 0;
-      }
-      travelled += Math.abs(delta);
-
-      if (currentScrollY < 12) {
-        setCompact(false);
-        travelled = 0;
-      } else if (direction > 0 && travelled >= 12) {
-        setCompact(true);
-        travelled = 0;
-      } else if (direction < 0 && travelled >= 3) {
-        setCompact(false);
-        travelled = 0;
-      }
-      previousScrollY = currentScrollY;
-      animationFrame = 0;
-    };
-
-    const handleScroll = () => {
-      if (!animationFrame) animationFrame = window.requestAnimationFrame(updateFromScroll);
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-      if (animationFrame) window.cancelAnimationFrame(animationFrame);
-    };
-  }, []);
-
-  function handleTabChange(nextTab: TabId) {
-    setCompact(false);
-    setTab(nextTab);
-  }
-
   return (
-    <div className={`nav-shell${compact ? " nav-shell--compact" : ""}`}>
+    <div className="nav-shell">
       <nav className="tab-bar" aria-label="Primary navigation">
         <span
           className={`tab-active-pill${activeIndex < 0 ? " tab-active-pill--hidden" : ""}${morphing ? " is-morphing" : ""}`}
@@ -112,7 +65,7 @@ export function TabBar({ tab, setTab }: { tab: TabId; setTab: (t: TabId) => void
           <TabButton
             key={t.id}
             active={activeTab === t.id}
-            onClick={() => handleTabChange(t.id)}
+            onClick={() => setTab(t.id)}
             icon={t.icon}
             label={t.label}
           />

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/write-version.mjs && vite build && node scripts/write-sw-version.mjs",
     "preview": "vite preview",
     "format": "oxfmt",
     "create:household-users": "node scripts/create-household-users.mjs"

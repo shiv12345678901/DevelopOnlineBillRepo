@@ -1,5 +1,6 @@
 node_modules/
 dist/
+/public/version.json
 build/
 .cache/
 .env*
