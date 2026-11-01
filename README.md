@@ -106,6 +106,42 @@ The repo includes `netlify.toml`. Import it into Netlify and set the same
 `GEMINI_*` environment variables. The `/api/ocr` route automatically maps to
 the serverless function in `netlify/functions/`.
 
+### On-demand InstaBox wake-up
+
+`Sync now` calls the same-origin `/api/sync` Netlify function. The function verifies the
+Supabase access token and the four-account household allowlist, then uses that user's
+RLS-scoped Supabase client to create or reuse a pending `sync_requests` row. It never uses
+a Supabase service-role key. InstaBox credentials and the target machine are accepted only
+from Netlify's server environment; there is no browser proxy or client-selectable machine ID.
+
+Before deployment, review and apply `supabase/instabox-wake-dedup.sql`. It validates the
+verified production contract (`sync_requests.id` UUID plus text `requested_by`/`status` and
+`created_at` timestamptz), aborts if multiple active jobs need manual review, and adds only a
+partial unique index. Existing RLS policies and grants are not changed.
+
+Configure these values in **Netlify → Site configuration → Environment variables** for the
+Functions runtime, never as `VITE_*` variables:
+
+```text
+SUPABASE_URL=https://oisbygwncnperuxfkvfd.supabase.co
+SUPABASE_ANON_KEY=<the public anon key used by this project>
+INSTABOX_API_KEY=<server-only key with machines:read and machines:write scopes>
+INSTABOX_MACHINE_ID=<the fixed m_... machine ID>
+```
+
+The function reads machine state, uses `resume` for a suspended machine and `start` for a
+stopped machine, and follows the returned operation briefly. Lifecycle calls carry stable,
+bounded idempotency keys. Retryable failures and cooldowns leave the Supabase request pending
+so the existing Muse worker can still process it. The frontend continues polling Supabase and
+never treats wake acceptance as job completion.
+
+The implementation is limited to InstaBox's documented lifecycle surface:
+`GET /v1/machines/{id}`, `POST /v1/machines/{id}/resume`,
+`POST /v1/machines/{id}/start`, and `GET /v1/operations/{id}?wait=8s`.
+
+This integration does not authorize the InstaBox worker's production database writes. Keep
+that worker disabled and leave Muse active until the separate handover is approved.
+
 ## Notes
 
 - Amounts are shown in **AUD** by default (change `currency: "AUD"` and the

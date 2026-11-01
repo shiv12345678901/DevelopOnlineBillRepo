@@ -15,5 +15,8 @@ test("sync creation is guarded and the Settings action is disabled offline", asy
     readFile(new URL("../src/tabs/SettingsTab.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(appSource, /if \(!navigator\.onLine\) return;/);
+  assert.match(appSource, /if \(!session\) return;/);
+  assert.match(appSource, /requestSyncWake\(session\.access_token\)/);
+  assert.doesNotMatch(appSource, /\.from\("sync_requests"\)\s*\.insert/);
   assert.match(settingsSource, /disabled=\{!online\}/);
 });
