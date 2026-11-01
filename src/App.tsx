@@ -20,6 +20,8 @@ import {
   fetchLatestActiveSync,
   fetchSyncRequest,
   isActiveSyncStatus,
+  requestSyncWake,
+  SyncStartError,
   syncStageMessage,
   type SyncRequestRow,
   type SyncState,
@@ -295,7 +297,7 @@ export default function App() {
     scheduleSyncPoll(requestId, generation);
   }
 
-  function attachToSync(request: SyncRequestRow) {
+  function attachToSync(request: SyncRequestRow, stageMessageOverride?: string) {
     clearSyncTimers();
     const generation = ++pollGenerationRef.current;
     activeSyncIdRef.current = request.id;
@@ -303,7 +305,7 @@ export default function App() {
     setSyncState({
       requestId: request.id,
       status: isActiveSyncStatus(request.status) ? request.status : "processing",
-      stageMessage: stageMessageFor(request),
+      stageMessage: stageMessageOverride || stageMessageFor(request),
       resultSummary: "",
       error: "",
     });
@@ -423,29 +425,23 @@ export default function App() {
 
   async function handleSyncNow() {
     if (!navigator.onLine) return;
+    if (!session) return;
     if (startingSyncRef.current) return;
     startingSyncRef.current = true;
     try {
-      if (activeSyncIdRef.current) {
-        await recoverActiveSync();
-        return;
-      }
-
-      const latestActive = await fetchLatestActiveSync();
-      if (latestActive) {
-        attachToSync(latestActive);
-        return;
-      }
-
-      setSyncState({ ...INITIAL_SYNC_STATE, status: "starting", stageMessage: "Starting sync…" });
-      const { data, error } = await supabase
-        .from("sync_requests")
-        .insert({ requested_by: "netlify-app", status: "pending" })
-        .select("*")
-        .single();
-      if (error || !data) throw error || new Error("Could not start sync.");
-      attachToSync(data as SyncRequestRow);
+      setSyncState({ ...INITIAL_SYNC_STATE, status: "waking", stageMessage: "Waking the sync service…" });
+      const result = await requestSyncWake(session.access_token);
+      attachToSync(
+        result.request,
+        result.wake.status === "ready"
+          ? "Sync service is online — waiting for receipt processing…"
+          : "Waking the sync service…",
+      );
     } catch (error) {
+      if (error instanceof SyncStartError && error.request) {
+        attachToSync(error.request, error.message);
+        return;
+      }
       setSyncState({
         requestId: null,
         status: "failed",

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "check": "tsc --noEmit",
     "build": "node scripts/write-version.mjs && vite build && node scripts/write-sw-version.mjs",
     "preview": "vite preview",
     "format": "oxfmt",
@@ -19,6 +20,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@types/node": "^24.19.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.0",
