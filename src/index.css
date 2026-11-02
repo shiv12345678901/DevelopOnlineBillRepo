@@ -997,6 +997,14 @@ main {
 .settle-cycle-card div { display: grid; gap: 3px; min-width: 0; }
 .settle-cycle-card strong { font-size: .9rem; }
 .settle-cycle-card span { color: var(--label-secondary); font-size: .74rem; }
+.cycle-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 10px 0 0; }
+.cycle-facts div { display: grid; gap: 2px; }
+.cycle-facts dt { color: var(--label-tertiary); font-size: .66rem; font-weight: 650; }
+.cycle-facts dd { margin: 0; color: var(--label-primary); font-size: .76rem; font-weight: 700; }
+.cycle-badge--pending_settlement { background: color-mix(in srgb, var(--warning) 14%, var(--surface)); color: var(--warning); }
+.cycle-badge--unconfirmed { background: color-mix(in srgb, var(--label-secondary) 12%, var(--surface)); color: var(--label-secondary); }
+.period-top .cycle-badge { display: inline-flex; }
+@media (max-width: 420px) { .cycle-facts { grid-template-columns: 1fr; } }
 .settle-paid-icon { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border-radius: 10px; background: var(--light-green); color: #12351a; }
 .settle-paid-icon svg { width: 18px; height: 18px; }
 .search-field:focus-within {

@@ -44,6 +44,10 @@ export type Period = {
   per_person_cents: number;
   receipt_count: number;
   last_scanned_at?: string | null;
+  whatsapp_cycle_status?: "ACTIVE" | "PENDING_SETTLEMENT" | "SETTLED" | "UNCONFIRMED" | null;
+  whatsapp_calculation_message?: { id?: string; text?: string; timestamp?: number; timeStr?: string } | null;
+  whatsapp_clearance_message?: { id?: string; text?: string; timestamp?: number; timeStr?: string } | null;
+  whatsapp_cycle_updated_at?: string | null;
 };
 
 export type BankTransferReceipt = {
@@ -55,6 +59,8 @@ export type BankTransferReceipt = {
   amount_cents: number;
   transfer_date: string;
   receipt_url: string | null;
+  verification_status?: "pending" | "verified" | "rejected" | string | null;
+  verified_at?: string | null;
 };
 
 export function throwIfSupabaseError(error: unknown): void {
@@ -124,6 +130,18 @@ export async function fetchBankTransferReceipts(periodId: string): Promise<BankT
     .select("*")
     .eq("period_id", periodId)
     .order("transfer_date", { ascending: false });
+  throwIfSupabaseError(error);
+  return data || [];
+}
+
+export async function fetchWhatsAppTransferEvidence(periodId: string): Promise<Receipt[]> {
+  const { data, error } = await supabase
+    .from("receipts")
+    .select("*")
+    .eq("period_id", periodId)
+    .eq("is_excluded", true)
+    .in("merchant", ["Bank Transfer", "Payment Transfer"])
+    .order("captured_at", { ascending: false });
   throwIfSupabaseError(error);
   return data || [];
 }

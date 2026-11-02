@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownToLine, Check, HandCoins, Image, ReceiptText } from "lucide-react";
-import { fetchBankTransferReceipts, fmt, memberNameKey, type BankTransferReceipt, type Period, type Settlement } from "../api";
+import { fetchBankTransferReceipts, fetchWhatsAppTransferEvidence, fmt, memberNameKey, type BankTransferReceipt, type Period, type Receipt, type Settlement } from "../api";
 import { EvidenceDetailPage, type EvidenceDetails } from "../components/EvidenceViewer";
 import { formatDate } from "../components/format";
 import { ProfileAvatar } from "../components/ProfileAvatar";
 import { assignBankReceipts, type ExpectedPayment } from "../settlementMatching";
+import { cycleStatusFor, cycleStatusLabel, transferEvidenceVerified } from "../cycleStatus";
 
 type Payment = ExpectedPayment;
 
@@ -39,15 +40,17 @@ function buildPlan(settlement: Settlement) {
   return { coordinator, contributions, reimbursements };
 }
 
-function TransferStatus({ complete, loading, unavailable }: { complete: boolean; loading: boolean; unavailable: boolean }) {
+function TransferStatus({ verified, hasEvidence, loading, unavailable }: { verified: boolean; hasEvidence: boolean; loading: boolean; unavailable: boolean }) {
   if (loading) return <><span className="settle-status-spinner" aria-hidden="true" />Checking…</>;
   if (unavailable) return <>Unavailable</>;
-  if (complete) return <><Check aria-hidden="true" /> Verified</>;
+  if (verified) return <><Check aria-hidden="true" /> Verified</>;
+  if (hasEvidence) return <><Image aria-hidden="true" /> Evidence received · Needs review</>;
   return <><span className="settle-pending-dot" aria-hidden="true" />Pending</>;
 }
 
 export function SettleTab({ settlement, periods, memberAvatarUrls = {} }: { settlement: Settlement | null; periods: Period[]; memberAvatarUrls?: Record<string, string> }) {
   const [bankReceipts, setBankReceipts] = useState<BankTransferReceipt[]>([]);
+  const [whatsAppEvidence, setWhatsAppEvidence] = useState<Receipt[]>([]);
   const [transfersLoading, setTransfersLoading] = useState(true);
   const [transferError, setTransferError] = useState("");
   const [transferReloadKey, setTransferReloadKey] = useState(0);
@@ -59,6 +62,7 @@ export function SettleTab({ settlement, periods, memberAvatarUrls = {} }: { sett
     [bankReceipts, plan],
   );
   const currentPeriod = periods.find((period) => period.id === settlement?.period_id) || periods.find((period) => period.status === "CURRENT") || periods[0];
+  const cycleStatus = currentPeriod ? cycleStatusFor(currentPeriod) : "ACTIVE";
   const memberNames = Object.keys(settlement?.member_totals || {}).slice(0, 4);
   const avatarFor = (name: string) => memberAvatarUrls[memberNameKey(name)];
   useEffect(() => {
@@ -68,16 +72,27 @@ export function SettleTab({ settlement, periods, memberAvatarUrls = {} }: { sett
     }
     let cancelled = false;
     setBankReceipts([]);
+    setWhatsAppEvidence([]);
     setTransfersLoading(true);
     setTransferError("");
-    fetchBankTransferReceipts(settlement.period_id)
-      .then((receipts) => {
-        if (!cancelled) setBankReceipts(receipts);
+    Promise.allSettled([
+      fetchBankTransferReceipts(settlement.period_id),
+      fetchWhatsAppTransferEvidence(settlement.period_id),
+    ])
+      .then(([payments, evidence]) => {
+        if (cancelled) return;
+        if (payments.status === "fulfilled") setBankReceipts(payments.value);
+        if (evidence.status === "fulfilled") setWhatsAppEvidence(evidence.value);
+        const failure = payments.status === "rejected" ? payments.reason : evidence.status === "rejected" ? evidence.reason : null;
+        if (failure) {
+          const detail = failure && typeof failure === "object" && "message" in failure ? String(failure.message) : "Please try again.";
+          setTransferError(`Couldn’t load all bank-transfer evidence. ${detail}`);
+        }
       })
       .catch((error) => {
         if (cancelled) return;
         const detail = error && typeof error === "object" && "message" in error ? String(error.message) : "Please try again.";
-        setTransferError(`Couldn’t load bank transfers. ${detail}`);
+        setTransferError(`Couldn’t load bank-transfer evidence. ${detail}`);
       })
       .finally(() => {
         if (!cancelled) setTransfersLoading(false);
@@ -102,6 +117,25 @@ export function SettleTab({ settlement, periods, memberAvatarUrls = {} }: { sett
         { label: "Settlement", value: receipt.period_id },
         { label: "Step ID", value: receipt.step_id },
         { label: "Transfer ID", value: receipt.id },
+      ],
+    });
+  }
+
+  function openWhatsAppEvidence(receipt: Receipt) {
+    if (!receipt.image_url) return;
+    savedScrollY.current = window.scrollY;
+    setSelectedEvidence({
+      locator: receipt.image_url,
+      kind: "Bank transfer",
+      title: `${firstName(receipt.payer)} · Needs review`,
+      subtitle: formatDate(receipt.date),
+      amount: "Unverified",
+      facts: [
+        { label: "Sender", value: receipt.payer || "Unknown" },
+        { label: "Captured", value: formatDate(receipt.date) },
+        { label: "Review status", value: "Unassigned evidence — not verified" },
+        { label: "Settlement", value: receipt.period_id },
+        { label: "WhatsApp message ID", value: receipt.id },
       ],
     });
   }
@@ -167,10 +201,11 @@ export function SettleTab({ settlement, periods, memberAvatarUrls = {} }: { sett
         <div className="section-heading"><h2 id="contribute-heading">1. Send equal share</h2><span>{fmt(settlement.per_person_cents)} each</span></div>
         <ul className="grouped-list settle-transfer-list">{plan.contributions.map((payment, index) => {
           const bankReceipt = transferAssignments.get(payment.id);
-          const isComplete = Boolean(bankReceipt?.receipt_url);
-          return <li className={`list-row settle-transfer-row${isComplete ? " settled" : ""}${bankReceipt?.receipt_url ? " evidence-row" : ""}`} key={payment.id} style={{ animationDelay: `${index * 55}ms` }} role={bankReceipt?.receipt_url ? "button" : undefined} tabIndex={bankReceipt?.receipt_url ? 0 : undefined} onClick={() => bankReceipt && openTransfer(bankReceipt)} onKeyDown={(event) => bankReceipt && transferKeyDown(event, bankReceipt)}>
+          const isComplete = transferEvidenceVerified(bankReceipt);
+          const hasEvidence = Boolean(bankReceipt?.receipt_url);
+          return <li className={`list-row settle-transfer-row${isComplete ? " settled" : ""}${hasEvidence ? " evidence-row" : ""}`} key={payment.id} style={{ animationDelay: `${index * 55}ms` }} role={hasEvidence ? "button" : undefined} tabIndex={hasEvidence ? 0 : undefined} onClick={() => bankReceipt && openTransfer(bankReceipt)} onKeyDown={(event) => bankReceipt && transferKeyDown(event, bankReceipt)}>
             <ProfileAvatar name={firstName(payment.from)} src={avatarFor(payment.from)} />
-            <div className="row-main"><span className="row-title">{payment.self ? `${firstName(payment.from)} → Grocery` : `${firstName(payment.from)} → ${firstName(payment.to)}`}</span><span className={`row-sub settle-proof-status${isComplete ? " verified" : ""}`}><TransferStatus complete={isComplete} loading={transfersLoading} unavailable={Boolean(transferError)} /></span></div>
+            <div className="row-main"><span className="row-title">{payment.self ? `${firstName(payment.from)} → Grocery` : `${firstName(payment.from)} → ${firstName(payment.to)}`}</span><span className={`row-sub settle-proof-status${isComplete ? " verified" : ""}`}><TransferStatus verified={isComplete} hasEvidence={hasEvidence} loading={transfersLoading} unavailable={Boolean(transferError)} /></span></div>
             <div className="settle-transfer-action"><strong className="row-amount">{fmt(payment.cents)}</strong>{bankReceipt?.receipt_url && <Image aria-label="View bank transfer image" />}</div>
           </li>;
         })}</ul>
@@ -180,16 +215,19 @@ export function SettleTab({ settlement, periods, memberAvatarUrls = {} }: { sett
         <div className="section-heading"><h2 id="reimburse-heading">2. Reimburse spending</h2><span>{firstName(plan.coordinator)}</span></div>
         <ul className="grouped-list settle-transfer-list">{plan.reimbursements.map((payment, index) => {
           const bankReceipt = transferAssignments.get(payment.id);
-          const isComplete = Boolean(bankReceipt?.receipt_url);
-          return <li className={`list-row settle-transfer-row${isComplete ? " settled" : ""}${bankReceipt?.receipt_url ? " evidence-row" : ""}`} key={payment.id} style={{ animationDelay: `${index * 55}ms` }} role={bankReceipt?.receipt_url ? "button" : undefined} tabIndex={bankReceipt?.receipt_url ? 0 : undefined} onClick={() => bankReceipt && openTransfer(bankReceipt)} onKeyDown={(event) => bankReceipt && transferKeyDown(event, bankReceipt)}>
+          const isComplete = transferEvidenceVerified(bankReceipt);
+          const hasEvidence = Boolean(bankReceipt?.receipt_url);
+          return <li className={`list-row settle-transfer-row${isComplete ? " settled" : ""}${hasEvidence ? " evidence-row" : ""}`} key={payment.id} style={{ animationDelay: `${index * 55}ms` }} role={hasEvidence ? "button" : undefined} tabIndex={hasEvidence ? 0 : undefined} onClick={() => bankReceipt && openTransfer(bankReceipt)} onKeyDown={(event) => bankReceipt && transferKeyDown(event, bankReceipt)}>
             <ProfileAvatar name={firstName(payment.to)} src={avatarFor(payment.to)} />
-            <div className="row-main"><span className="row-title">{payment.self ? `Grocery → ${firstName(payment.to)}` : `${firstName(payment.from)} → ${firstName(payment.to)}`}</span><span className={`row-sub settle-proof-status${isComplete ? " verified" : ""}`}><TransferStatus complete={isComplete} loading={transfersLoading} unavailable={Boolean(transferError)} /></span></div>
+            <div className="row-main"><span className="row-title">{payment.self ? `Grocery → ${firstName(payment.to)}` : `${firstName(payment.from)} → ${firstName(payment.to)}`}</span><span className={`row-sub settle-proof-status${isComplete ? " verified" : ""}`}><TransferStatus verified={isComplete} hasEvidence={hasEvidence} loading={transfersLoading} unavailable={Boolean(transferError)} /></span></div>
             <div className="settle-transfer-action"><strong className="row-amount">{fmt(payment.cents)}</strong>{bankReceipt?.receipt_url && <Image aria-label="View bank transfer image" />}</div>
           </li>;
         })}</ul>
       </section>
 
-      <section className="content-section" aria-labelledby="settlement-cycle-heading"><div className="section-heading"><h2 id="settlement-cycle-heading">Settlement cycle</h2></div><div className="settle-cycle-card"><ReceiptText aria-hidden="true" /><div><strong>{currentPeriod ? `${formatDate(currentPeriod.start_date)} – ${formatDate(currentPeriod.end_date)}` : "Current period"}</strong><span>{settlement.receipt_count} receipts · {fmt(settlement.total_cents)} household total</span></div></div></section>
+      <section className="content-section" aria-labelledby="settlement-cycle-heading"><div className="section-heading"><h2 id="settlement-cycle-heading">Settlement cycle</h2></div><div className="settle-cycle-card"><ReceiptText aria-hidden="true" /><div><strong>{currentPeriod ? `${formatDate(currentPeriod.start_date)} – ${cycleStatus === "SETTLED" ? formatDate(currentPeriod.end_date) : "Open"}` : "Current period"}</strong><span>{settlement.receipt_count} receipts · {fmt(settlement.total_cents)} household total</span><dl className="cycle-facts"><div><dt>Cycle status</dt><dd>{cycleStatusLabel(cycleStatus)}</dd></div><div><dt>Settlement calculation</dt><dd>{currentPeriod?.whatsapp_calculation_message?.text || (currentPeriod?.whatsapp_calculation_message ? "Available" : "Not available")}</dd></div><div><dt>Bank-transfer evidence</dt><dd>{bankReceipts.length + whatsAppEvidence.length} item{bankReceipts.length + whatsAppEvidence.length === 1 ? "" : "s"}</dd></div><div><dt>Final clearance</dt><dd>{currentPeriod?.whatsapp_clearance_message ? `${currentPeriod.whatsapp_clearance_message.text || "Received"}${currentPeriod.whatsapp_clearance_message.timeStr ? ` · ${currentPeriod.whatsapp_clearance_message.timeStr}` : ""}` : "Not received"}</dd></div></dl></div></div></section>
+
+      {whatsAppEvidence.length > 0 && <section className="content-section" aria-labelledby="unassigned-evidence-heading"><div className="section-heading"><h2 id="unassigned-evidence-heading">WhatsApp transfer evidence</h2><span>Needs review</span></div><ul className="grouped-list">{whatsAppEvidence.map((receipt) => <li className={`list-row${receipt.image_url ? " evidence-row" : ""}`} key={receipt.id} role={receipt.image_url ? "button" : undefined} tabIndex={receipt.image_url ? 0 : undefined} onClick={() => openWhatsAppEvidence(receipt)} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && receipt.image_url) { event.preventDefault(); openWhatsAppEvidence(receipt); } }}><span className="settle-paid-icon"><Image aria-hidden="true" /></span><div className="row-main"><span className="row-title">Evidence from {firstName(receipt.payer)}</span><span className="row-sub">Not assigned to a payment · Not verified</span></div><span className="evidence-row-tail">{receipt.image_url && <Image aria-label="View transfer evidence" />}</span></li>)}</ul></section>}
 
       <section className="content-section" aria-labelledby="recent-payments-heading"><div className="section-heading"><h2 id="recent-payments-heading">Recent repayments</h2></div>{transfersLoading ? <div className="empty-state compact-empty transfer-loading"><span className="settle-status-spinner" aria-hidden="true" />Checking bank transfers…</div> : transferError ? <div className="empty-state compact-empty">Transfer evidence is temporarily unavailable.</div> : bankReceipts.length ? <ul className="grouped-list">{bankReceipts.slice(0, 5).map((receipt) => <li className={`list-row${receipt.receipt_url ? " evidence-row" : ""}`} key={receipt.id} role={receipt.receipt_url ? "button" : undefined} tabIndex={receipt.receipt_url ? 0 : undefined} onClick={() => openTransfer(receipt)} onKeyDown={(event) => transferKeyDown(event, receipt)}><span className="settle-paid-icon"><ArrowDownToLine aria-hidden="true" /></span><div className="row-main"><span className="row-title">{firstName(receipt.from_name)} paid {firstName(receipt.to_name)}</span><span className="row-sub">Bank receipt · {formatDate(receipt.transfer_date)}</span></div><span className="evidence-row-tail"><strong className="row-amount">{fmt(receipt.amount_cents)}</strong>{receipt.receipt_url && <Image aria-label="View bank transfer image" />}</span></li>)}</ul> : <div className="empty-state compact-empty">Bank transfer receipts will appear here after they are added to Supabase.</div>}</section>
     </div>
