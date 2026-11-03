@@ -25,6 +25,15 @@ export type Receipt = {
   image_url: string | null;
 };
 
+export type WhatsAppCycleStatus = "ACTIVE" | "PENDING_SETTLEMENT" | "SETTLED" | "UNCONFIRMED";
+
+// UNINITIALIZED is the only value currently guaranteed by the worker contract.
+// Keep future non-empty values representable without treating them as equivalent
+// to UNINITIALIZED or inventing a closed set that the database has not declared.
+export type PaymentObligationsStatus = "UNINITIALIZED" | (string & Record<never, never>);
+
+export type PaymentObligations = Record<string, number>;
+
 export type Settlement = {
   id: string;
   period_id: string;
@@ -33,6 +42,8 @@ export type Settlement = {
   member_totals: Record<string, number>;
   receipt_count: number;
   calculated_at: string;
+  owes: PaymentObligations | null;
+  payment_obligations_status: PaymentObligationsStatus | null;
 };
 
 export type Period = {
@@ -44,6 +55,10 @@ export type Period = {
   per_person_cents: number;
   receipt_count: number;
   last_scanned_at?: string | null;
+  whatsapp_cycle_status?: WhatsAppCycleStatus | null;
+  whatsapp_calculation_message?: { id?: string; text?: string; timestamp?: number; timeStr?: string } | null;
+  whatsapp_clearance_message?: { id?: string; text?: string; timestamp?: number; timeStr?: string } | null;
+  whatsapp_cycle_updated_at?: string | null;
 };
 
 export type BankTransferReceipt = {
@@ -55,6 +70,8 @@ export type BankTransferReceipt = {
   amount_cents: number;
   transfer_date: string;
   receipt_url: string | null;
+  verification_status?: "pending" | "verified" | "rejected" | string | null;
+  verified_at?: string | null;
 };
 
 export function throwIfSupabaseError(error: unknown): void {
@@ -124,6 +141,18 @@ export async function fetchBankTransferReceipts(periodId: string): Promise<BankT
     .select("*")
     .eq("period_id", periodId)
     .order("transfer_date", { ascending: false });
+  throwIfSupabaseError(error);
+  return data || [];
+}
+
+export async function fetchWhatsAppTransferEvidence(periodId: string): Promise<Receipt[]> {
+  const { data, error } = await supabase
+    .from("receipts")
+    .select("*")
+    .eq("period_id", periodId)
+    .eq("is_excluded", true)
+    .in("merchant", ["Bank Transfer", "Payment Transfer"])
+    .order("captured_at", { ascending: false });
   throwIfSupabaseError(error);
   return data || [];
 }

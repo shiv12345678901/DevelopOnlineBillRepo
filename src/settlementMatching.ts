@@ -8,6 +8,7 @@ export type ExpectedPayment = {
 };
 
 export type TransferEvidence = {
+  period_id?: string;
   step_id: string;
   from_name: string | null;
   to_name: string | null;
@@ -25,10 +26,11 @@ function isGrocery(value: string | null | undefined) {
   return (value ?? "").trim().toLocaleLowerCase() === "grocery";
 }
 
-export function assignBankReceipts<T extends TransferEvidence>(payments: ExpectedPayment[], receipts: T[]) {
+export function assignBankReceipts<T extends TransferEvidence>(payments: ExpectedPayment[], receipts: T[], periodId?: string) {
   const assignments = new Map<string, T>();
   const usedStepIds = new Set<string>();
   const candidates = receipts
+    .filter((receipt) => !periodId || receipt.period_id === periodId)
     .filter((receipt) => Boolean(receipt.from_name?.trim() && receipt.to_name?.trim()))
     .filter((receipt) => !samePerson(receipt.from_name, receipt.to_name))
     .sort((left, right) => Number(Boolean(right.receipt_url)) - Number(Boolean(left.receipt_url)));

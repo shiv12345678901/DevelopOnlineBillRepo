@@ -3,17 +3,20 @@ import type { User } from "@supabase/supabase-js";
 import { fmt, memberNameKey, type Period, type Settlement } from "../api";
 import { ProfileAvatar } from "../components/ProfileAvatar";
 import { formatDate } from "../components/format";
+import { cycleStatusFor, cycleStatusLabel, type CycleStatus } from "../cycleStatus";
+import { provisionalShareDifference } from "../settlementLifecycle";
 
-function Balance({ perPerson, paid }: { perPerson: number; paid: number }) {
-  const bal = perPerson - paid;
-  if (bal > 0) return <span className="row-amount balance-due">Owes {fmt(bal)}</span>;
-  if (bal < 0)
+function ShareDifference({ perPerson, contributed, cycleStatus }: { perPerson: number; contributed: number; cycleStatus: CycleStatus }) {
+  const difference = provisionalShareDifference(perPerson, contributed);
+  const estimatePrefix = cycleStatus === "ACTIVE" ? "Est. " : "";
+  if (difference > 0) return <span className="row-amount balance-due">{estimatePrefix}gap {fmt(difference)}</span>;
+  if (difference < 0)
     return (
       <span className="row-amount balance-credit">
-        Owed {fmt(-bal)}
+        {estimatePrefix}above {fmt(-difference)}
       </span>
     );
-  return <span className="row-amount balance-settled">Settled</span>;
+  return <span className="row-amount balance-settled">At equal share</span>;
 }
 
 function shortDate(value: string) {
@@ -34,19 +37,24 @@ function firstName(user: User) {
 export function HomeTab({
   settlement,
   periods,
+  period,
   memberAvatarUrls = {},
   user,
   onOpenHistory,
 }: {
   settlement: Settlement | null;
   periods: Period[];
+  period?: Period;
   memberAvatarUrls?: Record<string, string>;
   user: User;
   onOpenHistory: () => void;
 }) {
-  if (!settlement) return <div className="empty">No settlement yet.</div>;
-  const members = Object.entries(settlement.member_totals || {});
-  const currentPeriod = periods.find((period) => period.id === settlement.period_id) || periods.find((period) => period.status === "CURRENT") || periods[0];
+  const members = Object.entries(settlement?.member_totals || {});
+  const currentPeriod = period || periods.find((candidate) => candidate.id === settlement?.period_id) || periods.find((candidate) => candidate.status === "CURRENT") || periods[0];
+  const cycleStatus = currentPeriod ? cycleStatusFor(currentPeriod) : "ACTIVE";
+  const totalCents = settlement?.total_cents ?? currentPeriod?.total_cents ?? 0;
+  const perPersonCents = settlement?.per_person_cents ?? currentPeriod?.per_person_cents ?? 0;
+  const receiptCount = settlement?.receipt_count ?? currentPeriod?.receipt_count ?? 0;
 
   return (
     <div className="screen screen--home">
@@ -56,7 +64,7 @@ export function HomeTab({
           <span>Rockdale Homies</span>
           {currentPeriod && (
             <time dateTime={currentPeriod.end_date}>
-              {shortDate(currentPeriod.start_date)} – {currentPeriod.status === "CURRENT" ? "Today" : shortDate(currentPeriod.end_date)}
+              {shortDate(currentPeriod.start_date)} – {["ACTIVE", "PENDING_SETTLEMENT"].includes(cycleStatus) ? "Today" : shortDate(currentPeriod.end_date)}
             </time>
           )}
         </div>
@@ -65,23 +73,24 @@ export function HomeTab({
       <section className="balance-summary home-balance" aria-labelledby="balance-heading">
         <div className="home-summary-top">
           <div>
-            <p className="summary-label" id="balance-heading">Each person’s share</p>
+            <p className="summary-label" id="balance-heading">{cycleStatus === "ACTIVE" ? "Estimated equal share" : cycleStatus === "SETTLED" ? "Final equal share" : "Calculated equal share"}</p>
+            <span className={`summary-status cycle-badge--${cycleStatus.toLocaleLowerCase()}`}>{cycleStatusLabel(cycleStatus)}</span>
           </div>
           <span className="home-summary-icon" aria-hidden="true"><WalletCards /></span>
         </div>
-        <p className="summary-amount">{fmt(settlement.per_person_cents)}</p>
+        <p className="summary-amount">{fmt(perPersonCents)}</p>
         <dl className="summary-details">
-          <div><dt>Household total</dt><dd>{fmt(settlement.total_cents)}</dd></div>
-          <div><dt>Receipts</dt><dd>{settlement.receipt_count}</dd></div>
+          <div><dt>Household spending</dt><dd>{fmt(totalCents)}</dd></div>
+          <div><dt>Receipts</dt><dd>{receiptCount}</dd></div>
         </dl>
       </section>
 
       <section className="content-section" aria-labelledby="members-heading">
         <div className="section-heading">
-          <h2 id="members-heading">Paid so far</h2>
+          <h2 id="members-heading">Member contributions</h2>
           <span>{members.length} people</span>
         </div>
-        <ul className="grouped-list member-list">
+        {members.length ? <ul className="grouped-list member-list">
         {members.map(([name, cents], i) => (
           <li
             key={name}
@@ -91,12 +100,12 @@ export function HomeTab({
             <ProfileAvatar name={name} src={memberAvatarUrls[memberNameKey(name)]} />
             <div className="row-main">
               <span className="row-title">{name}</span>
-              <span className="row-sub">Paid {fmt(cents)}</span>
+              <span className="row-sub">Contributed {fmt(cents)} · equal share {fmt(perPersonCents)}</span>
             </div>
-            <Balance perPerson={settlement.per_person_cents} paid={cents} />
+            <ShareDifference perPerson={perPersonCents} contributed={cents} cycleStatus={cycleStatus} />
           </li>
         ))}
-        </ul>
+        </ul> : <div className="empty-state compact-empty">No household spending has been recorded for this period yet.</div>}
       </section>
 
       <section className="content-section" aria-labelledby="home-history-heading">
@@ -112,8 +121,8 @@ export function HomeTab({
               <li className="period-preview-row" key={period.id}>
                 <span className="history-icon" aria-hidden="true"><CalendarRange /></span>
                 <div className="period-preview-copy">
-                  <span className="row-title">{period.status === "CURRENT" ? "Current settlement" : "Completed settlement"}</span>
-                  <span className="row-sub">{formatDate(period.start_date)} – {formatDate(period.end_date)} · {period.receipt_count} receipts</span>
+                  <span className="row-title">{cycleStatusFor(period) === "SETTLED" ? "Completed settlement" : cycleStatusFor(period) === "PENDING_SETTLEMENT" ? "Pending settlement" : "Current settlement"}</span>
+                  <span className="row-sub">{formatDate(period.start_date)} – {["ACTIVE", "PENDING_SETTLEMENT"].includes(cycleStatusFor(period)) ? "Open" : formatDate(period.end_date)} · {period.receipt_count} receipts</span>
                 </div>
                 <strong className="row-amount">{fmt(period.total_cents)}</strong>
               </li>

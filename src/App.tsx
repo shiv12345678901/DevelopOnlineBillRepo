@@ -16,8 +16,11 @@ import { SettleTab } from "./tabs/SettleTab";
 import type { Theme } from "./theme";
 import {
   ACTIVE_SYNC_STORAGE_KEY,
+  COMPLETED_SYNC_POLL_MS,
   INITIAL_SYNC_STATE,
+  completedSyncTimestamp,
   fetchLatestActiveSync,
+  fetchLatestCompletedSync,
   fetchSyncRequest,
   isActiveSyncStatus,
   requestSyncWake,
@@ -52,6 +55,7 @@ export default function App() {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [memberAvatarUrls, setMemberAvatarUrls] = useState<Record<string, string>>({});
   const [syncState, setSyncState] = useState<SyncState>(INITIAL_SYNC_STATE);
+  const [lastCompletedSyncAt, setLastCompletedSyncAt] = useState<string | null>(null);
   const activeSyncIdRef = useRef<string | null>(localStorage.getItem(ACTIVE_SYNC_STORAGE_KEY));
   const pollTimerRef = useRef<number | null>(null);
   const timeoutTimerRef = useRef<number | null>(null);
@@ -59,9 +63,13 @@ export default function App() {
   const startingSyncRef = useRef(false);
   const refreshDataRef = useRef<() => Promise<void>>(async () => undefined);
   const recoverSyncRef = useRef<() => Promise<void>>(async () => undefined);
+  const refreshLatestCompletedSyncRef = useRef<() => Promise<void>>(async () => undefined);
   const previousTabRef = useRef<TabId>(tab);
   const refreshGenerationRef = useRef(0);
   const syncPendingSinceRef = useRef<number | null>(null);
+  const lastHandledCompletedSyncIdRef = useRef<string | null>(null);
+  const completedSyncCheckInFlightRef = useRef(false);
+  const completedSyncGenerationRef = useRef(0);
 
   // Theme → <html data-theme>, persisted
   useLayoutEffect(() => {
@@ -178,6 +186,30 @@ export default function App() {
 
   refreshDataRef.current = refreshData;
 
+  async function refreshLatestCompletedSync() {
+    if (!session || completedSyncCheckInFlightRef.current) return;
+    const generation = completedSyncGenerationRef.current;
+    completedSyncCheckInFlightRef.current = true;
+    try {
+      const latest = await fetchLatestCompletedSync();
+      if (generation !== completedSyncGenerationRef.current) return;
+      const completedAt = completedSyncTimestamp(latest);
+      if (!latest || !completedAt) return;
+      setLastCompletedSyncAt(completedAt);
+      if (lastHandledCompletedSyncIdRef.current === latest.id) return;
+      lastHandledCompletedSyncIdRef.current = latest.id;
+      await refreshDataRef.current();
+    } catch {
+      // Keep the last known completion time and retry on the next check.
+    } finally {
+      if (generation === completedSyncGenerationRef.current) {
+        completedSyncCheckInFlightRef.current = false;
+      }
+    }
+  }
+
+  refreshLatestCompletedSyncRef.current = refreshLatestCompletedSync;
+
   function clearSyncTimers() {
     if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
     if (timeoutTimerRef.current !== null) window.clearTimeout(timeoutTimerRef.current);
@@ -202,6 +234,11 @@ export default function App() {
     localStorage.removeItem(ACTIVE_SYNC_STORAGE_KEY);
 
     if (request.status === "done") {
+      const completedAt = completedSyncTimestamp(request);
+      if (completedAt) {
+        lastHandledCompletedSyncIdRef.current = request.id;
+        setLastCompletedSyncAt(completedAt);
+      }
       setSyncState({
         requestId: request.id,
         status: "done",
@@ -368,12 +405,32 @@ export default function App() {
   }, [session?.user.id]);
 
   useEffect(() => {
+    completedSyncGenerationRef.current += 1;
+    completedSyncCheckInFlightRef.current = false;
+    lastHandledCompletedSyncIdRef.current = null;
+    setLastCompletedSyncAt(null);
+    if (!session) {
+      return;
+    }
+
+    const checkLatestCompletion = () => {
+      if (document.visibilityState === "visible") void refreshLatestCompletedSyncRef.current();
+    };
+    checkLatestCompletion();
+    const timer = window.setInterval(checkLatestCompletion, COMPLETED_SYNC_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [session?.user.id]);
+
+  useEffect(() => {
     if (session && tab === "settings") void recoverSyncRef.current();
   }, [session?.user.id, tab]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") void recoverSyncRef.current();
+      if (document.visibilityState === "visible") {
+        void recoverSyncRef.current();
+        void refreshLatestCompletedSyncRef.current();
+      }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
@@ -464,6 +521,10 @@ export default function App() {
     setSession((current) => current ? { ...current, user } : current);
   }
 
+  const displayedPeriod = periods.find((period) => period.id === selectedPeriodId)
+    || periods.find((period) => period.status === "CURRENT")
+    || periods[0];
+
   if (session === undefined) {
     return (
       <div className="app auth-loading">
@@ -497,9 +558,9 @@ export default function App() {
           </div>
         ) : (
           <>
-            {tab === "home" && <HomeTab settlement={settlement} periods={periods} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => setTab("history")} />}
+            {tab === "home" && <HomeTab settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => setTab("history")} />}
             {tab === "receipts" && <ReceiptsTab receipts={receipts} />}
-            {tab === "settle" && <SettleTab settlement={settlement} periods={periods} memberAvatarUrls={memberAvatarUrls} />}
+            {tab === "settle" && <SettleTab key={displayedPeriod?.id || "no-period"} settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} />}
             {tab === "spending" && <MySpendingTab receipts={receipts} settlement={settlement} user={session.user} />}
             {tab === "history" && <HistoryTab periods={periods} />}
             {tab === "settings" && (
@@ -512,6 +573,7 @@ export default function App() {
                 onPeriodChange={handlePeriodChange}
                 onSyncNow={handleSyncNow}
                 syncState={syncState}
+                lastCompletedSyncAt={lastCompletedSyncAt}
                 online={online}
                 user={session.user}
                 avatarUrl={avatarUrl}
