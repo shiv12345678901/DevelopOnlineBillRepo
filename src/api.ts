@@ -27,12 +27,11 @@ export type Receipt = {
 
 export type WhatsAppCycleStatus = "ACTIVE" | "PENDING_SETTLEMENT" | "SETTLED" | "UNCONFIRMED";
 
-// UNINITIALIZED is the only value currently guaranteed by the worker contract.
-// Keep future non-empty values representable without treating them as equivalent
-// to UNINITIALIZED or inventing a closed set that the database has not declared.
-export type PaymentObligationsStatus = "UNINITIALIZED" | (string & Record<never, never>);
+export type PaymentObligationsStatus = "UNINITIALIZED" | "REVIEWED";
 
-export type PaymentObligations = Record<string, number>;
+// Reviewed obligations are stored as a nested member-to-member amount matrix.
+// Transfer direction must not be inferred from this object in the frontend.
+export type PaymentObligations = Record<string, Record<string, number>>;
 
 export type Settlement = {
   id: string;
@@ -70,7 +69,7 @@ export type BankTransferReceipt = {
   amount_cents: number;
   transfer_date: string;
   receipt_url: string | null;
-  verification_status?: "pending" | "verified" | "rejected" | string | null;
+  verification_status: "pending" | "verified" | "rejected" | string | null;
   verified_at?: string | null;
 };
 

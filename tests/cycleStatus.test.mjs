@@ -14,5 +14,6 @@ test("frontend presents active, pending and settled cycle states with a legacy f
 test("bank-transfer evidence is not verified merely because an image exists", () => {
   const evidence = { id: "t", period_id: "p", step_id: "s", from_name: "A", to_name: "B", amount_cents: 100, transfer_date: "2026-10-02", receipt_url: "storage://bill-evidence/t.jpg" };
   assert.equal(transferEvidenceVerified(evidence), false);
-  assert.equal(transferEvidenceVerified({ ...evidence, verification_status: "verified" }), true);
+  assert.equal(transferEvidenceVerified({ ...evidence, verification_status: "verified" }), false);
+  assert.equal(transferEvidenceVerified({ ...evidence, verification_status: "verified", verified_at: "2026-11-04T01:00:00Z" }), true);
 });
