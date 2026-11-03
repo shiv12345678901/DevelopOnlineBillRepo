@@ -80,7 +80,7 @@ export function SettleTab({ settlement, periods, period, memberAvatarUrls = {} }
       })
       .finally(() => { if (!cancelled) setTransfersLoading(false); });
     return () => { cancelled = true; };
-  }, [periodId, transferReloadKey]);
+  }, [periodId, settlement?.calculated_at, transferReloadKey]);
 
   function openTransfer(receipt: BankTransferReceipt) {
     if (!receipt.receipt_url) return;

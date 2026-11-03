@@ -100,6 +100,7 @@ export function SettingsTab({
   onPeriodChange,
   onSyncNow,
   syncState,
+  lastCompletedSyncAt,
   online,
 }: {
   theme: Theme;
@@ -114,6 +115,7 @@ export function SettingsTab({
   onPeriodChange: (periodId: string) => void;
   onSyncNow: () => Promise<void>;
   syncState: SyncState;
+  lastCompletedSyncAt: string | null;
   online: boolean;
 }) {
   const initialName = displayNameFor(user);
@@ -136,19 +138,12 @@ export function SettingsTab({
   const longPressTriggered = useRef(false);
   const cropDrag = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const passkeySupported = typeof window !== "undefined" && "PublicKeyCredential" in window;
-  const selectedPeriod = periods.find((period) => period.id === selectedPeriodId)
-    || periods.find((period) => period.status === "CURRENT");
-  const hasScanField = selectedPeriod && Object.prototype.hasOwnProperty.call(selectedPeriod, "last_scanned_at");
-  const relativeScanTime = selectedPeriod?.last_scanned_at
-    ? formatRelativeTime(selectedPeriod.last_scanned_at, relativeTimeNow)
+  const relativeSyncTime = lastCompletedSyncAt
+    ? formatRelativeTime(lastCompletedSyncAt, relativeTimeNow)
     : null;
-  const scanLabel = !hasScanField
-    ? null
-    : selectedPeriod?.last_scanned_at === null
-      ? "Never scanned yet"
-      : relativeScanTime
-        ? `Last scanned: ${relativeScanTime}`
-        : null;
+  const syncTimeLabel = relativeSyncTime
+    ? `Last synced ${relativeSyncTime}`
+    : "No completed sync yet";
 
   const syncing = isSyncUiActive(syncState);
   const syncButtonLabel = syncing
@@ -522,14 +517,10 @@ export function SettingsTab({
             </span>
             <span className="settings-copy">
               <span className="settings-title">Sync data</span>
-              {scanLabel ? (
-                <span className="last-scanned-line" role="status">
-                  <Clock3 aria-hidden="true" />
-                  {scanLabel}
-                </span>
-              ) : (
-                <span className="settings-subtitle">Refresh receipts and settlement</span>
-              )}
+              <span className="last-scanned-line" role="status">
+                <Clock3 aria-hidden="true" />
+                {syncTimeLabel}
+              </span>
             </span>
             <button
               className="sync-action-button"
