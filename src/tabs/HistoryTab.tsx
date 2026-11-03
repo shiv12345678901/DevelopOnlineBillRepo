@@ -42,7 +42,7 @@ export function HistoryTab({ periods }: { periods: Period[] }) {
                 <dd>{fmt(p.total_cents)}</dd>
               </div>
               <div>
-                <dt>Each person</dt>
+                <dt>{cycleStatus === "ACTIVE" ? "Est. equal share" : "Each person"}</dt>
                 <dd>{fmt(p.per_person_cents)}</dd>
               </div>
             </dl>

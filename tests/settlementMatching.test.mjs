@@ -37,3 +37,11 @@ test("transfer rows with missing names are ignored safely", () => {
   assert.doesNotThrow(() => assignBankReceipts([payment], [missingSender, missingRecipient]));
   assert.equal(assignBankReceipts([payment], [missingSender, missingRecipient]).size, 0);
 });
+
+test("transfer evidence from another period cannot be assigned", () => {
+  const payment = { id: "reimburse-Arjun", from: "Arjun", to: "Arjun", cents: 64976, stage: "reimburse", self: true };
+  const octoberEvidence = { ...groceryToArjun, period_id: "october" };
+
+  assert.equal(assignBankReceipts([payment], [octoberEvidence], "november").size, 0);
+  assert.equal(assignBankReceipts([payment], [octoberEvidence], "october").size, 1);
+});

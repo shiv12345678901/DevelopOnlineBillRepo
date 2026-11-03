@@ -1,6 +1,6 @@
-import type { BankTransferReceipt, Period } from "./api";
+import type { BankTransferReceipt, Period, WhatsAppCycleStatus } from "./api";
 
-export type CycleStatus = "ACTIVE" | "PENDING_SETTLEMENT" | "SETTLED" | "UNCONFIRMED";
+export type CycleStatus = WhatsAppCycleStatus;
 
 export function cycleStatusFor(period: Period): CycleStatus {
   const detected = period.whatsapp_cycle_status;

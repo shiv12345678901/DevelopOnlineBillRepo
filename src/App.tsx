@@ -464,6 +464,10 @@ export default function App() {
     setSession((current) => current ? { ...current, user } : current);
   }
 
+  const displayedPeriod = periods.find((period) => period.id === selectedPeriodId)
+    || periods.find((period) => period.status === "CURRENT")
+    || periods[0];
+
   if (session === undefined) {
     return (
       <div className="app auth-loading">
@@ -497,9 +501,9 @@ export default function App() {
           </div>
         ) : (
           <>
-            {tab === "home" && <HomeTab settlement={settlement} periods={periods} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => setTab("history")} />}
+            {tab === "home" && <HomeTab settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => setTab("history")} />}
             {tab === "receipts" && <ReceiptsTab receipts={receipts} />}
-            {tab === "settle" && <SettleTab settlement={settlement} periods={periods} memberAvatarUrls={memberAvatarUrls} />}
+            {tab === "settle" && <SettleTab key={displayedPeriod?.id || "no-period"} settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} />}
             {tab === "spending" && <MySpendingTab receipts={receipts} settlement={settlement} user={session.user} />}
             {tab === "history" && <HistoryTab periods={periods} />}
             {tab === "settings" && (

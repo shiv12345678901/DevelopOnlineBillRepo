@@ -990,8 +990,21 @@ main {
   cursor: pointer;
 }
 .settle-pending-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 16%, transparent); }
+.summary-status { display: inline-flex; width: fit-content; margin-top: 5px; padding: 3px 8px; border-radius: 999px; background: color-mix(in srgb, var(--light-blue) 14%, transparent); color: var(--light-blue); font-size: .66rem; font-weight: 750; }
+.summary-status.cycle-badge--settled { background: color-mix(in srgb, var(--positive) 16%, transparent); color: var(--positive); }
 .settle-check { width: 18px; height: 18px; color: var(--positive); }
 .settle-explainer { margin: -4px 2px 10px; color: var(--label-secondary); font-size: .78rem; line-height: 1.4; }
+.settle-explainer.rounding-note { margin: 10px 2px 0; color: var(--label-tertiary); }
+.settle-empty-summary { display: grid; place-items: center; gap: 4px; min-height: 150px; text-align: center; }
+.settle-empty-summary strong { font-size: 2rem; font-variant-numeric: tabular-nums; }
+.settle-empty-summary span { color: var(--label-secondary); font-size: .78rem; }
+.obligations-state-card { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--material-border)); border-radius: 16px; background: var(--surface); }
+.obligations-state-card > svg { width: 22px; height: 22px; flex: none; color: var(--warning); }
+.obligations-state-card > div { display: grid; gap: 4px; }
+.obligations-state-card strong { font-size: .9rem; }
+.obligations-state-card span { color: var(--label-secondary); font-size: .76rem; line-height: 1.4; }
+.obligations-state-card.settled { border-color: color-mix(in srgb, var(--positive) 28%, var(--material-border)); }
+.obligations-state-card.settled > svg { color: var(--positive); }
 .settle-cycle-card { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--material-border); border-radius: 16px; background: var(--surface); }
 .settle-cycle-card > svg { width: 22px; height: 22px; color: var(--light-blue); }
 .settle-cycle-card div { display: grid; gap: 3px; min-width: 0; }
@@ -1006,6 +1019,10 @@ main {
 .period-top .cycle-badge { display: inline-flex; }
 @media (max-width: 420px) { .cycle-facts { grid-template-columns: 1fr; } }
 .settle-paid-icon { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border-radius: 10px; background: var(--light-green); color: #12351a; }
+.settle-paid-icon.pending, .settle-paid-icon.unassigned { background: color-mix(in srgb, var(--warning) 16%, var(--surface)); color: var(--warning); }
+.settle-paid-icon.rejected { background: color-mix(in srgb, var(--red) 14%, var(--surface)); color: var(--red); }
+.settle-proof-status.pending { color: var(--warning); }
+.settle-proof-status.rejected { color: var(--red); }
 .settle-paid-icon svg { width: 18px; height: 18px; }
 .search-field:focus-within {
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
