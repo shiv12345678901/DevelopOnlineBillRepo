@@ -7,7 +7,7 @@ const settlement = {
   period_id: "period_2026-09-19",
   total_cents: 40001,
   per_person_cents: 10000,
-  member_totals: { "Arjun Bhurtel": 12000, "Arpan Bhurtel": 8000, "Shiva Kafle": 10000, "Swasti Adhikari": 10001 },
+  member_totals: { "Arjun Bhurtel": 12000, "Arpan Bhurtel": 8000, "Shiva Kafle": 10000, "Swasti Adhikari": 0 },
   receipt_count: 4,
   calculated_at: "2026-11-04T00:00:00Z",
   owes: { "Arjun Bhurtel": { "Shiva Kafle": 10000 } },
@@ -27,6 +27,7 @@ test("reviewed nested obligations enable the original two-stage plan", () => {
   assert.equal(plan.reimbursements.length, 4);
   assert.equal(plan.contributions.find(({ self }) => self)?.from, "Arjun Bhurtel");
   assert.equal(plan.reimbursements.find(({ self }) => self)?.cents, 12000);
+  assert.equal(plan.reimbursements.find(({ to }) => to === "Swasti Adhikari")?.cents, 0);
   assert.equal(plan.contributions.every(({ stepId }) => stepId === null), true, "frontend must not invent step IDs");
   assert.equal(equalShareRoundingRemainder(settlement), 1);
 });

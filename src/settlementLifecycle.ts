@@ -65,7 +65,7 @@ export function reviewedPaymentPlan(settlement: Settlement | null | undefined): 
       cents: memberTotal(settlement, name),
       stage: "reimburse" as const,
       self: sameMember(name, coordinator),
-    })).filter(({ cents }) => Number.isFinite(cents) && cents > 0),
+    })).filter(({ cents }) => Number.isFinite(cents) && cents >= 0),
   };
 }
 

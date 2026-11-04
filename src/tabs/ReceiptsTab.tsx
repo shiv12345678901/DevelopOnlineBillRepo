@@ -1,18 +1,38 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Image, SlidersHorizontal } from "lucide-react";
-import { fmt, type Receipt } from "../api";
+import { ArrowDownToLine, CircleAlert, Image, SlidersHorizontal } from "lucide-react";
+import { GlassInput } from "@zakisheriff/liquid-glass";
+import { fmt, type BankTransferReceipt, type Receipt } from "../api";
 import { formatDate } from "../components/format";
 import { AppIcon } from "../components/AppIcon";
 import { EvidenceDetailPage, type EvidenceDetails } from "../components/EvidenceViewer";
 import { MerchantIcon } from "../components/MerchantIcon";
+import { useTransferEvidence } from "../components/useTransferEvidence";
+import { transferEvidenceState } from "../settlementMatching";
 
-export function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
+function firstName(value: string | null | undefined) {
+  return (value ?? "").trim().split(/\s+/)[0] || "Unknown";
+}
+
+function evidenceStatus(receipt: BankTransferReceipt) {
+  const state = transferEvidenceState(receipt);
+  if (state === "verified") return { state, label: "Verified" };
+  if (state === "rejected") return { state, label: "Rejected" };
+  if (state === "pending") return { state, label: "Pending verification" };
+  return { state, label: "Unverified" };
+}
+
+export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
+  receipts: Receipt[];
+  periodId: string | null;
+  settlementCalculatedAt?: string | null;
+}) {
   const [query, setQuery] = useState("");
-  const [filterOpen, setFilterOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("newest");
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceDetails | null>(null);
   const savedScrollY = useRef<number | null>(null);
+  const transferEvidence = useTransferEvidence(periodId, settlementCalculatedAt);
+  const visibleBankReceipts = transferEvidence.bankReceipts.filter((receipt) => transferEvidenceState(receipt) !== "pending");
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const categories = useMemo(() => Array.from(new Set(receipts.map((receipt) => receipt.category).filter(Boolean))).sort(), [receipts]);
   const filteredReceipts = useMemo(() => {
@@ -56,6 +76,27 @@ export function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
     });
   }
 
+  function openTransfer(receipt: BankTransferReceipt) {
+    if (!receipt.receipt_url) return;
+    savedScrollY.current = window.scrollY;
+    const status = evidenceStatus(receipt).label;
+    setSelectedEvidence({
+      locator: receipt.receipt_url,
+      kind: "Bank transfer",
+      title: `${firstName(receipt.from_name)} → ${firstName(receipt.to_name)}`,
+      subtitle: status,
+      amount: fmt(receipt.amount_cents),
+      facts: [
+        { label: "From", value: receipt.from_name || "Unknown" },
+        { label: "To", value: receipt.to_name || "Unknown" },
+        { label: "Amount", value: fmt(receipt.amount_cents) },
+        { label: "Verification", value: status },
+        { label: "Settlement", value: receipt.period_id },
+        { label: "Step ID", value: receipt.step_id },
+      ],
+    });
+  }
+
   useLayoutEffect(() => {
     if (selectedEvidence) {
       window.scrollTo({ top: 0, behavior: "instant" });
@@ -74,6 +115,13 @@ export function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
     }
   }
 
+  function transferKeyDown(event: React.KeyboardEvent, receipt: BankTransferReceipt) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openTransfer(receipt);
+    }
+  }
+
   if (selectedEvidence) return <EvidenceDetailPage evidence={selectedEvidence} onBack={() => setSelectedEvidence(null)} />;
 
   return (
@@ -83,25 +131,24 @@ export function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
       </header>
 
       <div className="search-controls">
-        <label className="search-field">
-          <span className="visually-hidden">Search receipts</span>
-          <AppIcon name="search" />
-          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search receipts" autoComplete="off" enterKeyHint="search" />
+        <GlassInput className="search-field liquid-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} onClear={() => setQuery("")} placeholder="Search receipts" autoComplete="off" enterKeyHint="search" aria-label="Search receipts" intensity={5} />
+        <label className={`filter-button native-filter${categoryFilter !== "all" || sortOrder !== "newest" ? " active" : ""}`}>
+          <SlidersHorizontal aria-hidden="true" />
+          <span className="visually-hidden">Sort receipts</span>
+          <select aria-label="Sort receipts" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}>
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="amount-high">Amount: high to low</option>
+            <option value="amount-low">Amount: low to high</option>
+          </select>
         </label>
-        <div className="filter-menu-wrap">
-          <button className={`filter-button${filterOpen || categoryFilter !== "all" || sortOrder !== "newest" ? " active" : ""}`} type="button" aria-label="Filter receipts" aria-expanded={filterOpen} onClick={() => setFilterOpen((open) => !open)}><SlidersHorizontal aria-hidden="true" /></button>
-          {filterOpen && <div className="filter-dropdown" role="menu" aria-label="Receipt filters">
-            <span className="filter-dropdown-label">Sort by</span>
-            {[["newest", "Newest first"], ["oldest", "Oldest first"], ["amount-high", "Amount: high to low"], ["amount-low", "Amount: low to high"]].map(([value, label]) => <button className={sortOrder === value ? "active" : ""} type="button" role="menuitem" onClick={() => { setSortOrder(value); setFilterOpen(false); }} key={value}>{label}</button>)}
-          </div>}
-        </div>
       </div>
       <div className="category-tabs" role="tablist" aria-label="Filter by category">
         <button className={categoryFilter === "all" ? "active" : ""} type="button" role="tab" aria-selected={categoryFilter === "all"} onClick={() => setCategoryFilter("all")}>All</button>
         {categories.map((category) => <button className={categoryFilter === category ? "active" : ""} type="button" role="tab" aria-selected={categoryFilter === category} onClick={() => setCategoryFilter(category)} key={category}>{category}</button>)}
       </div>
 
-      {!visibleReceipts.length ? <div className="empty-state"><AppIcon name="search" /><h3>No matching receipts</h3><p>Try a merchant, person, category, or another date.</p></div> : showGroups ? <div className="receipt-groups">
+      {!visibleReceipts.length ? <div className="empty-state"><AppIcon name="search" /><h3>No matching receipts</h3></div> : showGroups ? <div className="receipt-groups">
         {Array.from(receiptsByDate).map(([date, dateReceipts], groupIndex) => (
           <section className="content-section" aria-labelledby={`date-${groupIndex}`} key={date}>
             <div className="section-heading compact">
@@ -136,6 +183,48 @@ export function ReceiptsTab({ receipts }: { receipts: Receipt[] }) {
           <span className="evidence-row-tail"><strong className="row-amount">{fmt(receipt.amount_cents)}</strong>{receipt.image_url && <Image aria-label="View receipt image" />}</span>
         </li>
       ))}</ul>}
+
+      {visibleBankReceipts.length > 0 && (
+        <section className="content-section bank-receipts-section" aria-labelledby="bank-receipts-heading">
+          <div className="section-heading">
+            <h2 id="bank-receipts-heading">Bank receipts</h2>
+            <span>{visibleBankReceipts.length}</span>
+          </div>
+          <ul className="grouped-list">
+            {visibleBankReceipts.map((receipt) => {
+              const status = evidenceStatus(receipt);
+              return (
+                <li
+                  className={`list-row${receipt.receipt_url ? " evidence-row" : ""}`}
+                  key={receipt.id}
+                  role={receipt.receipt_url ? "button" : undefined}
+                  tabIndex={receipt.receipt_url ? 0 : undefined}
+                  onClick={() => openTransfer(receipt)}
+                  onKeyDown={(event) => transferKeyDown(event, receipt)}
+                >
+                  <span className={`bank-receipt-icon ${status.state}`} aria-hidden="true"><ArrowDownToLine /></span>
+                  <div className="row-main">
+                    <span className="row-title">{firstName(receipt.from_name)} → {firstName(receipt.to_name)}</span>
+                    <span className={`row-sub evidence-verification-status ${status.state}`}>{status.label}</span>
+                  </div>
+                  <span className="evidence-row-tail">
+                    <strong className="row-amount">{fmt(receipt.amount_cents)}</strong>
+                    {receipt.receipt_url && <Image aria-label="View bank receipt image" />}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {transferEvidence.error && (
+        <div className="evidence-fetch-error" role="alert">
+          <CircleAlert aria-hidden="true" />
+          <span>{transferEvidence.error} Verification remains unknown.</span>
+          <button type="button" onClick={transferEvidence.retry}>Retry</button>
+        </div>
+      )}
     </div>
   );
 }

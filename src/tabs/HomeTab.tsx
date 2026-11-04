@@ -8,14 +8,21 @@ import { hasReviewedPaymentObligations, provisionalShareDifference } from "../se
 import { summarizeTransferEvidence } from "../settlementMatching";
 import { useTransferEvidence } from "../components/useTransferEvidence";
 
+const HOME_MEMBER_ORDER = ["shiva", "arjun", "arpan", "swasti"];
+
+function memberOrder(name: string) {
+  const first = name.trim().split(/\s+/)[0]?.toLocaleLowerCase() || "";
+  const index = HOME_MEMBER_ORDER.indexOf(first);
+  return index < 0 ? HOME_MEMBER_ORDER.length : index;
+}
+
 function ShareDifference({ perPerson, contributed, cycleStatus }: { perPerson: number; contributed: number; cycleStatus: CycleStatus }) {
   const difference = provisionalShareDifference(perPerson, contributed);
-  const estimatePrefix = cycleStatus === "ACTIVE" ? "Est. " : "";
-  if (difference > 0) return <span className="row-amount balance-due">{estimatePrefix}gap {fmt(difference)}</span>;
+  if (difference > 0) return <span className="row-amount balance-due">{cycleStatus === "ACTIVE" ? "Est. owes" : "Below share"} {fmt(difference)}</span>;
   if (difference < 0)
     return (
       <span className="row-amount balance-credit">
-        {estimatePrefix}above {fmt(-difference)}
+        {cycleStatus === "ACTIVE" ? "Est. owed" : "Above share"} {fmt(-difference)}
       </span>
     );
   return <span className="row-amount balance-settled">At equal share</span>;
@@ -51,7 +58,7 @@ export function HomeTab({
   user: User;
   onOpenHistory: () => void;
 }) {
-  const members = Object.entries(settlement?.member_totals || {});
+  const members = Object.entries(settlement?.member_totals || {}).sort(([left], [right]) => memberOrder(left) - memberOrder(right));
   const currentPeriod = period || periods.find((candidate) => candidate.id === settlement?.period_id) || periods.find((candidate) => candidate.status === "CURRENT") || periods[0];
   const cycleStatus = currentPeriod ? cycleStatusFor(currentPeriod) : "ACTIVE";
   const totalCents = settlement?.total_cents ?? currentPeriod?.total_cents ?? 0;
@@ -61,7 +68,9 @@ export function HomeTab({
   const evidenceSummary = summarizeTransferEvidence(evidence.bankReceipts);
   const evidenceItemCount = evidenceSummary.total + evidence.whatsAppEvidence.length;
   const hasReviewedObligations = hasReviewedPaymentObligations(settlement);
-  const showPaymentVerification = evidenceItemCount > 0 || hasReviewedObligations || Boolean(evidence.error);
+  const awaitingCalculation = cycleStatus === "PENDING_SETTLEMENT" && !hasReviewedObligations;
+  const historicalObligationsUnavailable = cycleStatus === "SETTLED" && !hasReviewedObligations;
+  const showPaymentVerification = evidenceItemCount > 0 || hasReviewedObligations || awaitingCalculation || historicalObligationsUnavailable || Boolean(evidence.error);
 
   return (
     <div className="screen screen--home">
@@ -77,7 +86,7 @@ export function HomeTab({
         </div>
       </header>
 
-      <section className="balance-summary home-balance" aria-labelledby="balance-heading">
+      <section className="balance-summary home-balance" role="region" aria-labelledby="balance-heading">
         <div className="home-summary-top">
           <div>
             <p className="summary-label" id="balance-heading">{cycleStatus === "ACTIVE" ? "Estimated equal share" : cycleStatus === "SETTLED" ? "Final equal share" : "Calculated equal share"}</p>
@@ -94,7 +103,7 @@ export function HomeTab({
 
       <section className="content-section" aria-labelledby="members-heading">
         <div className="section-heading">
-          <h2 id="members-heading">Member contributions</h2>
+          <h2 id="members-heading">Paid so far</h2>
           <span>{members.length} people</span>
         </div>
         {members.length ? <ul className="grouped-list member-list">
@@ -107,7 +116,7 @@ export function HomeTab({
             <ProfileAvatar name={name} src={memberAvatarUrls[memberNameKey(name)]} />
             <div className="row-main">
               <span className="row-title">{name}</span>
-              <span className="row-sub">Contributed {fmt(cents)} · equal share {fmt(perPersonCents)}</span>
+              <span className="row-sub">Paid {fmt(cents)}</span>
             </div>
             <ShareDifference perPerson={perPersonCents} contributed={cents} cycleStatus={cycleStatus} />
           </li>
@@ -121,8 +130,12 @@ export function HomeTab({
             <h2 id="home-verification-heading">Payment verification</h2>
             <span>{evidenceItemCount} evidence item{evidenceItemCount === 1 ? "" : "s"}</span>
           </div>
-          {evidence.loading ? (
-            <div className="payment-verification-card"><span className="settle-status-spinner" aria-hidden="true" /><div><strong>Checking payment evidence</strong><span>Verification details are loading.</span></div></div>
+          {awaitingCalculation ? (
+            <div className="payment-verification-card"><Clock3 aria-hidden="true" /><div><strong>Awaiting calculation</strong></div></div>
+          ) : historicalObligationsUnavailable ? (
+            <div className="payment-verification-card unknown"><CircleAlert aria-hidden="true" /><div><strong>Historical obligations unavailable</strong></div></div>
+          ) : evidence.loading ? (
+            <div className="payment-verification-card"><span className="status-spinner" aria-hidden="true" /><div><strong>Checking payment evidence</strong></div></div>
           ) : evidence.error ? (
             <div className="payment-verification-card unknown"><CircleAlert aria-hidden="true" /><div><strong>Verification unavailable</strong><span>Payment evidence could not be checked. No payments are being treated as complete.</span></div></div>
           ) : (

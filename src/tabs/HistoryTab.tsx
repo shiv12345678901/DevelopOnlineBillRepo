@@ -8,9 +8,7 @@ export function HistoryTab({ periods }: { periods: Period[] }) {
   return (
     <div className="screen screen--history">
       <header className="page-header">
-        <p className="eyebrow">Household archive</p>
         <h1 className="large-title">History</h1>
-        <p className="page-summary">Review current and previous settlement periods.</p>
       </header>
 
       <section className="content-section" aria-labelledby="periods-heading">

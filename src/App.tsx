@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { GlassButton, GlassSheet } from "@zakisheriff/liquid-glass";
 import {
   fetchSettlementForPeriod, fetchReceiptsForPeriod, fetchPeriods, supabase,
   fetchMemberAvatarUrls, memberNameKey,
@@ -12,7 +13,6 @@ import { ReceiptsTab } from "./tabs/ReceiptsTab";
 import { HistoryTab } from "./tabs/HistoryTab";
 import { SettingsTab } from "./tabs/SettingsTab";
 import { MySpendingTab } from "./tabs/MySpendingTab";
-import { SettleTab } from "./tabs/SettleTab";
 import type { Theme } from "./theme";
 import {
   ACTIVE_SYNC_STORAGE_KEY,
@@ -128,7 +128,7 @@ export default function App() {
   useEffect(() => {
     const previousTab = previousTabRef.current;
     previousTabRef.current = tab;
-    if (!session || previousTab === tab || (tab !== "receipts" && tab !== "settle")) return;
+    if (!session || previousTab === tab || tab !== "receipts") return;
 
     let cancelled = false;
     setLoading(true);
@@ -559,8 +559,7 @@ export default function App() {
         ) : (
           <>
             {tab === "home" && <HomeTab settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => setTab("history")} />}
-            {tab === "receipts" && <ReceiptsTab receipts={receipts} />}
-            {tab === "settle" && <SettleTab key={displayedPeriod?.id || "no-period"} settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} />}
+            {tab === "receipts" && <ReceiptsTab receipts={receipts} periodId={displayedPeriod?.id ?? null} settlementCalculatedAt={settlement?.calculated_at} />}
             {tab === "spending" && <MySpendingTab receipts={receipts} settlement={settlement} user={session.user} />}
             {tab === "history" && <HistoryTab periods={periods} />}
             {tab === "settings" && (
@@ -586,19 +585,17 @@ export default function App() {
       </main>
 
       <TabBar tab={tab} setTab={setTab} />
-      {pendingPeriodId && (
-        <div className="confirm-backdrop" role="presentation" onClick={() => setPendingPeriodId(null)}>
-          <section className="confirm-sheet" role="dialog" aria-modal="true" aria-labelledby="period-confirm-title" onClick={(event) => event.stopPropagation()}>
+      <GlassSheet open={Boolean(pendingPeriodId)} onClose={() => setPendingPeriodId(null)} intensity={6} aria-label="Load older settlement">
+          <section className="confirm-sheet liquid-confirm-sheet" aria-labelledby="period-confirm-title">
             <div className="confirm-icon" aria-hidden="true">↻</div>
             <h2 id="period-confirm-title">Load older settlement?</h2>
-            <p>Home, receipts, spending, and settle will switch to this period. You can return to the current settlement anytime in Settings.</p>
+            <p>Home, receipts, and spending will switch to this period. You can return to the current period in Settings.</p>
             <div className="confirm-actions">
-              <button type="button" className="confirm-cancel" onClick={() => setPendingPeriodId(null)}>Cancel</button>
-              <button type="button" className="confirm-primary" onClick={confirmPeriodChange}>Load settlement</button>
+              <GlassButton type="button" variant="clear" onClick={() => setPendingPeriodId(null)}>Cancel</GlassButton>
+              <GlassButton type="button" variant="filled" onClick={confirmPeriodChange}>Load settlement</GlassButton>
             </div>
           </section>
-        </div>
-      )}
+      </GlassSheet>
     </div>
   );
 }
