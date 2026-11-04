@@ -1,5 +1,7 @@
 export type ExpectedPayment = {
   id: string;
+  periodId: string;
+  stepId: string | null;
   from: string;
   to: string;
   cents: number;
@@ -8,50 +10,60 @@ export type ExpectedPayment = {
 };
 
 export type TransferEvidence = {
-  period_id?: string;
+  period_id: string;
   step_id: string;
   from_name: string | null;
   to_name: string | null;
   amount_cents: number;
   receipt_url?: string | null;
+  verification_status?: string | null;
+  verified_at?: string | null;
 };
 
-function samePerson(left: string | null | undefined, right: string | null | undefined) {
-  const normalize = (value: string | null | undefined) => (value ?? "").trim().toLocaleLowerCase();
-  if (!normalize(left) || !normalize(right)) return false;
-  return normalize(left) === normalize(right) || normalize(left).split(/\s+/)[0] === normalize(right).split(/\s+/)[0];
+export type EvidenceVerificationState = "pending" | "verified" | "rejected" | "unknown";
+
+export function transferEvidenceState(receipt: TransferEvidence): EvidenceVerificationState {
+  if (receipt.verification_status === "rejected") return "rejected";
+  if (receipt.verification_status === "verified") {
+    return receipt.verified_at && Number.isFinite(Date.parse(receipt.verified_at)) ? "verified" : "unknown";
+  }
+  if (receipt.verification_status === null || receipt.verification_status === undefined || receipt.verification_status === "pending") {
+    return "pending";
+  }
+  return "unknown";
 }
 
-function isGrocery(value: string | null | undefined) {
-  return (value ?? "").trim().toLocaleLowerCase() === "grocery";
+export function summarizeTransferEvidence(receipts: TransferEvidence[]) {
+  return receipts.reduce(
+    (summary, receipt) => {
+      summary.total += 1;
+      summary[transferEvidenceState(receipt)] += 1;
+      return summary;
+    },
+    { total: 0, pending: 0, verified: 0, rejected: 0, unknown: 0 },
+  );
 }
 
-export function assignBankReceipts<T extends TransferEvidence>(payments: ExpectedPayment[], receipts: T[], periodId?: string) {
+/**
+ * Attach evidence only through the database's authoritative relationship.
+ * Names, transfer dates and near-equal amounts are deliberately ignored.
+ */
+export function assignBankReceipts<T extends TransferEvidence>(payments: ExpectedPayment[], receipts: T[]) {
   const assignments = new Map<string, T>();
-  const usedStepIds = new Set<string>();
-  const candidates = receipts
-    .filter((receipt) => !periodId || receipt.period_id === periodId)
-    .filter((receipt) => Boolean(receipt.from_name?.trim() && receipt.to_name?.trim()))
-    .filter((receipt) => !samePerson(receipt.from_name, receipt.to_name))
-    .sort((left, right) => Number(Boolean(right.receipt_url)) - Number(Boolean(left.receipt_url)));
+  const usedReceiptIds = new Set<string>();
 
-  for (const recipientKind of ["exact", "grocery"] as const) {
-    for (const payment of payments) {
-      if (assignments.has(payment.id)) continue;
-      const receipt = candidates.find((candidate) => {
-        if (usedStepIds.has(candidate.step_id)) return false;
-        const senderMatches = samePerson(candidate.from_name, payment.from)
-          || (payment.stage === "reimburse" && payment.self && isGrocery(candidate.from_name));
-        if (!senderMatches) return false;
-        if (Math.abs(candidate.amount_cents - payment.cents) > 10) return false;
-        return recipientKind === "exact"
-          ? samePerson(candidate.to_name, payment.to)
-          : isGrocery(candidate.to_name);
-      });
-      if (!receipt) continue;
-      assignments.set(payment.id, receipt);
-      usedStepIds.add(receipt.step_id);
-    }
+  for (const payment of payments) {
+    if (!payment.periodId || !payment.stepId || !Number.isFinite(payment.cents)) continue;
+    const receipt = receipts.find((candidate) => {
+      const identity = `${candidate.period_id}\u0000${candidate.step_id}`;
+      return !usedReceiptIds.has(identity)
+        && candidate.period_id === payment.periodId
+        && candidate.step_id === payment.stepId
+        && candidate.amount_cents === payment.cents;
+    });
+    if (!receipt) continue;
+    assignments.set(payment.id, receipt);
+    usedReceiptIds.add(`${receipt.period_id}\u0000${receipt.step_id}`);
   }
 
   return assignments;

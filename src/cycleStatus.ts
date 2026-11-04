@@ -1,4 +1,5 @@
 import type { BankTransferReceipt, Period, WhatsAppCycleStatus } from "./api";
+import { transferEvidenceState } from "./settlementMatching.ts";
 
 export type CycleStatus = WhatsAppCycleStatus;
 
@@ -18,5 +19,5 @@ export function cycleStatusLabel(status: CycleStatus) {
 }
 
 export function transferEvidenceVerified(receipt?: BankTransferReceipt) {
-  return receipt?.verification_status === "verified";
+  return receipt ? transferEvidenceState(receipt) === "verified" : false;
 }

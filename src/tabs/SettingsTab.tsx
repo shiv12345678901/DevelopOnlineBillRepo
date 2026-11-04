@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent, type PointerEvent } from "react";
 import type { PasskeyListItem, User } from "@supabase/supabase-js";
 import { Camera, CheckCircle2, ChevronRight, CircleAlert, Clock3, Crop, Fingerprint, LogOut, RefreshCw, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { GlassSegmented, GlassSlider } from "@zakisheriff/liquid-glass";
 import { supabase } from "../api";
 import { AppIcon, type AppIconName } from "../components/AppIcon";
 import { formatRelativeTime } from "../components/format";
@@ -64,12 +65,11 @@ function cropProfileImage(file: Blob, zoom: number, offset: CropOffset) {
 }
 
 function SettingsRow({
-  icon, tone, label, description, value, valueClass = "",
+  icon, tone, label, value, valueClass = "",
 }: {
   icon: AppIconName;
   tone: string;
   label: string;
-  description?: string;
   value: string | number;
   valueClass?: string;
 }) {
@@ -80,7 +80,6 @@ function SettingsRow({
       </span>
       <span className="settings-copy">
         <span className="settings-title">{label}</span>
-        {description && <span className="settings-subtitle">{description}</span>}
       </span>
       <span className={`settings-value ${valueClass}`}>{value}</span>
     </li>
@@ -466,10 +465,7 @@ export function SettingsTab({
           <span className="settings-copy">
             <span className="settings-title">Theme</span>
           </span>
-          <div className="theme-options" role="group" aria-label="Theme">
-            <button type="button" className={theme === "light" ? "active" : ""} onClick={() => setTheme("light")}>Light</button>
-            <button type="button" className={theme === "dark" ? "active" : ""} onClick={() => setTheme("dark")}>Dark</button>
-          </div>
+          <GlassSegmented className="theme-options liquid-segmented" options={["Light", "Dark"]} value={theme === "light" ? 0 : 1} onChange={(index) => setTheme(index === 0 ? "light" : "dark")} size="sm" aria-label="Theme" />
         </div>
       </section>
 
@@ -483,9 +479,7 @@ export function SettingsTab({
           </span>
           <span className="settings-copy">
             <span className="settings-title">Passkeys</span>
-            <span className="settings-subtitle">
-              {passkeys.length ? `${passkeys.length} saved on your account` : "Use Face ID, fingerprint, or device unlock"}
-            </span>
+            {passkeys.length > 0 && <span className="settings-subtitle">{passkeys.length} saved</span>}
           </span>
           <button type="button" onClick={addPasskey} disabled={!passkeySupported || passkeyBusy}>
             {passkeyBusy ? "Adding…" : passkeys.length ? "Add another" : "Add"}
@@ -558,7 +552,6 @@ export function SettingsTab({
               <span className="settings-icon tile-red" aria-hidden="true"><LogOut /></span>
               <span className="settings-copy">
                 <span className="settings-title">Sign out</span>
-                <span className="settings-subtitle">End session on this device</span>
               </span>
               <ChevronRight aria-hidden="true" />
             </button>
@@ -599,8 +592,7 @@ export function SettingsTab({
             </button>
             <div className="profile-zoom-control">
               <ZoomOut aria-hidden="true" />
-              <input type="range" min="1" max="2.5" step="0.01" value={cropZoom} onChange={(event) => {
-                const nextZoom = Number(event.target.value);
+              <GlassSlider min={1} max={2.5} step={0.01} value={cropZoom} onChange={(nextZoom) => {
                 setCropZoom(nextZoom);
                 if (nextZoom === 1) setCropOffset({ x: 0, y: 0 });
               }} aria-label="Photo zoom" disabled={photoBusy || (!pendingPhoto && !avatarUrl)} />

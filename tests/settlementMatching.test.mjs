@@ -1,47 +1,56 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assignBankReceipts } from "../src/settlementMatching.ts";
+import { assignBankReceipts, summarizeTransferEvidence, transferEvidenceState } from "../src/settlementMatching.ts";
 
-const groceryToArjun = {
-  step_id: "xfer-2026-10-10-0943-grocery-4",
-  from_name: "Grocery",
-  to_name: "Arjun Bhurtel",
-  amount_cents: 64976,
-  receipt_url: "storage://bill-evidence/arjun.jpg",
+const payment = {
+  id: "payment-1",
+  periodId: "period_2026-09-19",
+  stepId: "xfer-boundary-date-grocery-4",
+  from: "Shiva Kafle",
+  to: "Arjun Bhurtel",
+  cents: 64976,
+  stage: "contribute",
 };
 
-test("Grocery to coordinator verifies only the coordinator self-reimbursement", () => {
-  const payments = [
-    { id: "contribute-Arjun", from: "Arjun Bhurtel", to: "Arjun Bhurtel", cents: 64976, stage: "contribute", self: true },
-    { id: "reimburse-Arjun", from: "Arjun Bhurtel", to: "Arjun Bhurtel", cents: 64976, stage: "reimburse", self: true },
-  ];
+const evidence = {
+  period_id: "period_2026-09-19",
+  step_id: "xfer-boundary-date-grocery-4",
+  from_name: "Name is not used for matching",
+  to_name: "Neither is this name",
+  amount_cents: 64976,
+  receipt_url: "storage://bill-evidence/transfer.jpg",
+  verification_status: null,
+  verified_at: null,
+};
 
-  const assignments = assignBankReceipts(payments, [groceryToArjun]);
-
-  assert.equal(assignments.has("contribute-Arjun"), false);
-  assert.equal(assignments.get("reimburse-Arjun")?.step_id, groceryToArjun.step_id);
+test("period, step ID and exact amount are all required to assign evidence", () => {
+  assert.equal(assignBankReceipts([payment], [evidence]).get(payment.id), evidence);
+  assert.equal(assignBankReceipts([payment], [{ ...evidence, period_id: "period_2026-10-10" }]).size, 0);
+  assert.equal(assignBankReceipts([payment], [{ ...evidence, step_id: "another-step" }]).size, 0);
+  assert.equal(assignBankReceipts([payment], [{ ...evidence, amount_cents: 64975 }]).size, 0);
 });
 
-test("a genuine member self-transfer does not verify a payment", () => {
-  const payment = { id: "reimburse-Arjun", from: "Arjun", to: "Arjun", cents: 64976, stage: "reimburse", self: true };
-  const selfTransfer = { ...groceryToArjun, step_id: "self", from_name: "Arjun Bhurtel" };
-
-  assert.equal(assignBankReceipts([payment], [selfTransfer]).size, 0);
+test("matching names and amount never substitute for a missing authoritative step ID", () => {
+  const withoutStep = { ...payment, stepId: null };
+  const matchingNames = { ...evidence, from_name: payment.from, to_name: payment.to };
+  assert.equal(assignBankReceipts([withoutStep], [matchingNames]).size, 0);
 });
 
-test("transfer rows with missing names are ignored safely", () => {
-  const payment = { id: "reimburse-Arjun", from: "Arjun", to: "Arjun", cents: 64976, stage: "reimburse", self: true };
-  const missingSender = { ...groceryToArjun, step_id: "missing-sender", from_name: null };
-  const missingRecipient = { ...groceryToArjun, step_id: "missing-recipient", to_name: null };
-
-  assert.doesNotThrow(() => assignBankReceipts([payment], [missingSender, missingRecipient]));
-  assert.equal(assignBankReceipts([payment], [missingSender, missingRecipient]).size, 0);
+test("nullable historical verification metadata remains pending, not verified", () => {
+  assert.equal(transferEvidenceState(evidence), "pending");
+  const historical = Array.from({ length: 8 }, (_, index) => ({ ...evidence, step_id: `historical-${index}` }));
+  assert.deepEqual(summarizeTransferEvidence(historical), {
+    total: 8,
+    pending: 8,
+    verified: 0,
+    rejected: 0,
+    unknown: 0,
+  });
 });
 
-test("transfer evidence from another period cannot be assigned", () => {
-  const payment = { id: "reimburse-Arjun", from: "Arjun", to: "Arjun", cents: 64976, stage: "reimburse", self: true };
-  const octoberEvidence = { ...groceryToArjun, period_id: "october" };
-
-  assert.equal(assignBankReceipts([payment], [octoberEvidence], "november").size, 0);
-  assert.equal(assignBankReceipts([payment], [octoberEvidence], "october").size, 1);
+test("verified evidence needs a completion timestamp and rejected remains distinct", () => {
+  assert.equal(transferEvidenceState({ ...evidence, verification_status: "verified" }), "unknown");
+  assert.equal(transferEvidenceState({ ...evidence, verification_status: "verified", verified_at: "2026-11-04T01:00:00Z" }), "verified");
+  assert.equal(transferEvidenceState({ ...evidence, verification_status: "rejected" }), "rejected");
+  assert.equal(transferEvidenceState({ ...evidence, verification_status: "unexpected" }), "unknown");
 });

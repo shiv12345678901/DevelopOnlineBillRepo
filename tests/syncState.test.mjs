@@ -30,11 +30,13 @@ test("sync creation is guarded and the Settings action is disabled offline", asy
 });
 
 test("latest completed Netlify sync drives the timestamp and automatic data refresh", async () => {
-  const [syncSource, appSource, settingsSource, settleSource] = await Promise.all([
+  const [syncSource, appSource, settingsSource, receiptsSource, homeSource, evidenceHookSource] = await Promise.all([
     readFile(new URL("../src/sync.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/tabs/SettingsTab.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/tabs/SettleTab.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/tabs/ReceiptsTab.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/tabs/HomeTab.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/useTransferEvidence.ts", import.meta.url), "utf8"),
   ]);
   assert.match(syncSource, /\.eq\("requested_by", "netlify-app"\)/);
   assert.match(syncSource, /\.eq\("status", "done"\)/);
@@ -46,5 +48,7 @@ test("latest completed Netlify sync drives the timestamp and automatic data refr
   assert.match(appSource, /await refreshDataRef\.current\(\)/);
   assert.match(settingsSource, /Last synced \$\{relativeSyncTime\}/);
   assert.doesNotMatch(settingsSource, /last_scanned_at/);
-  assert.match(settleSource, /\[periodId, settlement\?\.calculated_at, transferReloadKey\]/);
+  assert.match(receiptsSource, /useTransferEvidence\(periodId, settlementCalculatedAt\)/);
+  assert.match(homeSource, /useTransferEvidence\(currentPeriod\?\.id \|\| null, settlement\?\.calculated_at\)/);
+  assert.match(evidenceHookSource, /\[periodId, refreshKey, reloadKey\]/);
 });

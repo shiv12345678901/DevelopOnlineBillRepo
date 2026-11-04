@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { ArrowRight, Fingerprint, LockKeyhole } from "lucide-react";
+import { GlassButton, GlassInput } from "@zakisheriff/liquid-glass";
 import { supabase } from "../api";
 import { HOUSEHOLD_MEMBERS, memberEmail } from "../household";
 import { ProfileAvatar } from "./ProfileAvatar";
@@ -76,41 +77,40 @@ export function SignInScreen() {
               </div>
             </fieldset>
 
-            <label className="auth-field">
-              <span>Password</span>
-              <span className="auth-input">
-                <LockKeyhole aria-hidden="true" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  autoComplete="current-password"
-                  required
-                  autoFocus
-                />
-              </span>
-            </label>
+            <GlassInput
+              className="auth-glass-input"
+              label="Password"
+              icon={<LockKeyhole aria-hidden="true" />}
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              required
+              autoFocus
+              intensity={6}
+            />
 
             {error && <p className="auth-error" role="alert">{error}</p>}
 
-            <button className="auth-submit" type="submit" disabled={submitting || passkeySubmitting}>
-              <span>{submitting ? "Signing in…" : "Sign in"}</span>
-              {!submitting && <ArrowRight aria-hidden="true" />}
-            </button>
+            <GlassButton className="auth-submit" variant="filled" size="lg" type="submit" disabled={submitting || passkeySubmitting} icon={!submitting ? <ArrowRight aria-hidden="true" /> : undefined}>
+              {submitting ? "Signing in…" : "Sign in"}
+            </GlassButton>
           </form>
 
           {passkeySupported && (
             <>
               <div className="auth-divider"><span>or</span></div>
-              <button
+              <GlassButton
                 className="passkey-sign-in"
+                variant="glass"
+                size="lg"
+                icon={<Fingerprint aria-hidden="true" />}
                 type="button"
                 onClick={handlePasskeySignIn}
                 disabled={submitting || passkeySubmitting}
               >
-                <Fingerprint aria-hidden="true" />
                 <span>{passkeySubmitting ? "Waiting for passkey…" : "Use a passkey"}</span>
-              </button>
+              </GlassButton>
             </>
           )}
 
