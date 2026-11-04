@@ -54,3 +54,21 @@ test("verified evidence needs a completion timestamp and rejected remains distin
   assert.equal(transferEvidenceState({ ...evidence, verification_status: "rejected" }), "rejected");
   assert.equal(transferEvidenceState({ ...evidence, verification_status: "unexpected" }), "unknown");
 });
+
+test("WhatsApp review status is separate from payment verification", async () => {
+  const source = await (await import("node:fs/promises")).readFile(new URL("../src/tabs/ReceiptsTab.tsx", import.meta.url), "utf8");
+  assert.match(source, /status === "reviewed"\) return "Reviewed"/);
+  assert.match(source, /not payment verification/);
+});
+
+test("WhatsApp evidence deduplicates by stable ID and preserves missing amounts", async () => {
+  const source = await (await import("node:fs/promises")).readFile(new URL("../src/tabs/ReceiptsTab.tsx", import.meta.url), "utf8");
+  assert.match(source, /key=\{receipt\.id\}/);
+  assert.match(source, /receipt\.amount_cents === null \? "—"/);
+  assert.match(source, /receipt\.amount_cents === null \? "Amount unavailable"/);
+});
+
+test("WhatsApp evidence query is isolated to exact period ID", async () => {
+  const source = await (await import("node:fs/promises")).readFile(new URL("../src/api.ts", import.meta.url), "utf8");
+  assert.match(source, /from\("whatsapp_bank_transfer_evidence"\)[\s\S]*?\.eq\("period_id", periodId\)/);
+});
