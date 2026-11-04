@@ -73,6 +73,19 @@ export type BankTransferReceipt = {
   verified_at?: string | null;
 };
 
+export type WhatsAppBankTransferEvidence = {
+  id: string;
+  period_id: string;
+  sender_name: string | null;
+  recipient_name: string | null;
+  amount_cents: number | null;
+  transfer_date: string | null;
+  reference_number: string | null;
+  evidence_url: string | null;
+  review_status: "pending" | "reviewed" | "dismissed" | string | null;
+  captured_at: string | null;
+};
+
 export function throwIfSupabaseError(error: unknown): void {
   if (error) throw error;
 }
@@ -140,6 +153,16 @@ export async function fetchBankTransferReceipts(periodId: string): Promise<BankT
     .select("*")
     .eq("period_id", periodId)
     .order("transfer_date", { ascending: false });
+  throwIfSupabaseError(error);
+  return data || [];
+}
+
+export async function fetchWhatsAppBankTransferEvidence(periodId: string): Promise<WhatsAppBankTransferEvidence[]> {
+  const { data, error } = await supabase
+    .from("whatsapp_bank_transfer_evidence")
+    .select("id,period_id,sender_name,recipient_name,amount_cents,transfer_date,reference_number,evidence_url,review_status,captured_at")
+    .eq("period_id", periodId)
+    .order("captured_at", { ascending: false });
   throwIfSupabaseError(error);
   return data || [];
 }

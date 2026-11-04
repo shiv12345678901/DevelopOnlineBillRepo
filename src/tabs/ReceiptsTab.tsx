@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownToLine, CircleAlert, Image, SlidersHorizontal } from "lucide-react";
 import { GlassInput } from "@zakisheriff/liquid-glass";
-import { fmt, type BankTransferReceipt, type Receipt } from "../api";
+import { fmt, type BankTransferReceipt, type Receipt, type WhatsAppBankTransferEvidence } from "../api";
 import { formatDate } from "../components/format";
 import { AppIcon } from "../components/AppIcon";
 import { EvidenceDetailPage, type EvidenceDetails } from "../components/EvidenceViewer";
@@ -19,6 +19,12 @@ function evidenceStatus(receipt: BankTransferReceipt) {
   if (state === "rejected") return { state, label: "Rejected" };
   if (state === "pending") return { state, label: "Pending verification" };
   return { state, label: "Unverified" };
+}
+
+function whatsappEvidenceStatus(status: WhatsAppBankTransferEvidence["review_status"]) {
+  if (status === "reviewed") return "Reviewed";
+  if (status === "dismissed") return "Dismissed";
+  return "Pending review";
 }
 
 export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
@@ -93,6 +99,29 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
         { label: "Verification", value: status },
         { label: "Settlement", value: receipt.period_id },
         { label: "Step ID", value: receipt.step_id },
+      ],
+    });
+  }
+
+  function openWhatsAppEvidence(receipt: WhatsAppBankTransferEvidence) {
+    if (!receipt.evidence_url) return;
+    savedScrollY.current = window.scrollY;
+    const status = whatsappEvidenceStatus(receipt.review_status);
+    const amount = receipt.amount_cents === null ? "Amount unavailable" : fmt(receipt.amount_cents);
+    setSelectedEvidence({
+      locator: receipt.evidence_url,
+      kind: "Bank transfer",
+      title: `${firstName(receipt.sender_name)} → ${firstName(receipt.recipient_name)}`,
+      subtitle: status,
+      amount,
+      facts: [
+        { label: "From", value: receipt.sender_name || "Unknown" },
+        { label: "To", value: receipt.recipient_name || "Unknown" },
+        { label: "Amount", value: amount },
+        { label: "Review", value: `${status} · not payment verification` },
+        { label: "Transfer date", value: receipt.transfer_date ? formatDate(receipt.transfer_date) : "Unknown" },
+        { label: "Reference", value: receipt.reference_number || "None" },
+        { label: "Settlement", value: receipt.period_id },
       ],
     });
   }
@@ -213,6 +242,23 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
                   </span>
                 </li>
               );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {transferEvidence.whatsAppBankEvidence.length > 0 && (
+        <section className="content-section bank-receipts-section" aria-labelledby="whatsapp-evidence-heading">
+          <div className="section-heading"><h2 id="whatsapp-evidence-heading">WhatsApp transfer evidence</h2></div>
+          <ul className="grouped-list">
+            {transferEvidence.whatsAppBankEvidence.map((receipt) => {
+              const status = whatsappEvidenceStatus(receipt.review_status);
+              const amount = receipt.amount_cents === null ? "—" : fmt(receipt.amount_cents);
+              return <li className={`list-row${receipt.evidence_url ? " evidence-row" : ""}`} key={receipt.id} role={receipt.evidence_url ? "button" : undefined} tabIndex={receipt.evidence_url ? 0 : undefined} onClick={() => openWhatsAppEvidence(receipt)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openWhatsAppEvidence(receipt); } }}>
+                <span className="bank-receipt-icon unknown" aria-hidden="true"><ArrowDownToLine /></span>
+                <div className="row-main"><span className="row-title">{firstName(receipt.sender_name)} → {firstName(receipt.recipient_name)}</span><span className="row-sub">{status}{receipt.transfer_date ? ` · ${formatDate(receipt.transfer_date)}` : ""}</span></div>
+                <span className="evidence-row-tail"><strong className="row-amount">{amount}</strong>{receipt.evidence_url && <Image aria-label="View WhatsApp transfer evidence" />}</span>
+              </li>;
             })}
           </ul>
         </section>

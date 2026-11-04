@@ -2,13 +2,16 @@ import { useEffect, useState } from "react";
 import {
   fetchBankTransferReceipts,
   fetchWhatsAppTransferEvidence,
+  fetchWhatsAppBankTransferEvidence,
   type BankTransferReceipt,
   type Receipt,
+  type WhatsAppBankTransferEvidence,
 } from "../api";
 
 export function useTransferEvidence(periodId: string | null, refreshKey?: string | null) {
   const [bankReceipts, setBankReceipts] = useState<BankTransferReceipt[]>([]);
   const [whatsAppEvidence, setWhatsAppEvidence] = useState<Receipt[]>([]);
+  const [whatsAppBankEvidence, setWhatsAppBankEvidence] = useState<WhatsAppBankTransferEvidence[]>([]);
   const [loading, setLoading] = useState(Boolean(periodId));
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -16,6 +19,7 @@ export function useTransferEvidence(periodId: string | null, refreshKey?: string
   useEffect(() => {
     setBankReceipts([]);
     setWhatsAppEvidence([]);
+    setWhatsAppBankEvidence([]);
     setError("");
     if (!periodId) {
       setLoading(false);
@@ -27,15 +31,19 @@ export function useTransferEvidence(periodId: string | null, refreshKey?: string
     Promise.allSettled([
       fetchBankTransferReceipts(periodId),
       fetchWhatsAppTransferEvidence(periodId),
-    ]).then(([bankResult, whatsAppResult]) => {
+      fetchWhatsAppBankTransferEvidence(periodId),
+    ]).then(([bankResult, whatsAppResult, whatsappBankResult]) => {
       if (cancelled) return;
       if (bankResult.status === "fulfilled") setBankReceipts(bankResult.value);
       if (whatsAppResult.status === "fulfilled") setWhatsAppEvidence(whatsAppResult.value);
+      if (whatsappBankResult.status === "fulfilled") setWhatsAppBankEvidence(whatsappBankResult.value);
       const failure = bankResult.status === "rejected"
         ? bankResult.reason
         : whatsAppResult.status === "rejected"
           ? whatsAppResult.reason
-          : null;
+          : whatsappBankResult.status === "rejected"
+            ? whatsappBankResult.reason
+            : null;
       if (failure) {
         const detail = failure && typeof failure === "object" && "message" in failure
           ? String(failure.message)
@@ -52,6 +60,7 @@ export function useTransferEvidence(periodId: string | null, refreshKey?: string
   return {
     bankReceipts,
     whatsAppEvidence,
+    whatsAppBankEvidence,
     loading,
     error,
     retry: () => setReloadKey((key) => key + 1),
