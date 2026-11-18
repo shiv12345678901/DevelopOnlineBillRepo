@@ -118,15 +118,16 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
     const touch = event.touches[0];
     const boundary = pageRef.current;
     if (!boundary) return;
-    const localX = touch.clientX - boundary.getBoundingClientRect().left;
+    const bounds = boundary.getBoundingClientRect();
+    const localX = touch.clientX - bounds.left;
     if (!canGoBack
       || transitioningRef.current
       || hasNavigationOverlay()
-      || !isSwipeBackStart(localX)
+      || !isSwipeBackStart(localX, bounds.width)
       || swipeBackTargetIsBlocked(event.target, boundary)) return;
     // Claim the gesture before Safari can begin its browser-history snapshot.
     event.preventDefault();
-    gestureRef.current = { touchId: touch.identifier, startX: touch.clientX, startY: touch.clientY, lastX: touch.clientX, lastAt: performance.now(), velocity: 0, width: boundary.getBoundingClientRect().width, dragging: false, rejected: false };
+    gestureRef.current = { touchId: touch.identifier, startX: touch.clientX, startY: touch.clientY, lastX: touch.clientX, lastAt: performance.now(), velocity: 0, width: bounds.width, dragging: false, rejected: false };
     setState((current) => ({ ...current, isTracking: true, canGoBack }));
   }
 

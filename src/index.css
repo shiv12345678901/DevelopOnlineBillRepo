@@ -152,10 +152,12 @@ p, dd, .row-title, .row-sub, .row-amount { user-select: text; }
 
 main {
   --page-inline-padding: 20px;
+  --page-top-padding: calc(env(safe-area-inset-top, 0px) + 32px);
+  --page-bottom-padding: 116px;
   position: relative;
   z-index: 1;
   flex: 1;
-  padding: calc(env(safe-area-inset-top, 0px) + 32px) var(--page-inline-padding) 116px;
+  padding: var(--page-top-padding) var(--page-inline-padding) var(--page-bottom-padding);
 }
 
 .auth-screen {
@@ -1474,11 +1476,11 @@ main {
 }
 
 .tab-enter { animation: contentIn 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
-.swipe-back-stage { position: relative; width: calc(100% + var(--page-inline-padding) + var(--page-inline-padding)); min-height: calc(100dvh - env(safe-area-inset-top, 0px) - 148px); margin-inline: calc(0px - var(--page-inline-padding)); isolation: isolate; overflow-x: clip; overflow-y: visible; }
-.swipe-back-base { min-height: inherit; padding-inline: var(--page-inline-padding); }
-.swipe-back-underlay { position: absolute; inset: 0; z-index: 0; min-height: inherit; overflow: hidden; padding-inline: var(--page-inline-padding); pointer-events: none; transform: translate3d(-30%, 0, 0); will-change: transform; }
+.swipe-back-stage { position: relative; width: calc(100% + var(--page-inline-padding) + var(--page-inline-padding)); min-height: 100dvh; margin-top: calc(0px - var(--page-top-padding)); margin-right: calc(0px - var(--page-inline-padding)); margin-bottom: calc(0px - var(--page-bottom-padding)); margin-left: calc(0px - var(--page-inline-padding)); isolation: isolate; overflow-x: clip; overflow-y: visible; }
+.swipe-back-base { min-height: inherit; padding: var(--page-top-padding) var(--page-inline-padding) var(--page-bottom-padding); }
+.swipe-back-underlay { position: absolute; inset: 0; z-index: 0; min-height: inherit; overflow: hidden; padding: var(--page-top-padding) var(--page-inline-padding) var(--page-bottom-padding); pointer-events: none; transform: translate3d(-30%, 0, 0); will-change: transform; }
 .swipe-back-dim { position: absolute; inset: 0; z-index: 10; background: #000; opacity: .12; pointer-events: none; }
-.swipe-back-page { position: relative; z-index: 2; min-height: inherit; padding-inline: var(--page-inline-padding); background-color: var(--background); background-image: var(--background-wash); touch-action: pan-y pinch-zoom; will-change: transform; }
+.swipe-back-page { position: relative; z-index: 2; min-height: inherit; padding: var(--page-top-padding) var(--page-inline-padding) var(--page-bottom-padding); background-color: var(--background); background-image: var(--background-wash); touch-action: pan-y pinch-zoom; will-change: transform; }
 .swipe-back-stage.is-tracking .swipe-back-page { box-shadow: -10px 0 28px rgba(0, 0, 0, .24); }
 .native-history-guard { position: fixed; z-index: 80; top: 0; bottom: 0; width: 20px; touch-action: none; }
 .native-history-guard--leading { left: 0; }

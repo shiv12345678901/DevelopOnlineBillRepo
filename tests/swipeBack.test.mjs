@@ -6,7 +6,8 @@ import {
   isSwipeBackStart,
   NATIVE_HISTORY_GUARD_PX,
   shouldCompleteSwipe,
-  SWIPE_BACK_EDGE_PX,
+  SWIPE_BACK_MAX_START_PX,
+  SWIPE_BACK_START_RATIO,
   SWIPE_BACK_TRANSITION_MS,
   swipeBackIntent,
 } from "../src/swipeBack.ts";
@@ -19,15 +20,19 @@ const cssSource = await readFile(new URL("../src/index.css", import.meta.url), "
 
 test("edge swipe uses the required activation area and mobile transition", () => {
   assert.equal(NATIVE_HISTORY_GUARD_PX, 20);
-  assert.equal(SWIPE_BACK_EDGE_PX, 72);
+  assert.equal(SWIPE_BACK_START_RATIO, .4);
+  assert.equal(SWIPE_BACK_MAX_START_PX, 160);
   assert.ok(SWIPE_BACK_TRANSITION_MS >= 220 && SWIPE_BACK_TRANSITION_MS <= 280);
-  assert.equal(isSwipeBackStart(-1), false);
-  assert.equal(isSwipeBackStart(0), true);
-  assert.equal(isSwipeBackStart(20), true);
-  assert.equal(isSwipeBackStart(72), true);
-  assert.equal(isSwipeBackStart(73), false);
-  assert.match(componentSource, /getBoundingClientRect\(\)\.left/);
-  assert.match(componentSource, /!isSwipeBackStart\(localX\)/);
+  assert.equal(isSwipeBackStart(-1, 390), false);
+  assert.equal(isSwipeBackStart(0, 390), true);
+  assert.equal(isSwipeBackStart(120, 390), true);
+  assert.equal(isSwipeBackStart(156, 390), true);
+  assert.equal(isSwipeBackStart(157, 390), false);
+  assert.equal(isSwipeBackStart(160, 520), true);
+  assert.equal(isSwipeBackStart(161, 520), false);
+  assert.match(componentSource, /const bounds = boundary\.getBoundingClientRect\(\)/);
+  assert.match(componentSource, /touch\.clientX - bounds\.left/);
+  assert.match(componentSource, /!isSwipeBackStart\(localX, bounds\.width\)/);
   assert.match(componentSource, /addEventListener\("touchstart", onTouchStart, \{ passive: false \}\)/);
   assert.match(componentSource, /Claim the gesture before Safari/);
 });
@@ -115,8 +120,11 @@ test("root tabs use one launch entry and cannot build a swipe-back stack", () =>
 
 test("pushed pages cover the complete app width without exposing the underlay gutter", () => {
   assert.match(cssSource, /--page-inline-padding: 20px/);
+  assert.match(cssSource, /--page-top-padding: calc\(env\(safe-area-inset-top, 0px\) \+ 32px\)/);
   assert.match(cssSource, /\.swipe-back-stage \{[^}]*width: calc\(100% \+ var\(--page-inline-padding\) \+ var\(--page-inline-padding\)\)/);
-  assert.match(cssSource, /\.swipe-back-page \{[^}]*padding-inline: var\(--page-inline-padding\)/);
+  assert.match(cssSource, /\.swipe-back-stage \{[^}]*min-height: 100dvh/);
+  assert.match(cssSource, /\.swipe-back-stage \{[^}]*margin-top: calc\(0px - var\(--page-top-padding\)\)/);
+  assert.match(cssSource, /\.swipe-back-page \{[^}]*padding: var\(--page-top-padding\) var\(--page-inline-padding\) var\(--page-bottom-padding\)/);
   assert.match(cssSource, /\.swipe-back-stage \{[^}]*overflow-x: clip/);
   assert.match(cssSource, /\.swipe-back-stage \{[^}]*overflow-y: visible/);
   assert.match(cssSource, /\.swipe-back-page \{[^}]*background-image: var\(--background-wash\)/);
