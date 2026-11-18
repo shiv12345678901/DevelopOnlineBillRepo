@@ -28,7 +28,8 @@ test("edge swipe uses the required activation area and mobile transition", () =>
   assert.equal(isSwipeBackStart(73), false);
   assert.match(componentSource, /getBoundingClientRect\(\)\.left/);
   assert.match(componentSource, /!isSwipeBackStart\(localX\)/);
-  assert.match(componentSource, /navigator\.maxTouchPoints/);
+  assert.match(componentSource, /addEventListener\("touchstart", onTouchStart, \{ passive: false \}\)/);
+  assert.match(componentSource, /Claim the gesture before Safari/);
 });
 
 test("physical browser edges are reserved so Safari cannot navigate root tabs", () => {
@@ -70,10 +71,12 @@ test("topmost overlay closes before page navigation", () => {
 
 test("gesture conflicts, cancellation, reduced motion and cleanup are handled centrally", () => {
   assert.match(componentSource, /\[data-disable-swipe-back\]/);
+  assert.match(componentSource, /"button"/);
+  assert.match(componentSource, /"\[role='button'\]"/);
   assert.match(componentSource, /overflowX === "auto"/);
-  assert.match(componentSource, /onPointerCancel/);
+  assert.match(componentSource, /addEventListener\("touchcancel"/);
   assert.match(componentSource, /prefers-reduced-motion: reduce/);
-  assert.match(componentSource, /releasePointerCapture/);
+  assert.match(componentSource, /removeEventListener\("touchstart"/);
   assert.match(componentSource, /removeEventListener\("resize"/);
   assert.match(componentSource, /transitioningRef\.current/);
 });
@@ -86,6 +89,8 @@ test("browser, header and detail swipe Back share real page history", () => {
   assert.match(navigationSource, /window\.scrollTo/);
   assert.match(appSource, /onBack=\{goBack\}/);
   assert.match(appSource, /onBack=\{\(\) => \{ void goBack\(\); \}\}/);
+  assert.match(navigationSource, /ignoreNextPopRef\.current = true;\n\s*showPreviousPage\(pagesRef\.current\);\n\s*window\.history\.back\(\)/);
+  assert.match(navigationSource, /if \(ignoreNextPopRef\.current\)[\s\S]*ignoreNextPopRef\.current = false/);
 });
 
 test("bottom tabs replace their marker while pushed pages add one history entry", () => {
@@ -98,10 +103,8 @@ test("bottom tabs replace their marker while pushed pages add one history entry"
 });
 
 test("root tabs use one launch entry and cannot build a swipe-back stack", () => {
-  const pagePopBranch = navigationSource.slice(
-    navigationSource.indexOf("const nextPages = currentPages.slice(0, -1)"),
-    navigationSource.indexOf("const entry = window.history.state"),
-  );
+  const helperStart = navigationSource.indexOf("const showPreviousPage");
+  const pagePopBranch = navigationSource.slice(helperStart, navigationSource.indexOf("}, [marker]);", helperStart));
   assert.match(navigationSource, /window\.history\.replaceState\(marker\(0, initialTab\)/);
   assert.doesNotMatch(navigationSource, /marker\(-1/);
   assert.doesNotMatch(navigationSource, /guard\??:/);
@@ -117,5 +120,7 @@ test("pushed pages cover the complete app width without exposing the underlay gu
   assert.match(cssSource, /\.swipe-back-stage \{[^}]*overflow-x: clip/);
   assert.match(cssSource, /\.swipe-back-stage \{[^}]*overflow-y: visible/);
   assert.match(cssSource, /\.swipe-back-page \{[^}]*background-image: var\(--background-wash\)/);
+  assert.match(cssSource, /\.swipe-back-underlay \{[^}]*translate3d\(-30%, 0, 0\)/);
+  assert.match(cssSource, /\.swipe-back-stage\.is-tracking \.swipe-back-page \{[^}]*box-shadow: -10px 0 28px/);
   assert.doesNotMatch(cssSource, /\.screen--evidence-detail \{[^}]*margin-top:\s*-/);
 });

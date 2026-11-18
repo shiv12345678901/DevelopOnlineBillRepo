@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { hasNavigationOverlay } from "../navigationOverlays";
 import { clampSwipeDistance, isSwipeBackStart, shouldCompleteSwipe, SWIPE_BACK_TRANSITION_MS, swipeBackIntent } from "../swipeBack";
 
@@ -10,13 +10,16 @@ export type SwipeBackState = {
   canGoBack: boolean;
 };
 
-type Gesture = { pointerId: number; startX: number; startY: number; lastX: number; lastAt: number; velocity: number; width: number; dragging: boolean; rejected: boolean };
+type Gesture = { touchId: number; startX: number; startY: number; lastX: number; lastAt: number; velocity: number; width: number; dragging: boolean; rejected: boolean };
 
 const BLOCKED_SELECTOR = [
   "[data-disable-swipe-back]",
   "[role='dialog']",
   "[role='slider']",
   "input",
+  "button",
+  "a",
+  "[role='button']",
   "textarea",
   "select",
   "canvas",
@@ -55,12 +58,13 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
 
   function applyPosition(x: number, width: number, dragging: boolean) {
     const progress = Math.max(0, Math.min(1, x / Math.max(1, width)));
+    const parallax = width * .3;
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     frameRef.current = requestAnimationFrame(() => {
       const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (pageRef.current && !reduced) pageRef.current.style.transform = `translate3d(${x}px,0,0)`;
-      if (underlayRef.current && !reduced) underlayRef.current.style.transform = `translate3d(${(-18 + progress * 18).toFixed(2)}px,0,0)`;
-      if (dimRef.current) dimRef.current.style.opacity = String(.16 * (1 - progress));
+      if (underlayRef.current && !reduced) underlayRef.current.style.transform = `translate3d(${(-parallax * (1 - progress)).toFixed(2)}px,0,0)`;
+      if (dimRef.current) dimRef.current.style.opacity = String(.12 * (1 - progress));
       setState({ isTracking: true, isDragging: dragging, progress, translateX: x, canGoBack });
     });
   }
@@ -76,12 +80,12 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
     if (updateState) setState({ isTracking: false, isDragging: false, progress: 0, translateX: 0, canGoBack });
   }
 
-  function animateBack() {
+  function animateBack(width: number) {
     const page = pageRef.current;
     const underlay = underlayRef.current;
-    if (page) page.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.22,1,.36,1)`;
-    if (underlay) underlay.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.22,1,.36,1)`;
-    applyPosition(0, gestureRef.current?.width || window.innerWidth, false);
+    if (page) page.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.32,.72,0,1)`;
+    if (underlay) underlay.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.32,.72,0,1)`;
+    applyPosition(0, width, false);
     timerRef.current = window.setTimeout(resetStyles, SWIPE_BACK_TRANSITION_MS + 10);
   }
 
@@ -95,8 +99,8 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
       resetStyles();
       return;
     }
-    if (pageRef.current) pageRef.current.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.2,.8,.2,1)`;
-    if (underlayRef.current) underlayRef.current.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.2,.8,.2,1)`;
+    if (pageRef.current) pageRef.current.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.32,.72,0,1)`;
+    if (underlayRef.current) underlayRef.current.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.32,.72,0,1)`;
     applyPosition(width, width, false);
     timerRef.current = window.setTimeout(() => {
       const navigated = onBack();
@@ -105,29 +109,34 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
         resetStyles();
         return;
       }
-      // Keep the outgoing page offscreen until the browser popstate removes it.
-      timerRef.current = window.setTimeout(resetStyles, 500);
+      resetStyles(false);
     }, SWIPE_BACK_TRANSITION_MS);
   }
 
-  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    const localX = event.clientX - event.currentTarget.getBoundingClientRect().left;
+  function onTouchStart(event: TouchEvent) {
+    if (event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const boundary = pageRef.current;
+    if (!boundary) return;
+    const localX = touch.clientX - boundary.getBoundingClientRect().left;
     if (!canGoBack
       || transitioningRef.current
       || hasNavigationOverlay()
       || !isSwipeBackStart(localX)
-      || (event.pointerType === "mouse" && navigator.maxTouchPoints === 0)
-      || swipeBackTargetIsBlocked(event.target, event.currentTarget)) return;
-    gestureRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastAt: performance.now(), velocity: 0, width: window.innerWidth, dragging: false, rejected: false };
-    event.currentTarget.setPointerCapture(event.pointerId);
+      || swipeBackTargetIsBlocked(event.target, boundary)) return;
+    // Claim the gesture before Safari can begin its browser-history snapshot.
+    event.preventDefault();
+    gestureRef.current = { touchId: touch.identifier, startX: touch.clientX, startY: touch.clientY, lastX: touch.clientX, lastAt: performance.now(), velocity: 0, width: boundary.getBoundingClientRect().width, dragging: false, rejected: false };
     setState((current) => ({ ...current, isTracking: true, canGoBack }));
   }
 
-  function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+  function onTouchMove(event: TouchEvent) {
     const gesture = gestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId || gesture.rejected) return;
-    const dx = event.clientX - gesture.startX;
-    const dy = event.clientY - gesture.startY;
+    if (!gesture || gesture.rejected) return;
+    const touch = Array.from(event.touches).find((candidate) => candidate.identifier === gesture.touchId);
+    if (!touch) return;
+    const dx = touch.clientX - gesture.startX;
+    const dy = touch.clientY - gesture.startY;
     if (!gesture.dragging) {
       const intent = swipeBackIntent(dx, dy);
       if (intent === "pending") return;
@@ -139,38 +148,48 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
     }
     event.preventDefault();
     const now = performance.now();
-    gesture.velocity = Math.max(0, event.clientX - gesture.lastX) / Math.max(1, now - gesture.lastAt);
-    gesture.lastX = event.clientX;
+    gesture.velocity = Math.max(0, touch.clientX - gesture.lastX) / Math.max(1, now - gesture.lastAt);
+    gesture.lastX = touch.clientX;
     gesture.lastAt = now;
     applyPosition(clampSwipeDistance(dx, gesture.width), gesture.width, true);
   }
 
-  function finish(event: ReactPointerEvent<HTMLDivElement>, cancelled = false) {
+  function finish(cancelled = false) {
     const gesture = gestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (!gesture) return;
     gestureRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     if (cancelled || gesture.rejected || !gesture.dragging) {
-      animateBack();
+      animateBack(gesture.width);
       return;
     }
     const distance = clampSwipeDistance(gesture.lastX - gesture.startX, gesture.width);
     if (shouldCompleteSwipe(distance, gesture.width, gesture.velocity)) completeBack(gesture.width);
-    else animateBack();
+    else animateBack(gesture.width);
   }
 
   useEffect(() => {
     setState((current) => ({ ...current, canGoBack }));
     const cancel = () => {
-      const gesture = gestureRef.current;
-      if (gesture && pageRef.current?.hasPointerCapture(gesture.pointerId)) pageRef.current.releasePointerCapture(gesture.pointerId);
       gestureRef.current = null;
       transitioningRef.current = false;
       resetStyles(false);
     };
+    const page = pageRef.current;
+    const touchEnd = () => finish();
+    const touchCancel = () => finish(true);
+    if (canGoBack && page) {
+      page.addEventListener("touchstart", onTouchStart, { passive: false });
+      page.addEventListener("touchmove", onTouchMove, { passive: false });
+      page.addEventListener("touchend", touchEnd, { passive: true });
+      page.addEventListener("touchcancel", touchCancel, { passive: true });
+    }
     window.addEventListener("resize", cancel);
     return () => {
       window.removeEventListener("resize", cancel);
+      page?.removeEventListener("touchstart", onTouchStart);
+      page?.removeEventListener("touchmove", onTouchMove);
+      page?.removeEventListener("touchend", touchEnd);
+      page?.removeEventListener("touchcancel", touchCancel);
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       resetStyles();
@@ -179,13 +198,6 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
 
   return {
     state,
-    bind: {
-      onPointerDown,
-      onPointerMove,
-      onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => finish(event),
-      onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => finish(event, true),
-      onLostPointerCapture: (event: ReactPointerEvent<HTMLDivElement>) => finish(event, true),
-    },
   };
 }
 
@@ -195,7 +207,7 @@ export function SwipeBackContainer({ canGoBack, onBack, page, children }: { canG
   const dimRef = useRef<HTMLSpanElement>(null);
   const leadingGuardRef = useRef<HTMLSpanElement>(null);
   const trailingGuardRef = useRef<HTMLSpanElement>(null);
-  const { bind, state } = useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef });
+  const { state } = useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef });
   useEffect(() => {
     if (canGoBack) return;
     const preventNativeHistory = (event: TouchEvent) => event.preventDefault();
@@ -203,7 +215,7 @@ export function SwipeBackContainer({ canGoBack, onBack, page, children }: { canG
     guards.forEach((guard) => guard?.addEventListener("touchstart", preventNativeHistory, { passive: false }));
     return () => guards.forEach((guard) => guard?.removeEventListener("touchstart", preventNativeHistory));
   }, [canGoBack]);
-  return <div className={`swipe-back-stage${state.isDragging ? " is-dragging" : ""}`}>
+  return <div className={`swipe-back-stage${state.isTracking ? " is-tracking" : ""}${state.isDragging ? " is-dragging" : ""}`}>
     {!canGoBack && <>
       <span ref={leadingGuardRef} className="native-history-guard native-history-guard--leading" aria-hidden="true" />
       <span ref={trailingGuardRef} className="native-history-guard native-history-guard--trailing" aria-hidden="true" />
@@ -212,6 +224,6 @@ export function SwipeBackContainer({ canGoBack, onBack, page, children }: { canG
       {children}
       {canGoBack && <span ref={dimRef} className="swipe-back-dim" />}
     </div>
-    {canGoBack && <div ref={pageRef} className="swipe-back-page" {...bind}>{page}</div>}
+    {canGoBack && <div ref={pageRef} className="swipe-back-page">{page}</div>}
   </div>;
 }

@@ -30,6 +30,7 @@ export function useNavigationHistory(initialTab: TabId = "home") {
   const tabScrollRef = useRef(new Map<TabId, number>());
   const backPendingRef = useRef(false);
   const pendingTabRef = useRef<TabId | null>(null);
+  const ignoreNextPopRef = useRef(false);
   tabRef.current = tab;
   pagesRef.current = pages;
 
@@ -40,6 +41,25 @@ export function useNavigationHistory(initialTab: TabId = "home") {
     tab: nextTab,
     version: 2,
   }), []);
+
+  const showPreviousPage = useCallback((currentPages: NavigationPage[]) => {
+    const leaving = currentPages[currentPages.length - 1];
+    const nextPages = currentPages.slice(0, -1);
+    pagesRef.current = nextPages;
+    setPages(nextPages);
+    const pendingTab = pendingTabRef.current;
+    if (!nextPages.length && pendingTab) {
+      pendingTabRef.current = null;
+      tabRef.current = pendingTab;
+      setTabState(pendingTab);
+      window.history.replaceState(marker(0, pendingTab), "", window.location.href);
+      window.requestAnimationFrame(() => window.scrollTo({ top: tabScrollRef.current.get(pendingTab) || 0, behavior: "instant" }));
+      focusActiveHeading();
+      return;
+    }
+    window.requestAnimationFrame(() => window.scrollTo({ top: leaving.scrollY, behavior: "instant" }));
+    focusActiveHeading();
+  }, [marker]);
 
   useEffect(() => {
     const existing = window.history.state as Partial<AppHistoryState> | null;
@@ -55,28 +75,17 @@ export function useNavigationHistory(initialTab: TabId = "home") {
 
     const onPopState = () => {
       backPendingRef.current = false;
+      if (ignoreNextPopRef.current) {
+        ignoreNextPopRef.current = false;
+        return;
+      }
       const currentPages = pagesRef.current;
       if (closeTopNavigationOverlay()) {
         window.history.pushState(marker(currentPages.length), "", window.location.href);
         return;
       }
       if (currentPages.length) {
-        const leaving = currentPages[currentPages.length - 1];
-        const nextPages = currentPages.slice(0, -1);
-        pagesRef.current = nextPages;
-        setPages(nextPages);
-        const pendingTab = pendingTabRef.current;
-        if (!nextPages.length && pendingTab) {
-          pendingTabRef.current = null;
-          tabRef.current = pendingTab;
-          setTabState(pendingTab);
-          window.history.replaceState(marker(0, pendingTab), "", window.location.href);
-          window.requestAnimationFrame(() => window.scrollTo({ top: tabScrollRef.current.get(pendingTab) || 0, behavior: "instant" }));
-          focusActiveHeading();
-          return;
-        }
-        window.requestAnimationFrame(() => window.scrollTo({ top: leaving.scrollY, behavior: "instant" }));
-        focusActiveHeading();
+        showPreviousPage(currentPages);
         return;
       }
 
@@ -97,7 +106,7 @@ export function useNavigationHistory(initialTab: TabId = "home") {
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [initialTab, marker]);
+  }, [initialTab, marker, showPreviousPage]);
 
   const pushPage = useCallback((page: NavigationDestination) => {
     const nextPage = { ...page, scrollY: window.scrollY } as NavigationPage;
@@ -114,10 +123,12 @@ export function useNavigationHistory(initialTab: TabId = "home") {
     if (closeTopNavigationOverlay()) return true;
     if (!pagesRef.current.length) return false;
     backPendingRef.current = true;
+    ignoreNextPopRef.current = true;
+    showPreviousPage(pagesRef.current);
     window.history.back();
     window.setTimeout(() => { backPendingRef.current = false; }, 500);
     return true;
-  }, []);
+  }, [showPreviousPage]);
 
   const selectTab = useCallback((nextTab: TabId) => {
     if (closeTopNavigationOverlay()) return;
