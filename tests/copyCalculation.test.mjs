@@ -78,7 +78,7 @@ test("disabled member is completely excluded and has zero backend balance", () =
   const result = generateCopyCalculation(receipts, membership(modes), preview(paid, modes));
   assert.doesNotMatch(result.text, /Arpan ==/);
   assert.match(result.text, /\$200\.00 each \(3 participating members\)/);
-  assert.match(result.text, /Arpan: Disabled — excluded from settlement\./);
+  assert.doesNotMatch(result.text, /Arpan/);
   const invalidPreview = preview(paid, modes);
   invalidPreview.members[1] = { ...invalidPreview.members[1], net_cents: 10000 };
   assert.throws(() => generateCopyCalculation(receipts, membership(modes), invalidPreview), (error) => error instanceof CopyCalculationError && error.code === "MEMBER_MISMATCH");
@@ -123,7 +123,7 @@ test("historical membership is used as supplied and remains calculation-only", (
   const paid = { "Arjun Bhurtel": 3000 };
   const financial = preview(paid, { "Swasti Adhikari": "disabled" });
   financial.members = financial.members.map((member) => member.participation_mode === "enabled" ? { ...member, share_cents: 1000, net_cents: member.paid_cents - 1000 } : member);
-  assert.match(generateCopyCalculation([receipt("a", "Arjun Bhurtel", 3000)], historical, financial).text, /Swasti: Disabled/);
+  assert.doesNotMatch(generateCopyCalculation([receipt("a", "Arjun Bhurtel", 3000)], historical, financial).text, /Swasti/);
 });
 
 test("detects stale revisions, missing receipts and authoritative mismatches", () => {

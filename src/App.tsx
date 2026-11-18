@@ -561,7 +561,6 @@ export default function App() {
               <SettingsTab
                 theme={theme}
                 setTheme={setTheme}
-                memberCount={Object.keys(settlement?.member_totals || {}).length}
                 periods={periods}
                 selectedPeriodId={selectedPeriodId || periods.find((period) => period.status === "CURRENT")?.id || ""}
                 onPeriodChange={handlePeriodChange}

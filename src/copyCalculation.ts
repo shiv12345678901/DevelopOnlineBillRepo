@@ -78,7 +78,6 @@ export function generateCopyCalculation(receipts: Receipt[], membership: Settlem
   });
   sections.push(`Total ==\n${includedNames.map((name) => formatFixedCents(totals[name])).join("+")}=${formatFixedCents(grandTotal)}`);
   sections.push(`$${formatFixedCents(preview.equal_share_cents)} each${enabledCount === 4 ? "" : ` (${enabledCount} participating members)`}`);
-  for (const name of CALCULATION_MEMBER_ORDER) if (membershipByName.get(name)!.participation_mode === "disabled") sections.push(`${SHORT_NAMES[name]}: Disabled — excluded from settlement.`);
 
   return { text: sections.join("\n\n"), receiptCount: uniqueReceipts.size, enabledCount, memberReceiptTotals: totals };
 }

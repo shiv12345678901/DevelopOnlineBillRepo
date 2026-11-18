@@ -65,13 +65,14 @@ test("production membership RPCs remain gated until backend deployment", async (
   assert.match(receipts, /if \(!MEMBERSHIP_FEATURE_ENABLED/);
 });
 
-test("admin and read-only membership views use backend can_edit", async () => {
+test("admin membership controls use a binary enabled switch", async () => {
   const source = await readFile(new URL("../src/components/SettlementMembersSettings.tsx", import.meta.url), "utf8");
   assert.match(source, /permissions\?\.can_edit && membership\?\.status === "CURRENT"/);
-  assert.match(source, /editable && <div className="membership-mode-control" role="radiogroup"/);
-  assert.match(source, /role="radio" aria-checked=/);
+  assert.match(source, /role="switch"/);
+  assert.match(source, /aria-checked=\{enabled\}/);
+  assert.match(source, /nextMode: enabled \? "disabled" : "enabled"/);
+  assert.doesNotMatch(source, /MODE_OPTIONS|membership-mode-control/);
   assert.match(source, /Historical membership is read-only/);
-  assert.match(source, /MODES: ParticipationMode\[\] = \["enabled", "keep_receipts", "disabled"\]/);
 });
 
 test("admin-only settings stay hidden without authoritative admin permissions", async () => {
@@ -87,14 +88,12 @@ test("admin-only settings stay hidden without authoritative admin permissions", 
   assert.doesNotMatch(settings, /<h3>Settlement Members<\/h3>/);
 });
 
-test("financial preview renders authoritative returned values without client recomputation", async () => {
+test("membership consistency still uses the authoritative financial preview", async () => {
   const source = await readFile(new URL("../src/components/SettlementMembersSettings.tsx", import.meta.url), "utf8");
-  assert.match(source, /fmt\(preview\.total_cents\)/);
-  assert.match(source, /fmt\(preview\.equal_share_cents\)/);
-  assert.match(source, /fmt\(financial\.paid_cents\)/);
-  assert.match(source, /fmt\(financial\.share_cents\)/);
-  assert.match(source, /financial\.net_cents/);
-  assert.match(source, /Not participating this cycle/);
+  assert.match(source, /fetchSettlementCyclePreview\(period\.id\)/);
+  assert.match(source, /nextMembership\.revision !== nextPreview\.revision/);
+  assert.match(source, /permissionsMatch\(nextPermissions, nextMembership\.permissions, nextPreview\.permissions\)/);
+  assert.doesNotMatch(source, /fmt\(preview\.|fmt\(financial\./);
 });
 
 test("ordinary pages rely on restrictive receipt RLS and exclude disabled members from Home", async () => {
@@ -130,6 +129,8 @@ test("membership UI retains mobile and theme-compatible design tokens", async ()
   const css = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
   assert.match(css, /\.membership-mode-badge\.mode-keep_receipts/);
   assert.match(css, /\.membership-mode-badge\.mode-disabled/);
+  assert.match(css, /\.membership-toggle\.enabled/);
+  assert.match(css, /\.membership-toggle\.legacy/);
   assert.match(css, /var\(--surface\)/);
   assert.match(css, /@media \(max-width: 390px\)/);
 });

@@ -175,7 +175,7 @@ export function CopyCalculationSettings({ period }: { period: Period | undefined
 
             <section className="copy-calculation-section" aria-labelledby="copy-members-heading">
               <h3 id="copy-members-heading">Settlement members</h3>
-              <ul className="copy-calculation-members">{membership.members.map((member) => (
+              <ul className="copy-calculation-members">{membership.members.filter((member) => member.participation_mode !== "disabled").map((member) => (
                 <li className={`mode-${member.participation_mode}`} key={member.member_name}>
                   <span>{member.member_name.split(" ")[0]}</span><strong>{modeLabel(member.participation_mode)}</strong>
                 </li>

@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CircleAlert, LockKeyhole, UsersRound } from "lucide-react";
 import {
   fetchSettlementCycleMembership,
   fetchSettlementCycleMembershipPermissions,
   fetchSettlementCyclePreview,
-  fmt,
   memberNameKey,
   setSettlementCycleMemberMode,
   type MembershipPermissions,
@@ -16,9 +15,6 @@ import {
 import { MEMBERSHIP_FEATURE_ENABLED, classifyMembershipError, membershipErrorMessage, modeDescription, modeLabel, permissionsMatch } from "../membership";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { IosSheet } from "./IosSheet";
-
-const MODES: ParticipationMode[] = ["enabled", "keep_receipts", "disabled"];
-const MODE_OPTIONS = ["Enabled", "Keep Receipts", "Disabled"];
 
 type PendingChange = { memberName: string; previousMode: ParticipationMode; nextMode: ParticipationMode };
 
@@ -84,8 +80,6 @@ export function SettlementMembersSettings({ period, memberAvatarUrls, onMembersh
 
   useEffect(() => { void load(); }, [load]);
 
-  const previewByMember = useMemo(() => new Map(preview?.members.map((member) => [member.member_name, member])), [preview]);
-  const enabledCount = membership?.members.filter((member) => member.participation_mode === "enabled").length || 0;
   const editable = Boolean(permissions?.can_edit && membership?.status === "CURRENT");
 
   async function confirmChange() {
@@ -113,29 +107,27 @@ export function SettlementMembersSettings({ period, memberAvatarUrls, onMembersh
 
   return <>
     <div className="settlement-members-block">
-    <div className="section-heading compact"><h3>Settlement Members</h3></div>
-    <div className="membership-summary" aria-label="Settlement membership summary">
-      <div><span>Participants</span><strong>{enabledCount}</strong></div>
-      <div><span>Eligible expenses</span><strong>{fmt(preview.total_cents)}</strong></div>
-      <div><span>Equal share</span><strong>{fmt(preview.equal_share_cents)}</strong></div>
-      <div><span>Revision</span><strong>{membership.revision}</strong></div>
-    </div>
+    <div className="section-heading compact"><h3>Settlement Members</h3><span>{membership.members.length} members</span></div>
     {!editable && <div className="membership-permission-note"><LockKeyhole aria-hidden="true" /><span>{membership.status === "CURRENT" ? "Membership is read-only for this account." : "Historical membership is read-only."}</span></div>}
     {message && <div className="membership-message" role="status"><CircleAlert aria-hidden="true" /><span>{message}</span><button type="button" disabled={loading || saving} onClick={() => void load(true)}>Reload</button></div>}
     <ul className="membership-list">
       {membership.members.map((member) => {
-        const financial = previewByMember.get(member.member_name);
-        const modeIndex = MODES.indexOf(member.participation_mode);
+        const enabled = member.participation_mode === "enabled";
+        const legacyMode = member.participation_mode === "keep_receipts";
         return <li className={`membership-member mode-${member.participation_mode}`} key={member.member_name}>
           <div className="membership-member-heading">
             <ProfileAvatar name={member.member_name} src={memberAvatarUrls[memberNameKey(member.member_name)]} />
-            <div><strong>{member.member_name}</strong><span>{member.participation_mode === "disabled" ? "Not participating this cycle" : member.participation_mode === "keep_receipts" ? "Receipts count · No equal share" : "Included in equal sharing"}</span></div>
-            <span className={`membership-mode-badge mode-${member.participation_mode}`}>{modeLabel(member.participation_mode)}</span>
+            <div><strong>{member.member_name}</strong><span>{legacyMode ? "Legacy Keep Receipts · choose Enabled or Disabled" : enabled ? "Enabled" : "Disabled · hidden from this cycle"}</span></div>
+            {editable ? <button
+              className={`membership-toggle${enabled ? " enabled" : ""}${legacyMode ? " legacy" : ""}`}
+              type="button"
+              role="switch"
+              aria-checked={enabled}
+              aria-label={`${enabled ? "Disable" : "Enable"} ${member.member_name}`}
+              disabled={saving}
+              onClick={() => setPendingChange({ memberName: member.member_name, previousMode: member.participation_mode, nextMode: enabled ? "disabled" : "enabled" })}
+            ><span aria-hidden="true" /></button> : <span className={`membership-mode-badge mode-${member.participation_mode}`}>{modeLabel(member.participation_mode)}</span>}
           </div>
-          {editable && <div className="membership-mode-control" role="radiogroup" aria-label={`Participation mode for ${member.member_name}`}>
-            {MODE_OPTIONS.map((label, index) => <button type="button" role="radio" aria-checked={index === modeIndex} className={index === modeIndex ? "active" : ""} key={label} onClick={() => { const nextMode = MODES[index]; if (nextMode !== member.participation_mode) setPendingChange({ memberName: member.member_name, previousMode: member.participation_mode, nextMode }); }}>{label}</button>)}
-          </div>}
-          {financial && member.participation_mode !== "disabled" && <dl className="membership-financials"><div><dt>Paid</dt><dd>{fmt(financial.paid_cents)}</dd></div><div><dt>Share</dt><dd>{fmt(financial.share_cents)}</dd></div><div><dt>{financial.net_cents >= 0 ? "Preview credit" : "Preview shortfall"}</dt><dd className={financial.net_cents >= 0 ? "balance-credit" : "balance-due"}>{fmt(Math.abs(financial.net_cents))}</dd></div></dl>}
         </li>;
       })}
     </ul>

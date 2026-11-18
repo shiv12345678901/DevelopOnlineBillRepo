@@ -91,7 +91,6 @@ function SettingsRow({
 export function SettingsTab({
   theme,
   setTheme,
-  memberCount,
   user,
   avatarUrl,
   onAvatarUrlChange,
@@ -108,7 +107,6 @@ export function SettingsTab({
 }: {
   theme: Theme;
   setTheme: (theme: Theme) => void;
-  memberCount: number;
   user: User;
   avatarUrl: string;
   onAvatarUrlChange: (url: string) => void;
@@ -501,7 +499,6 @@ export function SettingsTab({
         </div>
         <ul className="settings-list">
           <SettingsRow icon="house" tone="tile-red" label="Name" value="Rockdale Homies" />
-          <SettingsRow icon="people" tone="tile-green" label="Members" value={memberCount} />
           <SettingsRow icon="dollar" tone="tile-orange" label="Currency" value="AUD ($)" />
           <CopyCalculationSettings period={periods.find((period) => period.id === selectedPeriodId)} />
         </ul>
