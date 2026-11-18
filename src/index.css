@@ -52,6 +52,11 @@
   --lavender: #af9af8;
   --wash-blue: rgba(10, 132, 255, 0.11);
   --wash-purple: rgba(94, 92, 230, 0.07);
+  --background-wash:
+    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--light-blue) 22%, transparent) 0, transparent 34%),
+    radial-gradient(circle at 88% 28%, color-mix(in srgb, var(--lavender) 18%, transparent) 0, transparent 38%),
+    radial-gradient(circle at 36% 92%, color-mix(in srgb, var(--positive) 10%, transparent) 0, transparent 34%),
+    linear-gradient(155deg, color-mix(in srgb, var(--surface-raised) 48%, transparent), transparent 60%);
   color-scheme: dark;
 }
 
@@ -90,6 +95,7 @@
 
 html {
   min-height: 100%;
+  overscroll-behavior-x: none;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -97,6 +103,7 @@ html {
 body {
   min-height: 100%;
   overflow-x: hidden;
+  overscroll-behavior-x: none;
   background: var(--background);
   color: var(--label);
   font-family: var(--font-text);
@@ -139,11 +146,7 @@ p, dd, .row-title, .row-sub, .row-amount { user-select: text; }
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
-    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--light-blue) 22%, transparent) 0, transparent 34%),
-    radial-gradient(circle at 88% 28%, color-mix(in srgb, var(--lavender) 18%, transparent) 0, transparent 38%),
-    radial-gradient(circle at 36% 92%, color-mix(in srgb, var(--positive) 10%, transparent) 0, transparent 34%),
-    linear-gradient(155deg, color-mix(in srgb, var(--surface-raised) 48%, transparent), transparent 60%);
+  background-image: var(--background-wash);
   transition: background 0.35s ease;
 }
 
@@ -1475,8 +1478,11 @@ main {
 .swipe-back-base { min-height: inherit; padding-inline: var(--page-inline-padding); }
 .swipe-back-underlay { position: absolute; inset: 0; z-index: 0; min-height: inherit; overflow: hidden; padding-inline: var(--page-inline-padding); pointer-events: none; transform: translate3d(-18px, 0, 0); will-change: transform; }
 .swipe-back-dim { position: absolute; inset: 0; z-index: 10; background: #000; opacity: .16; pointer-events: none; }
-.swipe-back-page { position: relative; z-index: 2; min-height: inherit; padding-inline: var(--page-inline-padding); background: var(--background); touch-action: pan-y pinch-zoom; will-change: transform; }
+.swipe-back-page { position: relative; z-index: 2; min-height: inherit; padding-inline: var(--page-inline-padding); background-color: var(--background); background-image: var(--background-wash); touch-action: pan-y pinch-zoom; will-change: transform; }
 .swipe-back-stage.is-dragging .swipe-back-page { box-shadow: -5px 0 14px rgba(0, 0, 0, .12); }
+.native-history-guard { position: fixed; z-index: 80; top: 0; bottom: 0; width: 20px; touch-action: none; }
+.native-history-guard--leading { left: 0; }
+.native-history-guard--trailing { right: 0; }
 .search-enter { animation: searchPageTwirl 0.48s cubic-bezier(0.22, 1, 0.36, 1); transform-origin: 50% 42%; }
 .stagger { animation: rowIn 0.35s cubic-bezier(0.32, 0.72, 0, 1) backwards; }
 .stagger .avatar { animation: avatarIn 0.42s cubic-bezier(0.32, 0.72, 0, 1) backwards; animation-delay: inherit; }

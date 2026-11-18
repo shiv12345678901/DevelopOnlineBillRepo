@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { hasNavigationOverlay } from "../navigationOverlays";
-import { applePlatformOwnsEdgeBack, clampSwipeDistance, shouldCompleteSwipe, SWIPE_BACK_EDGE_PX, SWIPE_BACK_TRANSITION_MS, swipeBackIntent } from "../swipeBack";
+import { clampSwipeDistance, isSwipeBackStart, shouldCompleteSwipe, SWIPE_BACK_TRANSITION_MS, swipeBackIntent } from "../swipeBack";
 
 export type SwipeBackState = {
   isTracking: boolean;
@@ -111,11 +111,11 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    const localX = event.clientX - event.currentTarget.getBoundingClientRect().left;
     if (!canGoBack
       || transitioningRef.current
       || hasNavigationOverlay()
-      || event.clientX > SWIPE_BACK_EDGE_PX
-      || applePlatformOwnsEdgeBack(navigator.userAgent, navigator.platform, navigator.maxTouchPoints)
+      || !isSwipeBackStart(localX)
       || (event.pointerType === "mouse" && navigator.maxTouchPoints === 0)
       || swipeBackTargetIsBlocked(event.target, event.currentTarget)) return;
     gestureRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastAt: performance.now(), velocity: 0, width: window.innerWidth, dragging: false, rejected: false };
@@ -193,8 +193,18 @@ export function SwipeBackContainer({ canGoBack, onBack, page, children }: { canG
   const pageRef = useRef<HTMLDivElement>(null);
   const underlayRef = useRef<HTMLDivElement>(null);
   const dimRef = useRef<HTMLSpanElement>(null);
+  const leadingGuardRef = useRef<HTMLSpanElement>(null);
+  const trailingGuardRef = useRef<HTMLSpanElement>(null);
   const { bind, state } = useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef });
+  useEffect(() => {
+    const preventNativeHistory = (event: TouchEvent) => event.preventDefault();
+    const guards = [leadingGuardRef.current, trailingGuardRef.current];
+    guards.forEach((guard) => guard?.addEventListener("touchstart", preventNativeHistory, { passive: false }));
+    return () => guards.forEach((guard) => guard?.removeEventListener("touchstart", preventNativeHistory));
+  }, []);
   return <div className={`swipe-back-stage${state.isDragging ? " is-dragging" : ""}`}>
+    <span ref={leadingGuardRef} className="native-history-guard native-history-guard--leading" aria-hidden="true" />
+    <span ref={trailingGuardRef} className="native-history-guard native-history-guard--trailing" aria-hidden="true" />
     <div ref={underlayRef} className={canGoBack ? "swipe-back-underlay" : "swipe-back-base"} aria-hidden={canGoBack || undefined} inert={canGoBack || undefined}>
       {children}
       {canGoBack && <span ref={dimRef} className="swipe-back-dim" />}

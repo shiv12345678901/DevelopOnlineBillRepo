@@ -10,7 +10,7 @@ export type NavigationDestination =
   | { id: "history" }
   | { id: "evidence"; evidence: EvidenceDetails };
 
-type AppHistoryState = { __billForUs: true; session: string; depth: number; tab: TabId; guard?: boolean };
+type AppHistoryState = { __billForUs: true; session: string; depth: number; tab: TabId; version: 2 };
 
 function focusActiveHeading() {
   window.requestAnimationFrame(() => {
@@ -29,25 +29,28 @@ export function useNavigationHistory(initialTab: TabId = "home") {
   const sessionRef = useRef("");
   const tabScrollRef = useRef(new Map<TabId, number>());
   const backPendingRef = useRef(false);
+  const pendingTabRef = useRef<TabId | null>(null);
   tabRef.current = tab;
   pagesRef.current = pages;
 
-  const marker = useCallback((depth: number, nextTab = tabRef.current, guard = false): AppHistoryState => ({
+  const marker = useCallback((depth: number, nextTab = tabRef.current): AppHistoryState => ({
     __billForUs: true,
     session: sessionRef.current,
     depth,
     tab: nextTab,
-    guard,
+    version: 2,
   }), []);
 
   useEffect(() => {
     const existing = window.history.state as Partial<AppHistoryState> | null;
-    if (existing?.__billForUs && existing.session) {
+    if (existing?.__billForUs && existing.session && existing.version === 2) {
       sessionRef.current = existing.session;
     } else {
       sessionRef.current = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
-      window.history.replaceState(marker(-1, initialTab, true), "", window.location.href);
-      window.history.pushState(marker(0, initialTab), "", window.location.href);
+      // Keep every top-level tab in the launch entry. Pushed pages add history;
+      // roots do not, so Safari has no in-app page to swipe through on Home,
+      // Receipts, Spending, or Settings.
+      window.history.replaceState(marker(0, initialTab), "", window.location.href);
     }
 
     const onPopState = () => {
@@ -62,20 +65,33 @@ export function useNavigationHistory(initialTab: TabId = "home") {
         const nextPages = currentPages.slice(0, -1);
         pagesRef.current = nextPages;
         setPages(nextPages);
-        // Back leaves the closed detail in the browser's forward list. Start a
-        // fresh entry at the restored page so iOS cannot swipe forward into a
-        // stale receipt/detail snapshot. This happens only after a real Back;
-        // ordinary bottom-tab switches still replace their single root entry.
-        window.history.pushState(marker(nextPages.length), "", window.location.href);
+        const pendingTab = pendingTabRef.current;
+        if (!nextPages.length && pendingTab) {
+          pendingTabRef.current = null;
+          tabRef.current = pendingTab;
+          setTabState(pendingTab);
+          window.history.replaceState(marker(0, pendingTab), "", window.location.href);
+          window.requestAnimationFrame(() => window.scrollTo({ top: tabScrollRef.current.get(pendingTab) || 0, behavior: "instant" }));
+          focusActiveHeading();
+          return;
+        }
         window.requestAnimationFrame(() => window.scrollTo({ top: leaving.scrollY, behavior: "instant" }));
         focusActiveHeading();
+        return;
+      }
+
+      const entry = window.history.state as Partial<AppHistoryState> | null;
+      if (entry?.__billForUs && entry.session === sessionRef.current && (entry.depth || 0) > 0) {
+        // A browser Forward action can expose an already-closed pushed page.
+        // Return to its root entry without reconstructing stale page content.
+        window.history.back();
         return;
       }
 
       const fallbackTab: TabId = "home";
       tabRef.current = fallbackTab;
       setTabState(fallbackTab);
-      window.history.pushState(marker(0, fallbackTab), "", window.location.href);
+      window.history.replaceState(marker(0, fallbackTab), "", window.location.href);
       window.requestAnimationFrame(() => window.scrollTo({ top: tabScrollRef.current.get(fallbackTab) || 0, behavior: "instant" }));
       focusActiveHeading();
     };
@@ -105,6 +121,16 @@ export function useNavigationHistory(initialTab: TabId = "home") {
 
   const selectTab = useCallback((nextTab: TabId) => {
     if (closeTopNavigationOverlay()) return;
+    if (pagesRef.current.length) {
+      const rootScrollY = pagesRef.current[0]?.scrollY || 0;
+      tabScrollRef.current.set(tabRef.current, rootScrollY);
+      pendingTabRef.current = nextTab;
+      if (!backPendingRef.current) {
+        backPendingRef.current = true;
+        window.history.back();
+      }
+      return;
+    }
     if (!pagesRef.current.length) tabScrollRef.current.set(tabRef.current, window.scrollY);
     pagesRef.current = [];
     setPages([]);

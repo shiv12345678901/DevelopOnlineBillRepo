@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
-  applePlatformOwnsEdgeBack,
   clampSwipeDistance,
+  isSwipeBackStart,
+  NATIVE_HISTORY_GUARD_PX,
   shouldCompleteSwipe,
   SWIPE_BACK_EDGE_PX,
   SWIPE_BACK_TRANSITION_MS,
@@ -17,17 +18,23 @@ const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "ut
 const cssSource = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
 
 test("edge swipe uses the required activation area and mobile transition", () => {
-  assert.equal(SWIPE_BACK_EDGE_PX, 24);
+  assert.equal(NATIVE_HISTORY_GUARD_PX, 20);
+  assert.equal(SWIPE_BACK_EDGE_PX, 72);
   assert.ok(SWIPE_BACK_TRANSITION_MS >= 220 && SWIPE_BACK_TRANSITION_MS <= 280);
-  assert.match(componentSource, /event\.clientX > SWIPE_BACK_EDGE_PX/);
+  assert.equal(isSwipeBackStart(20), false);
+  assert.equal(isSwipeBackStart(21), true);
+  assert.equal(isSwipeBackStart(72), true);
+  assert.equal(isSwipeBackStart(73), false);
+  assert.match(componentSource, /getBoundingClientRect\(\)\.left/);
+  assert.match(componentSource, /!isSwipeBackStart\(localX\)/);
   assert.match(componentSource, /navigator\.maxTouchPoints/);
 });
 
-test("Apple touch platforms defer to the native edge-back transition", () => {
-  assert.equal(applePlatformOwnsEdgeBack("Mozilla/5.0 (iPhone)", "iPhone", 5), true);
-  assert.equal(applePlatformOwnsEdgeBack("Mozilla/5.0 (Macintosh)", "MacIntel", 5), true);
-  assert.equal(applePlatformOwnsEdgeBack("Mozilla/5.0 (Linux; Android 15)", "Linux armv8l", 5), false);
-  assert.match(componentSource, /applePlatformOwnsEdgeBack\(navigator\.userAgent, navigator\.platform, navigator\.maxTouchPoints\)/);
+test("physical browser edges are reserved so Safari cannot navigate root tabs", () => {
+  assert.match(componentSource, /native-history-guard--leading/);
+  assert.match(componentSource, /native-history-guard--trailing/);
+  assert.match(componentSource, /addEventListener\("touchstart", preventNativeHistory, \{ passive: false \}\)/);
+  assert.match(cssSource, /\.native-history-guard \{[^}]*width: 20px;[^}]*touch-action: none/);
 });
 
 test("gesture waits for a horizontal movement threshold and rejects vertical or leftward motion", () => {
@@ -68,7 +75,7 @@ test("gesture conflicts, cancellation, reduced motion and cleanup are handled ce
   assert.match(componentSource, /transitioningRef\.current/);
 });
 
-test("browser, header and swipe Back share real app history with a safe Home fallback", () => {
+test("browser, header and detail swipe Back share real page history", () => {
   assert.match(navigationSource, /window\.history\.back\(\)/);
   assert.match(navigationSource, /const fallbackTab: TabId = "home"/);
   assert.match(navigationSource, /closeTopNavigationOverlay\(\)/);
@@ -81,13 +88,23 @@ test("browser, header and swipe Back share real app history with a safe Home fal
 test("bottom tabs replace their marker while pushed pages add one history entry", () => {
   assert.match(navigationSource, /pushPage[\s\S]*window\.history\.pushState/);
   assert.match(navigationSource, /selectTab[\s\S]*window\.history\.replaceState/);
+  assert.match(navigationSource, /if \(pagesRef\.current\.length\)[\s\S]*pendingTabRef\.current = nextTab;[\s\S]*window\.history\.back\(\)/);
+  assert.match(navigationSource, /const pendingTab = pendingTabRef\.current;[\s\S]*window\.history\.replaceState\(marker\(0, pendingTab\)/);
   assert.match(appSource, /pushPage\(\{ id: "history" \}\)/);
   assert.match(appSource, /pushPage\(\{ id: "evidence", evidence \}\)/);
 });
 
-test("returning from a pushed page prunes its stale browser-forward snapshot", () => {
-  assert.match(navigationSource, /const nextPages = currentPages\.slice\(0, -1\)[\s\S]*window\.history\.pushState\(marker\(nextPages\.length\)/);
-  assert.match(navigationSource, /ordinary bottom-tab switches still replace their single root entry/);
+test("root tabs use one launch entry and cannot build a swipe-back stack", () => {
+  const pagePopBranch = navigationSource.slice(
+    navigationSource.indexOf("const nextPages = currentPages.slice(0, -1)"),
+    navigationSource.indexOf("const entry = window.history.state"),
+  );
+  assert.match(navigationSource, /window\.history\.replaceState\(marker\(0, initialTab\)/);
+  assert.doesNotMatch(navigationSource, /marker\(-1/);
+  assert.doesNotMatch(navigationSource, /guard\??:/);
+  assert.match(pagePopBranch, /setPages\(nextPages\)/);
+  assert.doesNotMatch(pagePopBranch, /window\.history\.pushState/);
+  assert.match(navigationSource, /already-closed pushed page/);
 });
 
 test("pushed pages cover the complete app width without exposing the underlay gutter", () => {
@@ -96,5 +113,6 @@ test("pushed pages cover the complete app width without exposing the underlay gu
   assert.match(cssSource, /\.swipe-back-page \{[^}]*padding-inline: var\(--page-inline-padding\)/);
   assert.match(cssSource, /\.swipe-back-stage \{[^}]*overflow-x: clip/);
   assert.match(cssSource, /\.swipe-back-stage \{[^}]*overflow-y: visible/);
+  assert.match(cssSource, /\.swipe-back-page \{[^}]*background-image: var\(--background-wash\)/);
   assert.doesNotMatch(cssSource, /\.screen--evidence-detail \{[^}]*margin-top:\s*-/);
 });

@@ -1,8 +1,13 @@
-export const SWIPE_BACK_EDGE_PX = 24;
+export const NATIVE_HISTORY_GUARD_PX = 20;
+export const SWIPE_BACK_EDGE_PX = 72;
 export const SWIPE_BACK_ACTIVATION_PX = 8;
 export const SWIPE_BACK_DISTANCE_RATIO = .3;
 export const SWIPE_BACK_VELOCITY_PX_MS = .5;
 export const SWIPE_BACK_TRANSITION_MS = 240;
+
+export function isSwipeBackStart(localX: number) {
+  return localX > NATIVE_HISTORY_GUARD_PX && localX <= SWIPE_BACK_EDGE_PX;
+}
 
 export function swipeBackIntent(dx: number, dy: number): "pending" | "horizontal" | "rejected" {
   if (Math.hypot(dx, dy) < SWIPE_BACK_ACTIVATION_PX) return "pending";
@@ -15,9 +20,4 @@ export function shouldCompleteSwipe(distance: number, width: number, velocity: n
 
 export function clampSwipeDistance(distance: number, width: number) {
   return Math.max(0, Math.min(width, distance));
-}
-
-export function applePlatformOwnsEdgeBack(userAgent: string, platform: string, maxTouchPoints: number) {
-  return /iPad|iPhone|iPod/i.test(userAgent)
-    || (platform === "MacIntel" && maxTouchPoints > 1);
 }
