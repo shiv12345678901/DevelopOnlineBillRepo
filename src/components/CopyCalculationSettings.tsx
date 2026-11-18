@@ -129,23 +129,53 @@ export function CopyCalculationSettings({ period }: { period: Period | undefined
     <li className="settings-row copy-calculation-row">
       <button type="button" onClick={showSheet} disabled={!MEMBERSHIP_FEATURE_ENABLED || !period}>
         <span className="settings-icon tile-blue" aria-hidden="true"><Calculator /></span>
-        <span className="settings-copy"><span className="settings-title">Copy Calculation</span><span className="settings-subtitle">{MEMBERSHIP_FEATURE_ENABLED ? "Copy detailed household expense breakdown" : "Available after membership backend deployment"}</span></span>
+        <span className="settings-copy"><span className="settings-title">Copy Calculation</span><span className="settings-subtitle">{MEMBERSHIP_FEATURE_ENABLED ? "WhatsApp-ready expense breakdown" : "Available after membership backend deployment"}</span></span>
         <ChevronRight aria-hidden="true" />
       </button>
     </li>
     <GlassSheet open={open} onClose={() => !copying && setOpen(false)} intensity={6} aria-label="Copy calculation">
       <section className="copy-calculation-sheet" aria-labelledby="copy-calculation-title">
-        <header><div><span>Selected settlement</span><h2 id="copy-calculation-title">Copy Calculation</h2>{period && <p>{formatDate(period.start_date)} – {period.status === "CURRENT" ? "Today" : formatDate(period.end_date)}</p>}</div><button type="button" aria-label="Close calculation" onClick={() => setOpen(false)}><X /></button></header>
-        {loading && <div className="copy-calculation-state" role="status"><span className="status-spinner" aria-hidden="true" />Preparing calculation…</div>}
-        {error && <div className="copy-calculation-state error" role="alert"><p>{error}</p><GlassButton type="button" variant="tinted" icon={<RefreshCw />} onClick={() => void loadCalculation()}>Retry</GlassButton></div>}
-        {membership && preview && calculation && <>
-          <div className="copy-calculation-members" aria-label="Membership configuration">{membership.members.map((member) => <span className={`mode-${member.participation_mode}`} key={member.member_name}>{member.member_name.split(" ")[0]} · {modeLabel(member.participation_mode)}</span>)}</div>
-          <div className="copy-calculation-summary"><div><span>Eligible total</span><strong>{fmt(preview.total_cents)}</strong></div><div><span>Equal share</span><strong>{fmt(preview.equal_share_cents)}</strong></div><div><span>Participants</span><strong>{calculation.enabledCount}</strong></div><div><span>Receipts</span><strong>{calculation.receiptCount}</strong></div></div>
-          <div className="copy-balance-list">{preview.members.map((member) => <div key={member.member_name}><span>{member.member_name.split(" ")[0]}</span><small>{member.participation_mode === "disabled" ? "Excluded" : `Paid ${fmt(member.paid_cents)} · Share ${fmt(member.share_cents)}`}</small><strong>{member.participation_mode === "disabled" ? "—" : `${member.net_cents >= 0 ? "+" : "−"}${fmt(Math.abs(member.net_cents))}`}</strong></div>)}</div>
-          <textarea className="copy-calculation-preview" aria-label="Calculation text" readOnly value={calculation.text} />
-          {copyStatus && <p className={`copy-calculation-status${copyStatus === "Calculation copied!" ? " success" : ""}`} role="status">{copyStatus === "Calculation copied!" && <Check aria-hidden="true" />}{copyStatus}</p>}
-          <GlassButton className="copy-calculation-action" type="button" variant="filled" size="lg" icon={<ClipboardCopy />} disabled={copying} onClick={() => void copyCalculation()}>{copying ? "Copying…" : "Copy Calculation"}</GlassButton>
-        </>}
+        <header className="copy-calculation-header">
+          <div className="copy-calculation-heading">
+            <span className="copy-calculation-icon" aria-hidden="true"><Calculator /></span>
+            <div><h2 id="copy-calculation-title">Copy Calculation</h2>{period && <p>{formatDate(period.start_date)} – {period.status === "CURRENT" ? "Today" : formatDate(period.end_date)}</p>}</div>
+          </div>
+          <button className="copy-calculation-close" type="button" aria-label="Close calculation" onClick={() => setOpen(false)} disabled={copying}><X /></button>
+        </header>
+
+        <div className="copy-calculation-body">
+          {loading && <div className="copy-calculation-state" role="status"><span className="status-spinner" aria-hidden="true" /><strong>Preparing calculation</strong></div>}
+          {error && <div className="copy-calculation-state error" role="alert"><p>{error}</p><GlassButton type="button" variant="tinted" icon={<RefreshCw />} onClick={() => void loadCalculation()}>Try again</GlassButton></div>}
+          {membership && preview && calculation && <>
+            <section className="copy-calculation-overview" aria-label="Calculation summary">
+              <div className="copy-calculation-total"><span>Eligible total</span><strong>{fmt(preview.total_cents)}</strong></div>
+              <dl>
+                <div><dt>Equal share</dt><dd>{fmt(preview.equal_share_cents)}</dd></div>
+                <div><dt>Participants</dt><dd>{calculation.enabledCount}</dd></div>
+                <div><dt>Receipts</dt><dd>{calculation.receiptCount}</dd></div>
+              </dl>
+            </section>
+
+            <section className="copy-calculation-section" aria-labelledby="copy-members-heading">
+              <h3 id="copy-members-heading">Settlement members</h3>
+              <ul className="copy-calculation-members">{membership.members.map((member) => (
+                <li className={`mode-${member.participation_mode}`} key={member.member_name}>
+                  <span>{member.member_name.split(" ")[0]}</span><strong>{modeLabel(member.participation_mode)}</strong>
+                </li>
+              ))}</ul>
+            </section>
+
+            <section className="copy-calculation-section copy-calculation-preview-card" aria-labelledby="copy-preview-heading">
+              <div className="copy-calculation-section-title"><h3 id="copy-preview-heading">Message preview</h3><span>Plain text</span></div>
+              <pre className="copy-calculation-preview" tabIndex={0} aria-label="Calculation text">{calculation.text}</pre>
+            </section>
+          </>}
+        </div>
+
+        {calculation && <footer className="copy-calculation-footer">
+          <p className={`copy-calculation-status${copyStatus === "Calculation copied!" ? " success" : ""}`} aria-live="polite">{copyStatus === "Calculation copied!" && <Check aria-hidden="true" />}{copyStatus || "Ready to paste into WhatsApp"}</p>
+          <GlassButton className="copy-calculation-action" type="button" variant="filled" size="lg" icon={copyStatus === "Calculation copied!" ? <Check /> : <ClipboardCopy />} disabled={copying} onClick={() => void copyCalculation()}>{copying ? "Copying…" : copyStatus === "Calculation copied!" ? "Copied" : "Copy Calculation"}</GlassButton>
+        </footer>}
       </section>
     </GlassSheet>
   </>;
