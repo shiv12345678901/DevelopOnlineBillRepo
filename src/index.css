@@ -148,10 +148,11 @@ p, dd, .row-title, .row-sub, .row-amount { user-select: text; }
 }
 
 main {
+  --page-inline-padding: 20px;
   position: relative;
   z-index: 1;
   flex: 1;
-  padding: calc(env(safe-area-inset-top, 0px) + 32px) 20px 116px;
+  padding: calc(env(safe-area-inset-top, 0px) + 32px) var(--page-inline-padding) 116px;
 }
 
 .auth-screen {
@@ -1470,11 +1471,11 @@ main {
 }
 
 .tab-enter { animation: contentIn 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
-.swipe-back-stage { position: relative; min-height: calc(100dvh - env(safe-area-inset-top, 0px) - 148px); isolation: isolate; }
-.swipe-back-base { min-height: inherit; }
-.swipe-back-underlay { position: absolute; inset: 0; z-index: 0; min-height: inherit; overflow: hidden; pointer-events: none; transform: translate3d(-18px, 0, 0); will-change: transform; }
+.swipe-back-stage { position: relative; width: calc(100% + var(--page-inline-padding) + var(--page-inline-padding)); min-height: calc(100dvh - env(safe-area-inset-top, 0px) - 148px); margin-inline: calc(0px - var(--page-inline-padding)); isolation: isolate; overflow: hidden; }
+.swipe-back-base { min-height: inherit; padding-inline: var(--page-inline-padding); }
+.swipe-back-underlay { position: absolute; inset: 0; z-index: 0; min-height: inherit; overflow: hidden; padding-inline: var(--page-inline-padding); pointer-events: none; transform: translate3d(-18px, 0, 0); will-change: transform; }
 .swipe-back-dim { position: absolute; inset: 0; z-index: 10; background: #000; opacity: .16; pointer-events: none; }
-.swipe-back-page { position: relative; z-index: 2; min-height: inherit; background: var(--background); touch-action: pan-y pinch-zoom; will-change: transform; }
+.swipe-back-page { position: relative; z-index: 2; min-height: inherit; padding-inline: var(--page-inline-padding); background: var(--background); touch-action: pan-y pinch-zoom; will-change: transform; }
 .swipe-back-stage.is-dragging .swipe-back-page { box-shadow: -5px 0 14px rgba(0, 0, 0, .12); }
 .search-enter { animation: searchPageTwirl 0.48s cubic-bezier(0.22, 1, 0.36, 1); transform-origin: 50% 42%; }
 .stagger { animation: rowIn 0.35s cubic-bezier(0.32, 0.72, 0, 1) backwards; }
@@ -1652,7 +1653,7 @@ main {
   100% { transform: scale(1); opacity: 1; }
 }
 @media (max-width: 359px) {
-  main { padding-right: 16px; padding-left: 16px; }
+  main { --page-inline-padding: 16px; }
   .list-row { gap: 10px; padding-right: 12px; padding-left: 12px; }
   .list-row + .list-row::before { left: 64px; }
   .avatar { width: 40px; height: 40px; }

@@ -13,6 +13,7 @@ import { closeTopNavigationOverlay, registerNavigationOverlay } from "../src/nav
 const componentSource = await readFile(new URL("../src/components/SwipeBackContainer.tsx", import.meta.url), "utf8");
 const navigationSource = await readFile(new URL("../src/useNavigationHistory.ts", import.meta.url), "utf8");
 const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+const cssSource = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
 
 test("edge swipe uses the required activation area and mobile transition", () => {
   assert.equal(SWIPE_BACK_EDGE_PX, 24);
@@ -74,4 +75,11 @@ test("bottom tabs replace their marker while pushed pages add one history entry"
   assert.match(navigationSource, /selectTab[\s\S]*window\.history\.replaceState/);
   assert.match(appSource, /pushPage\(\{ id: "history" \}\)/);
   assert.match(appSource, /pushPage\(\{ id: "evidence", evidence \}\)/);
+});
+
+test("pushed pages cover the complete app width without exposing the underlay gutter", () => {
+  assert.match(cssSource, /--page-inline-padding: 20px/);
+  assert.match(cssSource, /\.swipe-back-stage \{[^}]*width: calc\(100% \+ var\(--page-inline-padding\) \+ var\(--page-inline-padding\)\)/);
+  assert.match(cssSource, /\.swipe-back-page \{[^}]*padding-inline: var\(--page-inline-padding\)/);
+  assert.match(cssSource, /\.swipe-back-stage \{[^}]*overflow: hidden/);
 });
