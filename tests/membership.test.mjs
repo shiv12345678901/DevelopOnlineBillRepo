@@ -74,6 +74,19 @@ test("admin and read-only membership views use backend can_edit", async () => {
   assert.match(source, /MODES: ParticipationMode\[\] = \["enabled", "keep_receipts", "disabled"\]/);
 });
 
+test("admin-only settings stay hidden without authoritative admin permissions", async () => {
+  const [members, calculation, settings] = await Promise.all([
+    readFile(new URL("../src/components/SettlementMembersSettings.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/CopyCalculationSettings.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/tabs/SettingsTab.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(members, /permissions\?\.can_edit \|\| permissions\?\.can_review_disabled_receipts/);
+  assert.match(members, /!administrator[\s\S]*?return null/);
+  assert.match(calculation, /permissions\.can_edit \|\| permissions\.can_review_disabled_receipts/);
+  assert.match(calculation, /if \(!adminAccess\) return null/);
+  assert.doesNotMatch(settings, /<h3>Settlement Members<\/h3>/);
+});
+
 test("financial preview renders authoritative returned values without client recomputation", async () => {
   const source = await readFile(new URL("../src/components/SettlementMembersSettings.tsx", import.meta.url), "utf8");
   assert.match(source, /fmt\(preview\.total_cents\)/);

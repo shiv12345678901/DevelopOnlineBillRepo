@@ -50,7 +50,11 @@ export function SettlementMembersSettings({ period, memberAvatarUrls, onMembersh
       if (!nextPermissions.can_view) {
         setMembership(null);
         setPreview(null);
-        setMessage("Settlement membership isn’t available for this account.");
+        return;
+      }
+      if (!nextPermissions.can_edit && !nextPermissions.can_review_disabled_receipts) {
+        setMembership(null);
+        setPreview(null);
         return;
       }
       const [nextMembership, nextPreview] = await Promise.all([
@@ -104,11 +108,12 @@ export function SettlementMembersSettings({ period, memberAvatarUrls, onMembersh
     }
   }
 
-  if (!MEMBERSHIP_FEATURE_ENABLED) return <div className="membership-unavailable"><LockKeyhole aria-hidden="true" /><div><strong>Settlement Members</strong><span>Available after the membership backend is deployed.</span></div></div>;
-  if (loading && !membership) return <div className="membership-loading" role="status"><span className="status-spinner" aria-hidden="true" />Loading settlement members…</div>;
-  if (!permissions?.can_view || !membership || !preview) return <div className="membership-unavailable" role="status"><LockKeyhole aria-hidden="true" /><div><strong>Settlement Members</strong><span>{message || "Read-only access could not be verified."}</span></div></div>;
+  const administrator = Boolean(permissions?.can_edit || permissions?.can_review_disabled_receipts);
+  if (!MEMBERSHIP_FEATURE_ENABLED || (loading && !membership) || !administrator || !permissions?.can_view || !membership || !preview) return null;
 
   return <>
+    <div className="settlement-members-block">
+    <div className="section-heading compact"><h3>Settlement Members</h3></div>
     <div className="membership-summary" aria-label="Settlement membership summary">
       <div><span>Participants</span><strong>{enabledCount}</strong></div>
       <div><span>Eligible expenses</span><strong>{fmt(preview.total_cents)}</strong></div>
@@ -134,6 +139,7 @@ export function SettlementMembersSettings({ period, memberAvatarUrls, onMembersh
         </li>;
       })}
     </ul>
+    </div>
     <IosSheet open={Boolean(pendingChange)} onClose={() => { if (!saving) setPendingChange(null); }} label="Confirm membership change" className="membership-confirm-modal">
       {pendingChange && <section className="membership-confirm" aria-labelledby="membership-confirm-title">
         <span className="membership-confirm-icon" aria-hidden="true"><UsersRound /></span>

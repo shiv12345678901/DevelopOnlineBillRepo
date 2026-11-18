@@ -39,6 +39,7 @@ function calculationErrorMessage(error: unknown) {
 }
 
 export function CopyCalculationSettings({ period }: { period: Period | undefined }) {
+  const [adminAccess, setAdminAccess] = useState(false);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copying, setCopying] = useState(false);
@@ -48,6 +49,20 @@ export function CopyCalculationSettings({ period }: { period: Period | undefined
   const [error, setError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const generationRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAdminAccess(false);
+    if (!MEMBERSHIP_FEATURE_ENABLED || !period?.id) return () => { cancelled = true; };
+    void fetchSettlementCycleMembershipPermissions(period.id)
+      .then((permissions) => {
+        if (!cancelled) setAdminAccess(permissions.can_edit || permissions.can_review_disabled_receipts);
+      })
+      .catch(() => {
+        if (!cancelled) setAdminAccess(false);
+      });
+    return () => { cancelled = true; };
+  }, [period?.id]);
 
   useEffect(() => {
     generationRef.current += 1;
@@ -69,7 +84,7 @@ export function CopyCalculationSettings({ period }: { period: Period | undefined
     try {
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const permissions = await fetchSettlementCycleMembershipPermissions(period.id);
-        if (!permissions.can_view) throw new Error("UNAUTHORIZED_MEMBERSHIP_ACCESS");
+        if (!permissions.can_view || (!permissions.can_edit && !permissions.can_review_disabled_receipts)) throw new Error("UNAUTHORIZED_MEMBERSHIP_ACCESS");
         const firstMembership = await fetchSettlementCycleMembership(period.id);
         const [receipts, visibility, nextPreview] = await Promise.all([
           fetchAllEligibleReceiptsForPeriod(period.id),
@@ -124,6 +139,8 @@ export function CopyCalculationSettings({ period }: { period: Period | undefined
       setCopying(false);
     }
   }
+
+  if (!adminAccess) return null;
 
   return <>
     <li className="settings-action-row copy-calculation-row">

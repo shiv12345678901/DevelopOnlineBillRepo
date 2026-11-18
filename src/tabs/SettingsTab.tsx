@@ -505,10 +505,7 @@ export function SettingsTab({
           <SettingsRow icon="dollar" tone="tile-orange" label="Currency" value="AUD ($)" />
           <CopyCalculationSettings period={periods.find((period) => period.id === selectedPeriodId)} />
         </ul>
-        <div className="settlement-members-block">
-          <div className="section-heading compact"><h3>Settlement Members</h3></div>
-          <SettlementMembersSettings period={periods.find((period) => period.id === selectedPeriodId)} memberAvatarUrls={memberAvatarUrls} onMembershipChanged={onMembershipChanged} />
-        </div>
+        <SettlementMembersSettings period={periods.find((period) => period.id === selectedPeriodId)} memberAvatarUrls={memberAvatarUrls} onMembershipChanged={onMembershipChanged} />
       </section>
 
       <section className="content-section" aria-labelledby="account-settings-heading">
