@@ -409,8 +409,7 @@ main {
 .evidence-row:focus-visible { z-index: 1; outline: 3px solid color-mix(in srgb, var(--accent) 38%, transparent); outline-offset: -3px; }
 .evidence-row-tail { display: grid; flex: 0 0 auto; justify-items: end; gap: 4px; }
 .evidence-row-tail > svg, .settle-transfer-action > svg { width: 15px; height: 15px; color: var(--accent); }
-.screen--evidence-detail { position: relative; left: var(--swipe-x, 0); margin-top: -24px; padding-top: 48px; touch-action: pan-y; transition: left .18s cubic-bezier(.32, .72, 0, 1); will-change: left; }
-.screen--evidence-detail.is-swiping { transition: none; }
+.screen--evidence-detail { position: relative; margin-top: -24px; padding-top: 48px; }
 .evidence-floating-back { position: absolute; top: 0; left: 0; z-index: 20; width: 44px; min-width: 44px; color: var(--label); }
 .evidence-floating-back svg { width: 23px; height: 23px; }
 .evidence-detail-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 20px; border: 1px solid var(--material-border); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-card); animation: balanceIn .42s cubic-bezier(.22, 1, .36, 1) both; }
@@ -1471,6 +1470,12 @@ main {
 }
 
 .tab-enter { animation: contentIn 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
+.swipe-back-stage { position: relative; min-height: calc(100dvh - env(safe-area-inset-top, 0px) - 148px); isolation: isolate; }
+.swipe-back-base { min-height: inherit; }
+.swipe-back-underlay { position: absolute; inset: 0; z-index: 0; min-height: inherit; overflow: hidden; pointer-events: none; transform: translate3d(-18px, 0, 0); will-change: transform; }
+.swipe-back-dim { position: absolute; inset: 0; z-index: 10; background: #000; opacity: .16; pointer-events: none; }
+.swipe-back-page { position: relative; z-index: 2; min-height: inherit; background: var(--background); touch-action: pan-y pinch-zoom; will-change: transform; }
+.swipe-back-stage.is-dragging .swipe-back-page { box-shadow: -5px 0 14px rgba(0, 0, 0, .12); }
 .search-enter { animation: searchPageTwirl 0.48s cubic-bezier(0.22, 1, 0.36, 1); transform-origin: 50% 42%; }
 .stagger { animation: rowIn 0.35s cubic-bezier(0.32, 0.72, 0, 1) backwards; }
 .stagger .avatar { animation: avatarIn 0.42s cubic-bezier(0.32, 0.72, 0, 1) backwards; animation-delay: inherit; }
@@ -1574,9 +1579,9 @@ main {
 
 .ios-sheet-layer { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: flex-end; justify-content: center; background: rgba(0, 0, 0, .5); animation: confirmFadeIn .22s ease both; transition: background-color .24s ease; }
 .ios-sheet-layer.is-closing { background: transparent; }
-.ios-sheet { position: relative; width: min(100%, 600px); max-height: calc(100dvh - max(10px, env(safe-area-inset-top))); overflow: hidden; border: 1px solid var(--material-border); border-bottom: 0; border-radius: 28px 28px 0 0; outline: 0; background: var(--surface); color: var(--label); box-shadow: 0 -16px 56px rgba(0, 0, 0, .38); animation: iosSheetIn .32s cubic-bezier(.22, 1, .36, 1) both; transition: transform .24s cubic-bezier(.4, 0, 1, 1); will-change: transform; }
+.ios-sheet { position: relative; width: min(100%, 600px); max-height: calc(100dvh - max(10px, env(safe-area-inset-top))); overflow: hidden; overscroll-behavior: contain; border: 1px solid var(--material-border); border-bottom: 0; border-radius: 28px 28px 0 0; outline: 0; background: var(--surface); color: var(--label); box-shadow: 0 -16px 56px rgba(0, 0, 0, .38); animation: iosSheetIn .32s cubic-bezier(.22, 1, .36, 1) both; transition: transform .26s cubic-bezier(.32, .72, 0, 1); transform: translate3d(0, 0, 0); will-change: transform; }
 .ios-sheet-layer.is-closing .ios-sheet { transform: translateY(calc(100% + env(safe-area-inset-bottom))); }
-.ios-sheet-grabber-zone { display: grid; height: 25px; place-items: center; cursor: grab; touch-action: none; }
+.ios-sheet-grabber-zone { display: grid; height: 29px; place-items: center; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .ios-sheet-grabber-zone:active { cursor: grabbing; }
 .ios-sheet-grabber { display: block; width: 38px; height: 5px; border-radius: 999px; background: var(--label-tertiary); opacity: .65; }
 @keyframes iosSheetIn { from { transform: translateY(100%); } to { transform: translateY(0); } }

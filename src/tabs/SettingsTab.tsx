@@ -11,6 +11,7 @@ import { CopyCalculationSettings } from "../components/CopyCalculationSettings";
 import type { Theme } from "../theme";
 import type { Period } from "../api";
 import { isSyncUiActive, type SyncState } from "../sync";
+import { OVERLAY_PRIORITY, registerNavigationOverlay } from "../navigationOverlays";
 
 function displayNameFor(user: User) {
   return (
@@ -184,12 +185,14 @@ export function SettingsTab({
   }, [name, onUserUpdated, user]);
   useEffect(() => {
     if (!profileModalOpen) return;
+    const unregisterOverlay = registerNavigationOverlay(OVERLAY_PRIORITY.modal, closeProfileModal);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
+      unregisterOverlay();
       document.body.style.overflow = previousOverflow;
     };
-  }, [profileModalOpen]);
+  }, [photoBusy, profileModalOpen]);
   useEffect(() => () => {
     if (pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl);
   }, [pendingPhoto]);

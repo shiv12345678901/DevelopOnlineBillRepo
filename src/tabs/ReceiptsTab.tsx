@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowDownToLine, CircleAlert, Image, SlidersHorizontal } from "lucide-react";
 import { GlassInput } from "@zakisheriff/liquid-glass";
 import { fetchDisabledSettlementReceipts, fetchSettlementCycleMembershipPermissions, fmt, type BankTransferReceipt, type Receipt, type WhatsAppBankTransferEvidence } from "../api";
 import { formatDate } from "../components/format";
 import { AppIcon } from "../components/AppIcon";
-import { EvidenceDetailPage, type EvidenceDetails } from "../components/EvidenceViewer";
+import type { EvidenceDetails } from "../components/EvidenceViewer";
 import { MerchantIcon } from "../components/MerchantIcon";
 import { useTransferEvidence } from "../components/useTransferEvidence";
 import { transferEvidenceState } from "../settlementMatching";
@@ -28,18 +28,17 @@ function whatsappEvidenceStatus(status: WhatsAppBankTransferEvidence["review_sta
   return "Pending review";
 }
 
-export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
+export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpenEvidence }: {
   receipts: Receipt[];
   periodId: string | null;
   settlementCalculatedAt?: string | null;
+  onOpenEvidence: (evidence: EvidenceDetails) => void;
 }) {
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("newest");
-  const [selectedEvidence, setSelectedEvidence] = useState<EvidenceDetails | null>(null);
   const [disabledReceipts, setDisabledReceipts] = useState<Receipt[]>([]);
   const [disabledReceiptsError, setDisabledReceiptsError] = useState("");
-  const savedScrollY = useRef<number | null>(null);
   const transferEvidence = useTransferEvidence(periodId, settlementCalculatedAt);
   const visibleBankReceipts = transferEvidence.bankReceipts.filter((receipt) => transferEvidenceState(receipt) !== "pending");
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -80,8 +79,7 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
 
   function openReceipt(receipt: Receipt) {
     if (!receipt.image_url) return;
-    savedScrollY.current = window.scrollY;
-    setSelectedEvidence({
+    onOpenEvidence({
       locator: receipt.image_url,
       kind: "Receipt",
       title: receipt.merchant,
@@ -99,9 +97,8 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
 
   function openTransfer(receipt: BankTransferReceipt) {
     if (!receipt.receipt_url) return;
-    savedScrollY.current = window.scrollY;
     const status = evidenceStatus(receipt).label;
-    setSelectedEvidence({
+    onOpenEvidence({
       locator: receipt.receipt_url,
       kind: "Bank transfer",
       title: `${firstName(receipt.from_name)} → ${firstName(receipt.to_name)}`,
@@ -120,10 +117,9 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
 
   function openWhatsAppEvidence(receipt: WhatsAppBankTransferEvidence) {
     if (!receipt.evidence_url) return;
-    savedScrollY.current = window.scrollY;
     const status = whatsappEvidenceStatus(receipt.review_status);
     const amount = receipt.amount_cents === null ? "Amount unavailable" : fmt(receipt.amount_cents);
-    setSelectedEvidence({
+    onOpenEvidence({
       locator: receipt.evidence_url,
       kind: "Bank transfer",
       title: `${firstName(receipt.sender_name)} → ${firstName(receipt.recipient_name)}`,
@@ -141,17 +137,6 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
     });
   }
 
-  useLayoutEffect(() => {
-    if (selectedEvidence) {
-      window.scrollTo({ top: 0, behavior: "instant" });
-      return;
-    }
-    if (savedScrollY.current === null) return;
-    const top = savedScrollY.current;
-    savedScrollY.current = null;
-    window.scrollTo({ top, behavior: "instant" });
-  }, [selectedEvidence]);
-
   function receiptKeyDown(event: React.KeyboardEvent, receipt: Receipt) {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -165,8 +150,6 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
       openTransfer(receipt);
     }
   }
-
-  if (selectedEvidence) return <EvidenceDetailPage evidence={selectedEvidence} onBack={() => setSelectedEvidence(null)} />;
 
   return (
     <div className="screen screen--receipts">

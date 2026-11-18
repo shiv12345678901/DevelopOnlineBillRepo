@@ -15,6 +15,7 @@ import {
 import { MEMBERSHIP_FEATURE_ENABLED, classifyMembershipError, membershipErrorMessage, modeDescription, modeLabel, permissionsMatch } from "../membership";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { IosSheet } from "./IosSheet";
+import { OVERLAY_PRIORITY } from "../navigationOverlays";
 
 type PendingChange = { memberName: string; previousMode: ParticipationMode; nextMode: ParticipationMode };
 
@@ -132,7 +133,7 @@ export function SettlementMembersSettings({ period, memberAvatarUrls, onMembersh
       })}
     </ul>
     </div>
-    <IosSheet open={Boolean(pendingChange)} onClose={() => { if (!saving) setPendingChange(null); }} label="Confirm membership change" className="membership-confirm-modal">
+    <IosSheet open={Boolean(pendingChange)} onClose={() => { if (!saving) setPendingChange(null); }} label="Confirm membership change" className="membership-confirm-modal" overlayPriority={OVERLAY_PRIORITY.confirmation}>
       {pendingChange && <section className="membership-confirm" aria-labelledby="membership-confirm-title">
         <span className="membership-confirm-icon" aria-hidden="true"><UsersRound /></span>
         <h2 id="membership-confirm-title">Change {pendingChange.memberName}?</h2>

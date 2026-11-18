@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRightLeft, CalendarDays, CircleDollarSign, FileImage, Fingerprint, Hash, Layers3, RefreshCw, ShieldCheck, Store, Tag, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { GlassButton } from "@zakisheriff/liquid-glass";
@@ -32,11 +32,6 @@ export function EvidenceDetailPage({ evidence, onBack }: { evidence: EvidenceDet
   const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState("");
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [swipeX, setSwipeX] = useState(0);
-  const [swiping, setSwiping] = useState(false);
-  const swipeStart = useRef<{ x: number; y: number; time: number } | null>(null);
-  const swipeDistance = useRef(0);
-  const backTimer = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,77 +43,8 @@ export function EvidenceDetailPage({ evidence, onBack }: { evidence: EvidenceDet
     return () => { cancelled = true; };
   }, [evidence.locator, loadAttempt]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onBack();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onBack]);
-
-  useEffect(() => () => {
-    if (backTimer.current !== null) window.clearTimeout(backTimer.current);
-  }, []);
-
-  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    if (event.pointerType === "mouse" || event.clientX > 32) return;
-    swipeStart.current = { x: event.clientX, y: event.clientY, time: performance.now() };
-    swipeDistance.current = 0;
-    setSwiping(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (!swipeStart.current) return;
-    const distanceX = Math.max(0, event.clientX - swipeStart.current.x);
-    const distanceY = Math.abs(event.clientY - swipeStart.current.y);
-    if (distanceY > distanceX && distanceY > 12) {
-      swipeStart.current = null;
-      swipeDistance.current = 0;
-      setSwipeX(0);
-      setSwiping(false);
-      return;
-    }
-    swipeDistance.current = Math.min(distanceX, window.innerWidth);
-    setSwipeX(swipeDistance.current);
-  }
-
-  function finishSwipe(event: React.PointerEvent<HTMLDivElement>) {
-    const start = swipeStart.current;
-    swipeStart.current = null;
-    if (!start) return;
-
-    const elapsed = Math.max(performance.now() - start.time, 1);
-    const distance = swipeDistance.current;
-    const velocity = distance / elapsed;
-    const shouldGoBack = distance >= Math.min(120, window.innerWidth * 0.3) || (distance > 48 && velocity > 0.45);
-    setSwiping(false);
-    if (!shouldGoBack) {
-      setSwipeX(0);
-      return;
-    }
-
-    setSwipeX(window.innerWidth);
-    backTimer.current = window.setTimeout(onBack, 180);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-  }
-
-  function cancelSwipe() {
-    swipeStart.current = null;
-    swipeDistance.current = 0;
-    setSwiping(false);
-    setSwipeX(0);
-  }
-
   return (
-    <div
-      className={`screen screen--evidence-detail${swiping ? " is-swiping" : ""}`}
-      style={{ "--swipe-x": `${swipeX}px` } as React.CSSProperties}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={finishSwipe}
-      onPointerCancel={cancelSwipe}
-    >
+    <div className="screen screen--evidence-detail">
       <GlassButton
         className="evidence-floating-back"
         variant="clear"

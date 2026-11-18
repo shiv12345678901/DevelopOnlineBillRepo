@@ -75,6 +75,10 @@ test("iOS sheets are edge anchored, animated and draggable to dismiss", async ()
   assert.match(sheet, /onPointerDown=\{startDrag\}/);
   assert.match(sheet, /distance > Math\.min\(140/);
   assert.match(sheet, /setClosing\(true\)/);
+  assert.match(sheet, /translate3d\(0,\$\{distance\}px,0\)/);
+  assert.match(sheet, /returnToOpen/);
+  assert.match(sheet, /window\.setTimeout\(finishClose, CLOSE_DURATION_MS \+ 20\)/);
+  assert.match(sheet, /onPointerCancel=.*endDrag\(event, true\)/);
   assert.match(css, /border-radius: 28px 28px 0 0/);
   assert.match(css, /@keyframes iosSheetIn/);
   assert.match(css, /\.ios-sheet-layer\.is-closing \.ios-sheet/);

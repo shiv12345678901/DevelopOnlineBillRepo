@@ -14,6 +14,10 @@ import { HistoryTab } from "./tabs/HistoryTab";
 import { SettingsTab } from "./tabs/SettingsTab";
 import { MySpendingTab } from "./tabs/MySpendingTab";
 import { HomeSkeleton } from "./components/HomeSkeleton";
+import { EvidenceDetailPage } from "./components/EvidenceViewer";
+import { SwipeBackContainer } from "./components/SwipeBackContainer";
+import { useNavigationHistory } from "./useNavigationHistory";
+import { OVERLAY_PRIORITY, registerNavigationOverlay } from "./navigationOverlays";
 import type { Theme } from "./theme";
 import {
   ACTIVE_SYNC_STORAGE_KEY,
@@ -42,7 +46,7 @@ function getInitialTheme(): Theme {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<TabId>("home");
+  const { tab, activePage, canGoBack, pushPage, goBack, selectTab } = useNavigationHistory("home");
   const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
@@ -521,6 +525,10 @@ export default function App() {
     || periods.find((period) => period.status === "CURRENT")
     || periods[0];
 
+  useEffect(() => pendingPeriodId
+    ? registerNavigationOverlay(OVERLAY_PRIORITY.confirmation, () => setPendingPeriodId(null))
+    : undefined, [pendingPeriodId]);
+
   if (session === undefined) {
     return (
       <div className="app">
@@ -531,6 +539,44 @@ export default function App() {
   }
 
   if (!session) return <SignInScreen />;
+
+  const basePage = loading ? (
+    tab === "home" ? <HomeSkeleton /> : <div className="loading">
+      <div className="spinner" />
+      <p>Loading your bills…</p>
+    </div>
+  ) : (
+    <>
+      {tab === "home" && <HomeTab settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => pushPage({ id: "history" })} />}
+      {tab === "receipts" && <ReceiptsTab receipts={receipts} periodId={displayedPeriod?.id ?? null} settlementCalculatedAt={settlement?.calculated_at} onOpenEvidence={(evidence) => pushPage({ id: "evidence", evidence })} />}
+      {tab === "spending" && <MySpendingTab receipts={receipts} settlement={settlement} user={session.user} />}
+      {tab === "settings" && (
+        <SettingsTab
+          theme={theme}
+          setTheme={setTheme}
+          periods={periods}
+          selectedPeriodId={selectedPeriodId || periods.find((period) => period.status === "CURRENT")?.id || ""}
+          onPeriodChange={handlePeriodChange}
+          onSyncNow={handleSyncNow}
+          syncState={syncState}
+          lastCompletedSyncAt={lastCompletedSyncAt}
+          online={online}
+          memberAvatarUrls={memberAvatarUrls}
+          onMembershipChanged={refreshData}
+          user={session.user}
+          avatarUrl={avatarUrl}
+          onAvatarUrlChange={setAvatarUrl}
+          onUserUpdated={handleUserUpdated}
+        />
+      )}
+    </>
+  );
+
+  const pushedPage = activePage?.id === "history"
+    ? <HistoryTab periods={periods} />
+    : activePage?.id === "evidence"
+      ? <EvidenceDetailPage evidence={activePage.evidence} onBack={() => { void goBack(); }} />
+      : undefined;
 
   return (
     <div className="app">
@@ -547,41 +593,12 @@ export default function App() {
       )}
 
       <main key={tab} className="tab-enter">
-        {loading ? (
-          tab === "home" ? <HomeSkeleton /> : <div className="loading">
-            <div className="spinner" />
-            <p>Loading your bills…</p>
-          </div>
-        ) : (
-          <>
-            {tab === "home" && <HomeTab settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => setTab("history")} />}
-            {tab === "receipts" && <ReceiptsTab receipts={receipts} periodId={displayedPeriod?.id ?? null} settlementCalculatedAt={settlement?.calculated_at} />}
-            {tab === "spending" && <MySpendingTab receipts={receipts} settlement={settlement} user={session.user} />}
-            {tab === "history" && <HistoryTab periods={periods} />}
-            {tab === "settings" && (
-              <SettingsTab
-                theme={theme}
-                setTheme={setTheme}
-                periods={periods}
-                selectedPeriodId={selectedPeriodId || periods.find((period) => period.status === "CURRENT")?.id || ""}
-                onPeriodChange={handlePeriodChange}
-                onSyncNow={handleSyncNow}
-                syncState={syncState}
-                lastCompletedSyncAt={lastCompletedSyncAt}
-                online={online}
-                memberAvatarUrls={memberAvatarUrls}
-                onMembershipChanged={refreshData}
-                user={session.user}
-                avatarUrl={avatarUrl}
-                onAvatarUrlChange={setAvatarUrl}
-                onUserUpdated={handleUserUpdated}
-              />
-            )}
-          </>
-        )}
+        <SwipeBackContainer canGoBack={canGoBack} onBack={goBack} page={pushedPage}>
+          {basePage}
+        </SwipeBackContainer>
       </main>
 
-      <TabBar tab={tab} setTab={setTab} />
+      <TabBar tab={activePage?.id === "history" ? "history" : tab} setTab={selectTab} />
       <GlassSheet open={Boolean(pendingPeriodId)} onClose={() => setPendingPeriodId(null)} intensity={6} aria-label="Load older settlement">
           <section className="confirm-sheet liquid-confirm-sheet" aria-labelledby="period-confirm-title">
             <div className="confirm-icon" aria-hidden="true">↻</div>
