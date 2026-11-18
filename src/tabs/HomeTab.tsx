@@ -119,7 +119,14 @@ export function HomeTab({
   const receiptCount = membershipFinancialsUnavailable ? null : membershipPreview?.receipt_count ?? settlement?.receipt_count ?? currentPeriod?.receipt_count ?? 0;
   const evidence = useTransferEvidence(currentPeriod?.id || null, settlement?.calculated_at);
   const evidenceSummary = summarizeTransferEvidence(evidence.bankReceipts);
-  const evidenceItemCount = evidenceSummary.total + evidence.whatsAppEvidence.length;
+  const whatsAppEvidenceSummary = evidence.whatsAppBankEvidence.reduce((summary, item) => {
+    summary.total += 1;
+    if (item.review_status === "reviewed") summary.reviewed += 1;
+    else if (item.review_status === "dismissed") summary.dismissed += 1;
+    else summary.pending += 1;
+    return summary;
+  }, { total: 0, pending: 0, reviewed: 0, dismissed: 0 });
+  const evidenceItemCount = evidenceSummary.total + whatsAppEvidenceSummary.total;
   const hasReviewedObligations = hasReviewedPaymentObligations(settlement);
   const awaitingCalculation = cycleStatus === "PENDING_SETTLEMENT" && !hasReviewedObligations;
   const historicalObligationsUnavailable = cycleStatus === "SETTLED" && !hasReviewedObligations;
@@ -203,22 +210,26 @@ export function HomeTab({
         <section className="content-section home-verification-section" aria-labelledby="home-verification-heading">
           <div className="section-heading">
             <h2 id="home-verification-heading">Payment verification</h2>
-            <span>{evidenceItemCount} evidence item{evidenceItemCount === 1 ? "" : "s"}</span>
+            <span>{evidence.loading && evidenceItemCount === 0 ? "Checking evidence" : `${evidenceItemCount} evidence item${evidenceItemCount === 1 ? "" : "s"}`}</span>
           </div>
-          {awaitingCalculation ? (
-            <div className="payment-verification-card"><Clock3 aria-hidden="true" /><div><strong>Awaiting calculation</strong></div></div>
-          ) : historicalObligationsUnavailable ? (
-            <div className="payment-verification-card unknown"><CircleAlert aria-hidden="true" /><div><strong>Historical obligations unavailable</strong></div></div>
-          ) : evidence.loading ? (
+          {evidence.loading && evidenceItemCount === 0 ? (
             <div className="payment-verification-card"><span className="status-spinner" aria-hidden="true" /><div><strong>Checking payment evidence</strong></div></div>
           ) : evidence.error ? (
             <div className="payment-verification-card unknown"><CircleAlert aria-hidden="true" /><div><strong>Verification unavailable</strong><span>Payment evidence could not be checked. No payments are being treated as complete.</span></div></div>
+          ) : awaitingCalculation ? (
+            evidenceItemCount > 0 ? (
+              <div className="payment-verification-card"><Clock3 aria-hidden="true" /><div><strong>{evidenceItemCount} transfer receipt{evidenceItemCount === 1 ? "" : "s"} recorded</strong><span>{whatsAppEvidenceSummary.pending ? `${whatsAppEvidenceSummary.pending} pending review · ` : ""}Settlement calculation is still pending. No payment is verified.</span></div></div>
+            ) : (
+              <div className="payment-verification-card"><Clock3 aria-hidden="true" /><div><strong>Awaiting calculation</strong></div></div>
+            )
+          ) : historicalObligationsUnavailable ? (
+            <div className="payment-verification-card unknown"><CircleAlert aria-hidden="true" /><div><strong>Historical obligations unavailable</strong></div></div>
           ) : (
             <div className={`payment-verification-card${evidenceSummary.verified > 0 ? " verified" : ""}`}>
               {evidenceSummary.verified > 0 ? <ShieldCheck aria-hidden="true" /> : <Clock3 aria-hidden="true" />}
               <div>
-                <strong>{evidenceSummary.verified > 0 ? `${evidenceSummary.verified} verified` : evidenceSummary.total ? "Evidence awaiting verification" : "Awaiting payment receipts"}</strong>
-                <span>{evidenceSummary.pending} pending · {evidenceSummary.rejected} rejected · {evidenceSummary.unknown} unknown{evidence.whatsAppEvidence.length ? ` · ${evidence.whatsAppEvidence.length} unassigned` : ""}</span>
+                <strong>{evidenceSummary.verified > 0 ? `${evidenceSummary.verified} verified` : evidenceItemCount ? "Evidence awaiting verification" : "Awaiting payment receipts"}</strong>
+                <span>{evidenceSummary.pending} payment pending · {whatsAppEvidenceSummary.pending} pending review · {whatsAppEvidenceSummary.reviewed} evidence reviewed · {evidenceSummary.rejected + whatsAppEvidenceSummary.dismissed} rejected or dismissed</span>
               </div>
             </div>
           )}

@@ -8,6 +8,10 @@ test("Home keeps provisional and unavailable settlement states explicit", async 
   assert.match(source, /"Est\. owes"/);
   assert.match(source, />Awaiting calculation</);
   assert.match(source, />Historical obligations unavailable</);
+  assert.match(source, /evidence\.whatsAppBankEvidence\.reduce/);
+  assert.match(source, /Settlement calculation is still pending\. No payment is verified\./);
+  assert.match(source, /item\.review_status === "reviewed"/);
+  assert.doesNotMatch(source, /review_status === "reviewed"[^\n]*verified/);
 });
 
 test("Receipts keeps bank evidence states distinct", async () => {
