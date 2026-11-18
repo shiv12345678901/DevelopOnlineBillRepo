@@ -5,9 +5,6 @@ import { clampSwipeDistance, isSwipeBackStart, shouldCompleteSwipe, SWIPE_BACK_T
 export type SwipeBackState = {
   isTracking: boolean;
   isDragging: boolean;
-  progress: number;
-  translateX: number;
-  canGoBack: boolean;
 };
 
 type Gesture = { touchId: number; startX: number; startY: number; lastX: number; lastAt: number; velocity: number; width: number; dragging: boolean; rejected: boolean };
@@ -54,9 +51,9 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
   const frameRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
   const transitioningRef = useRef(false);
-  const [state, setState] = useState<SwipeBackState>({ isTracking: false, isDragging: false, progress: 0, translateX: 0, canGoBack });
+  const [state, setState] = useState<SwipeBackState>({ isTracking: false, isDragging: false });
 
-  function applyPosition(x: number, width: number, dragging: boolean) {
+  function applyPosition(x: number, width: number, onApplied?: () => void) {
     const progress = Math.max(0, Math.min(1, x / Math.max(1, width)));
     const parallax = width * .3;
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -65,7 +62,7 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
       if (pageRef.current && !reduced) pageRef.current.style.transform = `translate3d(${x}px,0,0)`;
       if (underlayRef.current && !reduced) underlayRef.current.style.transform = `translate3d(${(-parallax * (1 - progress)).toFixed(2)}px,0,0)`;
       if (dimRef.current) dimRef.current.style.opacity = String(.12 * (1 - progress));
-      setState({ isTracking: true, isDragging: dragging, progress, translateX: x, canGoBack });
+      onApplied?.();
     });
   }
 
@@ -77,40 +74,54 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
       element?.style.removeProperty("transform");
     }
     dimRef.current?.style.removeProperty("opacity");
-    if (updateState) setState({ isTracking: false, isDragging: false, progress: 0, translateX: 0, canGoBack });
+    if (updateState) setState({ isTracking: false, isDragging: false });
+  }
+
+  function transitionTo(x: number, width: number, onSettled: () => void) {
+    const page = pageRef.current;
+    const underlay = underlayRef.current;
+    if (!page || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      onSettled();
+      return;
+    }
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      page.removeEventListener("transitionend", handleTransitionEnd);
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+      onSettled();
+    };
+    const handleTransitionEnd = (event: TransitionEvent) => {
+      if (event.target === page && event.propertyName === "transform") finish();
+    };
+    page.addEventListener("transitionend", handleTransitionEnd);
+    page.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.32,.72,0,1)`;
+    if (underlay) underlay.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.32,.72,0,1)`;
+    applyPosition(x, width, () => {
+      timerRef.current = window.setTimeout(finish, SWIPE_BACK_TRANSITION_MS + 80);
+    });
   }
 
   function animateBack(width: number) {
-    const page = pageRef.current;
-    const underlay = underlayRef.current;
-    if (page) page.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.32,.72,0,1)`;
-    if (underlay) underlay.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.32,.72,0,1)`;
-    applyPosition(0, width, false);
-    timerRef.current = window.setTimeout(resetStyles, SWIPE_BACK_TRANSITION_MS + 10);
+    setState({ isTracking: true, isDragging: false });
+    transitionTo(0, width, resetStyles);
   }
 
   function completeBack(width: number) {
     if (transitioningRef.current) return;
     transitioningRef.current = true;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduced) {
-      onBack();
-      transitioningRef.current = false;
-      resetStyles();
-      return;
-    }
-    if (pageRef.current) pageRef.current.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.32,.72,0,1)`;
-    if (underlayRef.current) underlayRef.current.style.transition = `transform ${SWIPE_BACK_TRANSITION_MS}ms cubic-bezier(.32,.72,0,1)`;
-    applyPosition(width, width, false);
-    timerRef.current = window.setTimeout(() => {
+    setState({ isTracking: true, isDragging: false });
+    transitionTo(width, width, () => {
       const navigated = onBack();
       transitioningRef.current = false;
       if (!navigated) {
         resetStyles();
         return;
       }
-      resetStyles(false);
-    }, SWIPE_BACK_TRANSITION_MS);
+      resetStyles();
+    });
   }
 
   function onTouchStart(event: TouchEvent) {
@@ -128,7 +139,7 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
     // Claim the gesture before Safari can begin its browser-history snapshot.
     event.preventDefault();
     gestureRef.current = { touchId: touch.identifier, startX: touch.clientX, startY: touch.clientY, lastX: touch.clientX, lastAt: performance.now(), velocity: 0, width: bounds.width, dragging: false, rejected: false };
-    setState((current) => ({ ...current, isTracking: true, canGoBack }));
+    setState({ isTracking: true, isDragging: false });
   }
 
   function onTouchMove(event: TouchEvent) {
@@ -146,13 +157,14 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
         return;
       }
       gesture.dragging = true;
+      setState({ isTracking: true, isDragging: true });
     }
     event.preventDefault();
     const now = performance.now();
     gesture.velocity = Math.max(0, touch.clientX - gesture.lastX) / Math.max(1, now - gesture.lastAt);
     gesture.lastX = touch.clientX;
     gesture.lastAt = now;
-    applyPosition(clampSwipeDistance(dx, gesture.width), gesture.width, true);
+    applyPosition(clampSwipeDistance(dx, gesture.width), gesture.width);
   }
 
   function finish(cancelled = false) {
@@ -169,7 +181,6 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
   }
 
   useEffect(() => {
-    setState((current) => ({ ...current, canGoBack }));
     const cancel = () => {
       gestureRef.current = null;
       transitioningRef.current = false;
@@ -193,7 +204,7 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
       page?.removeEventListener("touchcancel", touchCancel);
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
-      resetStyles();
+      resetStyles(false);
     };
   }, [canGoBack]);
 

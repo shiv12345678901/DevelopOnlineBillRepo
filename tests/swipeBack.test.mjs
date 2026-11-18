@@ -75,6 +75,8 @@ test("topmost overlay closes before page navigation", () => {
 });
 
 test("gesture conflicts, cancellation, reduced motion and cleanup are handled centrally", () => {
+  const applyPositionStart = componentSource.indexOf("function applyPosition");
+  const applyPositionSource = componentSource.slice(applyPositionStart, componentSource.indexOf("function resetStyles", applyPositionStart));
   assert.match(componentSource, /\[data-disable-swipe-back\]/);
   assert.match(componentSource, /"button"/);
   assert.match(componentSource, /"\[role='button'\]"/);
@@ -84,6 +86,11 @@ test("gesture conflicts, cancellation, reduced motion and cleanup are handled ce
   assert.match(componentSource, /removeEventListener\("touchstart"/);
   assert.match(componentSource, /removeEventListener\("resize"/);
   assert.match(componentSource, /transitioningRef\.current/);
+  assert.doesNotMatch(applyPositionSource, /setState/);
+  assert.match(componentSource, /addEventListener\("transitionend", handleTransitionEnd\)/);
+  assert.match(componentSource, /event\.propertyName === "transform"/);
+  assert.match(componentSource, /SWIPE_BACK_TRANSITION_MS \+ 80/);
+  assert.match(componentSource, /resetStyles\(false\)/);
 });
 
 test("browser, header and detail swipe Back share real page history", () => {
