@@ -171,4 +171,8 @@ test("receipt loading is paginated and sheet is mobile scrollable", async () => 
   assert.match(css, /@media \(max-width: 390px\)/);
   assert.match(component, /navigator\.clipboard/);
   assert.match(component, /generationRef/);
+  assert.match(component, /<IosSheet/);
+  assert.doesNotMatch(component, /GlassSheet/);
+  assert.match(css, /\.settings-action-button/);
+  assert.match(css, /\.ios-sheet/);
 });

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Calculator, Check, ChevronRight, ClipboardCopy, RefreshCw, X } from "lucide-react";
-import { GlassButton, GlassSheet } from "@zakisheriff/liquid-glass";
 import {
   fetchAllEligibleReceiptsForPeriod,
   fetchEffectiveReceiptVisibility,
@@ -15,6 +14,7 @@ import {
 import { CopyCalculationError, generateCopyCalculation, writeCalculationText, type CalculationResult } from "../copyCalculation";
 import { MEMBERSHIP_FEATURE_ENABLED, modeLabel, permissionsMatch } from "../membership";
 import { formatDate } from "./format";
+import { IosSheet } from "./IosSheet";
 
 function fallbackCopy(text: string) {
   const area = document.createElement("textarea");
@@ -126,14 +126,14 @@ export function CopyCalculationSettings({ period }: { period: Period | undefined
   }
 
   return <>
-    <li className="settings-row copy-calculation-row">
-      <button type="button" onClick={showSheet} disabled={!MEMBERSHIP_FEATURE_ENABLED || !period}>
+    <li className="settings-action-row copy-calculation-row">
+      <button className="settings-action-button" type="button" onClick={showSheet} disabled={!MEMBERSHIP_FEATURE_ENABLED || !period}>
         <span className="settings-icon tile-blue" aria-hidden="true"><Calculator /></span>
         <span className="settings-copy"><span className="settings-title">Copy Calculation</span><span className="settings-subtitle">{MEMBERSHIP_FEATURE_ENABLED ? "WhatsApp-ready expense breakdown" : "Available after membership backend deployment"}</span></span>
         <ChevronRight aria-hidden="true" />
       </button>
     </li>
-    <GlassSheet open={open} onClose={() => !copying && setOpen(false)} intensity={6} aria-label="Copy calculation">
+    <IosSheet open={open} onClose={() => { if (!copying) setOpen(false); }} label="Copy calculation" className="copy-calculation-modal">
       <section className="copy-calculation-sheet" aria-labelledby="copy-calculation-title">
         <header className="copy-calculation-header">
           <div className="copy-calculation-heading">
@@ -145,7 +145,7 @@ export function CopyCalculationSettings({ period }: { period: Period | undefined
 
         <div className="copy-calculation-body">
           {loading && <div className="copy-calculation-state" role="status"><span className="status-spinner" aria-hidden="true" /><strong>Preparing calculation</strong></div>}
-          {error && <div className="copy-calculation-state error" role="alert"><p>{error}</p><GlassButton type="button" variant="tinted" icon={<RefreshCw />} onClick={() => void loadCalculation()}>Try again</GlassButton></div>}
+          {error && <div className="copy-calculation-state error" role="alert"><p>{error}</p><button className="ios-secondary-button" type="button" onClick={() => void loadCalculation()}><RefreshCw />Try again</button></div>}
           {membership && preview && calculation && <>
             <section className="copy-calculation-overview" aria-label="Calculation summary">
               <div className="copy-calculation-total"><span>Eligible total</span><strong>{fmt(preview.total_cents)}</strong></div>
@@ -174,9 +174,9 @@ export function CopyCalculationSettings({ period }: { period: Period | undefined
 
         {calculation && <footer className="copy-calculation-footer">
           <p className={`copy-calculation-status${copyStatus === "Calculation copied!" ? " success" : ""}`} aria-live="polite">{copyStatus === "Calculation copied!" && <Check aria-hidden="true" />}{copyStatus || "Ready to paste into WhatsApp"}</p>
-          <GlassButton className="copy-calculation-action" type="button" variant="filled" size="lg" icon={copyStatus === "Calculation copied!" ? <Check /> : <ClipboardCopy />} disabled={copying} onClick={() => void copyCalculation()}>{copying ? "Copying…" : copyStatus === "Calculation copied!" ? "Copied" : "Copy Calculation"}</GlassButton>
+          <button className="ios-primary-button copy-calculation-action" type="button" disabled={copying} onClick={() => void copyCalculation()}>{copyStatus === "Calculation copied!" ? <Check /> : <ClipboardCopy />}{copying ? "Copying…" : copyStatus === "Calculation copied!" ? "Copied" : "Copy Calculation"}</button>
         </footer>}
       </section>
-    </GlassSheet>
+    </IosSheet>
   </>;
 }

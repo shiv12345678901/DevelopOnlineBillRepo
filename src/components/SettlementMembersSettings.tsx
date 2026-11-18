@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CircleAlert, LockKeyhole, UsersRound } from "lucide-react";
-import { GlassButton, GlassSegmented, GlassSheet } from "@zakisheriff/liquid-glass";
 import {
   fetchSettlementCycleMembership,
   fetchSettlementCycleMembershipPermissions,
@@ -16,6 +15,7 @@ import {
 } from "../api";
 import { MEMBERSHIP_FEATURE_ENABLED, classifyMembershipError, membershipErrorMessage, modeDescription, modeLabel, permissionsMatch } from "../membership";
 import { ProfileAvatar } from "./ProfileAvatar";
+import { IosSheet } from "./IosSheet";
 
 const MODES: ParticipationMode[] = ["enabled", "keep_receipts", "disabled"];
 const MODE_OPTIONS = ["Enabled", "Keep Receipts", "Disabled"];
@@ -124,23 +124,25 @@ export function SettlementMembersSettings({ period, memberAvatarUrls, onMembersh
         return <li className={`membership-member mode-${member.participation_mode}`} key={member.member_name}>
           <div className="membership-member-heading">
             <ProfileAvatar name={member.member_name} src={memberAvatarUrls[memberNameKey(member.member_name)]} />
-            <div><strong>{member.member_name}</strong><span>{modeLabel(member.participation_mode)}</span></div>
+            <div><strong>{member.member_name}</strong><span>{member.participation_mode === "disabled" ? "Not participating this cycle" : member.participation_mode === "keep_receipts" ? "Receipts count · No equal share" : "Included in equal sharing"}</span></div>
+            <span className={`membership-mode-badge mode-${member.participation_mode}`}>{modeLabel(member.participation_mode)}</span>
           </div>
-          {editable ? <GlassSegmented className="membership-mode-control" options={MODE_OPTIONS} value={modeIndex} onChange={(index) => { const nextMode = MODES[index]; if (nextMode !== member.participation_mode) setPendingChange({ memberName: member.member_name, previousMode: member.participation_mode, nextMode }); }} size="sm" aria-label={`Participation mode for ${member.member_name}`} /> : <span className="membership-mode-readonly">{modeLabel(member.participation_mode)}</span>}
-          <p>{modeDescription(member.participation_mode)}</p>
-          {financial && member.participation_mode !== "disabled" ? <dl className="membership-financials"><div><dt>Paid</dt><dd>{fmt(financial.paid_cents)}</dd></div><div><dt>Share</dt><dd>{fmt(financial.share_cents)}</dd></div><div><dt>{financial.net_cents >= 0 ? "Preview credit" : "Preview shortfall"}</dt><dd className={financial.net_cents >= 0 ? "balance-credit" : "balance-due"}>{fmt(Math.abs(financial.net_cents))}</dd></div></dl> : <span className="membership-not-participating">Not participating this cycle</span>}
+          {editable && <div className="membership-mode-control" role="radiogroup" aria-label={`Participation mode for ${member.member_name}`}>
+            {MODE_OPTIONS.map((label, index) => <button type="button" role="radio" aria-checked={index === modeIndex} className={index === modeIndex ? "active" : ""} key={label} onClick={() => { const nextMode = MODES[index]; if (nextMode !== member.participation_mode) setPendingChange({ memberName: member.member_name, previousMode: member.participation_mode, nextMode }); }}>{label}</button>)}
+          </div>}
+          {financial && member.participation_mode !== "disabled" && <dl className="membership-financials"><div><dt>Paid</dt><dd>{fmt(financial.paid_cents)}</dd></div><div><dt>Share</dt><dd>{fmt(financial.share_cents)}</dd></div><div><dt>{financial.net_cents >= 0 ? "Preview credit" : "Preview shortfall"}</dt><dd className={financial.net_cents >= 0 ? "balance-credit" : "balance-due"}>{fmt(Math.abs(financial.net_cents))}</dd></div></dl>}
         </li>;
       })}
     </ul>
-    <GlassSheet open={Boolean(pendingChange)} onClose={() => !saving && setPendingChange(null)} intensity={6} aria-label="Confirm membership change">
+    <IosSheet open={Boolean(pendingChange)} onClose={() => { if (!saving) setPendingChange(null); }} label="Confirm membership change" className="membership-confirm-modal">
       {pendingChange && <section className="membership-confirm" aria-labelledby="membership-confirm-title">
         <span className="membership-confirm-icon" aria-hidden="true"><UsersRound /></span>
         <h2 id="membership-confirm-title">Change {pendingChange.memberName}?</h2>
         <p><strong>{modeLabel(pendingChange.previousMode)} → {modeLabel(pendingChange.nextMode)}</strong></p>
         <p>{modeDescription(pendingChange.nextMode)}</p>
         <p>Historical records remain unchanged. Current figures shown above reflect the saved configuration and will refresh after confirmation.</p>
-        <div className="confirm-actions"><GlassButton type="button" variant="clear" disabled={saving} onClick={() => setPendingChange(null)}>Cancel</GlassButton><GlassButton type="button" variant="filled" disabled={saving} onClick={() => void confirmChange()}>{saving ? "Saving…" : "Confirm"}</GlassButton></div>
+        <div className="confirm-actions"><button className="ios-secondary-button" type="button" disabled={saving} onClick={() => setPendingChange(null)}>Cancel</button><button className="ios-primary-button" type="button" disabled={saving} onClick={() => void confirmChange()}>{saving ? "Saving…" : "Confirm"}</button></div>
       </section>}
-    </GlassSheet>
+    </IosSheet>
   </>;
 }

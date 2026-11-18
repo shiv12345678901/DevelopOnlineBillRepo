@@ -68,7 +68,8 @@ test("production membership RPCs remain gated until backend deployment", async (
 test("admin and read-only membership views use backend can_edit", async () => {
   const source = await readFile(new URL("../src/components/SettlementMembersSettings.tsx", import.meta.url), "utf8");
   assert.match(source, /permissions\?\.can_edit && membership\?\.status === "CURRENT"/);
-  assert.match(source, /editable \? <GlassSegmented/);
+  assert.match(source, /editable && <div className="membership-mode-control" role="radiogroup"/);
+  assert.match(source, /role="radio" aria-checked=/);
   assert.match(source, /Historical membership is read-only/);
   assert.match(source, /MODES: ParticipationMode\[\] = \["enabled", "keep_receipts", "disabled"\]/);
 });
@@ -113,8 +114,8 @@ test("changing periods clears stale membership before loading the selected cycle
 
 test("membership UI retains mobile and theme-compatible design tokens", async () => {
   const css = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
-  assert.match(css, /\.membership-member\.mode-keep_receipts/);
-  assert.match(css, /\.membership-member\.mode-disabled/);
+  assert.match(css, /\.membership-mode-badge\.mode-keep_receipts/);
+  assert.match(css, /\.membership-mode-badge\.mode-disabled/);
   assert.match(css, /var\(--surface\)/);
   assert.match(css, /@media \(max-width: 390px\)/);
 });
