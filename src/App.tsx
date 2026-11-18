@@ -130,14 +130,9 @@ export default function App() {
     previousTabRef.current = tab;
     if (!session || previousTab === tab || tab !== "receipts") return;
 
-    let cancelled = false;
-    setLoading(true);
-    refreshData().finally(() => {
-      if (!cancelled) setLoading(false);
-    });
+    void refreshData();
 
     return () => {
-      cancelled = true;
       refreshGenerationRef.current += 1;
     };
   }, [tab, session?.user.id]);

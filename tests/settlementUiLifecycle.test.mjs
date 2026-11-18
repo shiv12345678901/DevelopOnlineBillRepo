@@ -35,3 +35,11 @@ test("primary navigation omits settlement and receipts owns period-isolated bank
   assert.match(receiptsSource, />Bank receipts</);
   assert.match(receiptsSource, /return \{ state, label: "Unverified" \}/);
 });
+
+test("opening Receipts refreshes in the background without replacing the page", async () => {
+  const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const effect = source.match(/\/\/ Receipts and settlement evidence[\s\S]*?\}, \[tab, session\?\.user\.id\]\);/)?.[0] || "";
+  assert.match(effect, /tab !== "receipts"/);
+  assert.match(effect, /void refreshData\(\)/);
+  assert.doesNotMatch(effect, /setLoading/);
+});
