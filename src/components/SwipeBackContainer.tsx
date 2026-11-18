@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { hasNavigationOverlay } from "../navigationOverlays";
-import { clampSwipeDistance, shouldCompleteSwipe, SWIPE_BACK_EDGE_PX, SWIPE_BACK_TRANSITION_MS, swipeBackIntent } from "../swipeBack";
+import { applePlatformOwnsEdgeBack, clampSwipeDistance, shouldCompleteSwipe, SWIPE_BACK_EDGE_PX, SWIPE_BACK_TRANSITION_MS, swipeBackIntent } from "../swipeBack";
 
 export type SwipeBackState = {
   isTracking: boolean;
@@ -111,7 +111,13 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!canGoBack || transitioningRef.current || hasNavigationOverlay() || event.clientX > SWIPE_BACK_EDGE_PX || (event.pointerType === "mouse" && navigator.maxTouchPoints === 0) || swipeBackTargetIsBlocked(event.target, event.currentTarget)) return;
+    if (!canGoBack
+      || transitioningRef.current
+      || hasNavigationOverlay()
+      || event.clientX > SWIPE_BACK_EDGE_PX
+      || applePlatformOwnsEdgeBack(navigator.userAgent, navigator.platform, navigator.maxTouchPoints)
+      || (event.pointerType === "mouse" && navigator.maxTouchPoints === 0)
+      || swipeBackTargetIsBlocked(event.target, event.currentTarget)) return;
     gestureRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastAt: performance.now(), velocity: 0, width: window.innerWidth, dragging: false, rejected: false };
     event.currentTarget.setPointerCapture(event.pointerId);
     setState((current) => ({ ...current, isTracking: true, canGoBack }));

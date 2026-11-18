@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  applePlatformOwnsEdgeBack,
   clampSwipeDistance,
   shouldCompleteSwipe,
   SWIPE_BACK_EDGE_PX,
@@ -20,6 +21,13 @@ test("edge swipe uses the required activation area and mobile transition", () =>
   assert.ok(SWIPE_BACK_TRANSITION_MS >= 220 && SWIPE_BACK_TRANSITION_MS <= 280);
   assert.match(componentSource, /event\.clientX > SWIPE_BACK_EDGE_PX/);
   assert.match(componentSource, /navigator\.maxTouchPoints/);
+});
+
+test("Apple touch platforms defer to the native edge-back transition", () => {
+  assert.equal(applePlatformOwnsEdgeBack("Mozilla/5.0 (iPhone)", "iPhone", 5), true);
+  assert.equal(applePlatformOwnsEdgeBack("Mozilla/5.0 (Macintosh)", "MacIntel", 5), true);
+  assert.equal(applePlatformOwnsEdgeBack("Mozilla/5.0 (Linux; Android 15)", "Linux armv8l", 5), false);
+  assert.match(componentSource, /applePlatformOwnsEdgeBack\(navigator\.userAgent, navigator\.platform, navigator\.maxTouchPoints\)/);
 });
 
 test("gesture waits for a horizontal movement threshold and rejects vertical or leftward motion", () => {
@@ -81,5 +89,7 @@ test("pushed pages cover the complete app width without exposing the underlay gu
   assert.match(cssSource, /--page-inline-padding: 20px/);
   assert.match(cssSource, /\.swipe-back-stage \{[^}]*width: calc\(100% \+ var\(--page-inline-padding\) \+ var\(--page-inline-padding\)\)/);
   assert.match(cssSource, /\.swipe-back-page \{[^}]*padding-inline: var\(--page-inline-padding\)/);
-  assert.match(cssSource, /\.swipe-back-stage \{[^}]*overflow: hidden/);
+  assert.match(cssSource, /\.swipe-back-stage \{[^}]*overflow-x: clip/);
+  assert.match(cssSource, /\.swipe-back-stage \{[^}]*overflow-y: visible/);
+  assert.doesNotMatch(cssSource, /\.screen--evidence-detail \{[^}]*margin-top:\s*-/);
 });

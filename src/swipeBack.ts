@@ -16,3 +16,8 @@ export function shouldCompleteSwipe(distance: number, width: number, velocity: n
 export function clampSwipeDistance(distance: number, width: number) {
   return Math.max(0, Math.min(width, distance));
 }
+
+export function applePlatformOwnsEdgeBack(userAgent: string, platform: string, maxTouchPoints: number) {
+  return /iPad|iPhone|iPod/i.test(userAgent)
+    || (platform === "MacIntel" && maxTouchPoints > 1);
+}
