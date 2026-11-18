@@ -17,6 +17,21 @@ const componentSource = await readFile(new URL("../src/components/SwipeBackConta
 const navigationSource = await readFile(new URL("../src/useNavigationHistory.ts", import.meta.url), "utf8");
 const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
+const indexSource = await readFile(new URL("../index.html", import.meta.url), "utf8");
+
+test("the saved appearance is applied before the first browser paint", () => {
+  assert.ok(indexSource.indexOf('localStorage.getItem("splitmate-theme")') < indexSource.indexOf('<script type="module"'));
+  assert.match(indexSource, /html \{ min-height: 100%; background: #000; color-scheme: dark; \}/);
+  assert.match(indexSource, /html\[data-theme="light"\] \{ background: #f2f2f7; color-scheme: light; \}/);
+});
+
+test("loading completion does not replay decorative page opacity animations", () => {
+  assert.match(cssSource, /\.tab-enter \{ animation: none; \}/);
+  assert.match(cssSource, /\.screen--home \.page-header \{ animation: none; \}/);
+  assert.match(cssSource, /\.screen--home \.content-section \{ animation: none; \}/);
+  assert.match(cssSource, /\.home-balance \{ animation: none; \}/);
+  assert.match(cssSource, /\.stagger, \.stagger \.avatar \{ animation: none; \}/);
+});
 
 test("edge swipe uses the required activation area and mobile transition", () => {
   assert.equal(NATIVE_HISTORY_GUARD_PX, 20);
