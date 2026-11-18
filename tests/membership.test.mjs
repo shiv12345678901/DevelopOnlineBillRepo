@@ -83,6 +83,20 @@ test("financial preview renders authoritative returned values without client rec
   assert.match(source, /Not participating this cycle/);
 });
 
+test("ordinary pages exclude disabled members and their receipts", async () => {
+  const [app, home] = await Promise.all([
+    readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/tabs/HomeTab.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /fetchEffectiveReceiptVisibility\(targetPeriod\.id\)/);
+  assert.match(app, /receipt\.visible && receipt\.eligible && !receipt\.manually_excluded/);
+  assert.match(app, /rawReceipts\.filter\(\(receipt\) => visibleReceiptIds\.has\(receipt\.id\)\)/);
+  assert.match(home, /filter\(\(member\) => member\.participation_mode !== "disabled"\)/);
+  assert.match(home, /membershipPreview\?\.total_cents/);
+  assert.match(home, /membershipPreview\?\.equal_share_cents/);
+  assert.match(home, /membershipPreview\?\.receipt_count/);
+});
+
 test("successful changes refresh financial and receipt state before reloading membership", async () => {
   const source = await readFile(new URL("../src/components/SettlementMembersSettings.tsx", import.meta.url), "utf8");
   assert.match(source, /await onMembershipChanged\(\)/);

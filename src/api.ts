@@ -184,6 +184,26 @@ export async function fetchReceiptsForPeriod(periodId: string, limit = 100): Pro
   return data || [];
 }
 
+export async function fetchAllEligibleReceiptsForPeriod(periodId: string, pageSize = 500): Promise<Receipt[]> {
+  const receipts: Receipt[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("receipts")
+      .select("id,period_id,captured_at,merchant,amount_cents,payer,category,date,is_excluded,image_url")
+      .eq("period_id", periodId)
+      .eq("is_excluded", false)
+      .order("date", { ascending: true })
+      .order("captured_at", { ascending: true, nullsFirst: true })
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+    throwIfSupabaseError(error);
+    const page = (data || []) as Receipt[];
+    receipts.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return receipts;
+}
+
 export async function fetchPeriods(): Promise<Period[]> {
   const { data, error } = await supabase
     .from("periods")

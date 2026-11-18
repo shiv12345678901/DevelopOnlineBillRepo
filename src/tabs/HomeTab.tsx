@@ -1,12 +1,23 @@
 import { CalendarRange, ChevronRight, CircleAlert, Clock3, ShieldCheck, WalletCards } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
-import { fmt, memberNameKey, type Period, type Settlement } from "../api";
+import { useEffect, useState } from "react";
+import {
+  fetchSettlementCycleMembership,
+  fetchSettlementCycleMembershipPermissions,
+  fetchSettlementCyclePreview,
+  fmt,
+  memberNameKey,
+  type Period,
+  type Settlement,
+  type SettlementCyclePreview,
+} from "../api";
 import { ProfileAvatar } from "../components/ProfileAvatar";
 import { formatDate } from "../components/format";
 import { cycleStatusFor, cycleStatusLabel, type CycleStatus } from "../cycleStatus";
 import { hasReviewedPaymentObligations, provisionalShareDifference } from "../settlementLifecycle";
 import { summarizeTransferEvidence } from "../settlementMatching";
 import { useTransferEvidence } from "../components/useTransferEvidence";
+import { MEMBERSHIP_FEATURE_ENABLED, permissionsMatch } from "../membership";
 
 const HOME_MEMBER_ORDER = ["shiva", "arjun", "arpan", "swasti"];
 
@@ -58,12 +69,54 @@ export function HomeTab({
   user: User;
   onOpenHistory: () => void;
 }) {
-  const members = Object.entries(settlement?.member_totals || {}).sort(([left], [right]) => memberOrder(left) - memberOrder(right));
   const currentPeriod = period || periods.find((candidate) => candidate.id === settlement?.period_id) || periods.find((candidate) => candidate.status === "CURRENT") || periods[0];
+  const [membershipPreview, setMembershipPreview] = useState<SettlementCyclePreview | null>(null);
+  const [membershipLoading, setMembershipLoading] = useState(false);
+  const [membershipError, setMembershipError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMembershipPreview(null);
+    setMembershipError(false);
+    if (!MEMBERSHIP_FEATURE_ENABLED || !currentPeriod?.id) {
+      setMembershipLoading(false);
+      return () => { cancelled = true; };
+    }
+
+    setMembershipLoading(true);
+    void (async () => {
+      try {
+        const permissions = await fetchSettlementCycleMembershipPermissions(currentPeriod.id);
+        if (!permissions.can_view) throw new Error("UNAUTHORIZED_MEMBERSHIP_ACCESS");
+        const [membership, preview] = await Promise.all([
+          fetchSettlementCycleMembership(currentPeriod.id),
+          fetchSettlementCyclePreview(currentPeriod.id),
+        ]);
+        if (
+          membership.period_id !== currentPeriod.id
+          || preview.period_id !== currentPeriod.id
+          || membership.revision !== preview.revision
+          || !permissionsMatch(permissions, membership.permissions, preview.permissions)
+        ) throw new Error("Membership responses did not agree.");
+        if (!cancelled) setMembershipPreview(preview);
+      } catch {
+        if (!cancelled) setMembershipError(true);
+      } finally {
+        if (!cancelled) setMembershipLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentPeriod?.id, settlement?.calculated_at]);
+
+  const legacyMembers = Object.entries(settlement?.member_totals || {}).sort(([left], [right]) => memberOrder(left) - memberOrder(right));
+  const participatingMembers = membershipPreview?.members
+    .filter((member) => member.participation_mode !== "disabled")
+    .sort((left, right) => memberOrder(left.member_name) - memberOrder(right.member_name));
   const cycleStatus = currentPeriod ? cycleStatusFor(currentPeriod) : "ACTIVE";
-  const totalCents = settlement?.total_cents ?? currentPeriod?.total_cents ?? 0;
-  const perPersonCents = settlement?.per_person_cents ?? currentPeriod?.per_person_cents ?? 0;
-  const receiptCount = settlement?.receipt_count ?? currentPeriod?.receipt_count ?? 0;
+  const membershipFinancialsUnavailable = MEMBERSHIP_FEATURE_ENABLED && !membershipPreview;
+  const totalCents = membershipFinancialsUnavailable ? null : membershipPreview?.total_cents ?? settlement?.total_cents ?? currentPeriod?.total_cents ?? 0;
+  const perPersonCents = membershipFinancialsUnavailable ? null : membershipPreview?.equal_share_cents ?? settlement?.per_person_cents ?? currentPeriod?.per_person_cents ?? 0;
+  const receiptCount = membershipFinancialsUnavailable ? null : membershipPreview?.receipt_count ?? settlement?.receipt_count ?? currentPeriod?.receipt_count ?? 0;
   const evidence = useTransferEvidence(currentPeriod?.id || null, settlement?.calculated_at);
   const evidenceSummary = summarizeTransferEvidence(evidence.bankReceipts);
   const evidenceItemCount = evidenceSummary.total + evidence.whatsAppEvidence.length;
@@ -94,31 +147,53 @@ export function HomeTab({
           </div>
           <span className="home-summary-icon" aria-hidden="true"><WalletCards /></span>
         </div>
-        <p className="summary-amount">{fmt(perPersonCents)}</p>
+        <p className="summary-amount">{perPersonCents === null ? "—" : fmt(perPersonCents)}</p>
         <dl className="summary-details">
-          <div><dt>Household spending</dt><dd>{fmt(totalCents)}</dd></div>
-          <div><dt>Receipts</dt><dd>{receiptCount}</dd></div>
+          <div><dt>Household spending</dt><dd>{totalCents === null ? "—" : fmt(totalCents)}</dd></div>
+          <div><dt>Receipts</dt><dd>{receiptCount ?? "—"}</dd></div>
         </dl>
       </section>
 
       <section className="content-section" aria-labelledby="members-heading">
         <div className="section-heading">
           <h2 id="members-heading">Paid so far</h2>
-          <span>{members.length} people</span>
+          <span>{participatingMembers ? `${participatingMembers.length} people` : `${legacyMembers.length} people`}</span>
         </div>
-        {members.length ? <ul className="grouped-list member-list">
-        {members.map(([name, cents], i) => (
+        {MEMBERSHIP_FEATURE_ENABLED && membershipLoading ? (
+          <div className="empty-state compact-empty" role="status">Updating settlement members…</div>
+        ) : MEMBERSHIP_FEATURE_ENABLED && membershipError ? (
+          <div className="empty-state compact-empty" role="alert">Membership totals are unavailable. Refresh before relying on this calculation.</div>
+        ) : participatingMembers ? (participatingMembers.length ? <ul className="grouped-list member-list">
+        {participatingMembers.map((member, i) => (
           <li
-            key={name}
+            key={member.member_name}
             className="list-row stagger"
             style={{ animationDelay: `${i * 60}ms` }}
           >
-            <ProfileAvatar name={name} src={memberAvatarUrls[memberNameKey(name)]} />
+            <ProfileAvatar name={member.member_name} src={memberAvatarUrls[memberNameKey(member.member_name)]} />
             <div className="row-main">
-              <span className="row-title">{name}</span>
-              <span className="row-sub">Paid {fmt(cents)}</span>
+              <span className="row-title">{member.member_name}</span>
+              <span className="row-sub">Paid {fmt(member.paid_cents)}{member.participation_mode === "keep_receipts" ? " · Keep Receipts" : ""}</span>
             </div>
-            <ShareDifference perPerson={perPersonCents} contributed={cents} cycleStatus={cycleStatus} />
+            {member.participation_mode === "keep_receipts" ? (
+              <span className={`row-amount ${member.net_cents > 0 ? "balance-credit" : "balance-settled"}`}>
+                {member.net_cents > 0 ? `Credit ${fmt(member.net_cents)}` : "No equal share"}
+              </span>
+            ) : member.net_cents > 0 ? (
+              <span className="row-amount balance-credit">Est. owed {fmt(member.net_cents)}</span>
+            ) : member.net_cents < 0 ? (
+              <span className="row-amount balance-due">Est. owes {fmt(-member.net_cents)}</span>
+            ) : (
+              <span className="row-amount balance-settled">At equal share</span>
+            )}
+          </li>
+        ))}
+        </ul> : <div className="empty-state compact-empty">No participating members in this period.</div>) : legacyMembers.length ? <ul className="grouped-list member-list">
+        {legacyMembers.map(([name, cents], i) => (
+          <li key={name} className="list-row stagger" style={{ animationDelay: `${i * 60}ms` }}>
+            <ProfileAvatar name={name} src={memberAvatarUrls[memberNameKey(name)]} />
+            <div className="row-main"><span className="row-title">{name}</span><span className="row-sub">Paid {fmt(cents)}</span></div>
+            <ShareDifference perPerson={perPersonCents ?? 0} contributed={cents} cycleStatus={cycleStatus} />
           </li>
         ))}
         </ul> : <div className="empty-state compact-empty">No household spending has been recorded for this period yet.</div>}
