@@ -6,7 +6,7 @@ export const SWIPE_BACK_VELOCITY_PX_MS = .5;
 export const SWIPE_BACK_TRANSITION_MS = 240;
 
 export function isSwipeBackStart(localX: number) {
-  return localX > NATIVE_HISTORY_GUARD_PX && localX <= SWIPE_BACK_EDGE_PX;
+  return localX >= 0 && localX <= SWIPE_BACK_EDGE_PX;
 }
 
 export function swipeBackIntent(dx: number, dy: number): "pending" | "horizontal" | "rejected" {

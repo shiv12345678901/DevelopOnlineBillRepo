@@ -197,14 +197,17 @@ export function SwipeBackContainer({ canGoBack, onBack, page, children }: { canG
   const trailingGuardRef = useRef<HTMLSpanElement>(null);
   const { bind, state } = useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef });
   useEffect(() => {
+    if (canGoBack) return;
     const preventNativeHistory = (event: TouchEvent) => event.preventDefault();
     const guards = [leadingGuardRef.current, trailingGuardRef.current];
     guards.forEach((guard) => guard?.addEventListener("touchstart", preventNativeHistory, { passive: false }));
     return () => guards.forEach((guard) => guard?.removeEventListener("touchstart", preventNativeHistory));
-  }, []);
+  }, [canGoBack]);
   return <div className={`swipe-back-stage${state.isDragging ? " is-dragging" : ""}`}>
-    <span ref={leadingGuardRef} className="native-history-guard native-history-guard--leading" aria-hidden="true" />
-    <span ref={trailingGuardRef} className="native-history-guard native-history-guard--trailing" aria-hidden="true" />
+    {!canGoBack && <>
+      <span ref={leadingGuardRef} className="native-history-guard native-history-guard--leading" aria-hidden="true" />
+      <span ref={trailingGuardRef} className="native-history-guard native-history-guard--trailing" aria-hidden="true" />
+    </>}
     <div ref={underlayRef} className={canGoBack ? "swipe-back-underlay" : "swipe-back-base"} aria-hidden={canGoBack || undefined} inert={canGoBack || undefined}>
       {children}
       {canGoBack && <span ref={dimRef} className="swipe-back-dim" />}

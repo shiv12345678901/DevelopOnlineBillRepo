@@ -21,8 +21,9 @@ test("edge swipe uses the required activation area and mobile transition", () =>
   assert.equal(NATIVE_HISTORY_GUARD_PX, 20);
   assert.equal(SWIPE_BACK_EDGE_PX, 72);
   assert.ok(SWIPE_BACK_TRANSITION_MS >= 220 && SWIPE_BACK_TRANSITION_MS <= 280);
-  assert.equal(isSwipeBackStart(20), false);
-  assert.equal(isSwipeBackStart(21), true);
+  assert.equal(isSwipeBackStart(-1), false);
+  assert.equal(isSwipeBackStart(0), true);
+  assert.equal(isSwipeBackStart(20), true);
   assert.equal(isSwipeBackStart(72), true);
   assert.equal(isSwipeBackStart(73), false);
   assert.match(componentSource, /getBoundingClientRect\(\)\.left/);
@@ -31,6 +32,8 @@ test("edge swipe uses the required activation area and mobile transition", () =>
 });
 
 test("physical browser edges are reserved so Safari cannot navigate root tabs", () => {
+  assert.match(componentSource, /\{!canGoBack && <>/);
+  assert.match(componentSource, /if \(canGoBack\) return/);
   assert.match(componentSource, /native-history-guard--leading/);
   assert.match(componentSource, /native-history-guard--trailing/);
   assert.match(componentSource, /addEventListener\("touchstart", preventNativeHistory, \{ passive: false \}\)/);
