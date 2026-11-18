@@ -3,7 +3,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { GlassButton, GlassSheet } from "@zakisheriff/liquid-glass";
 import {
   fetchSettlementForPeriod, fetchReceiptsForPeriod, fetchPeriods, supabase,
-  fetchEffectiveReceiptVisibility, fetchMemberAvatarUrls, memberNameKey,
+  fetchMemberAvatarUrls, memberNameKey,
   type Receipt, type Settlement, type Period,
 } from "./api";
 import { SignInScreen } from "./components/SignInScreen";
@@ -29,7 +29,6 @@ import {
   type SyncRequestRow,
   type SyncState,
 } from "./sync";
-import { MEMBERSHIP_FEATURE_ENABLED } from "./membership";
 
 const THEME_KEY = "splitmate-theme";
 const SYNC_POLL_MS = 5000;
@@ -158,19 +157,12 @@ export default function App() {
       const nextPeriods = await fetchPeriods();
       const currentPeriod = nextPeriods.find((period) => period.status === "CURRENT") || nextPeriods[0];
       const targetPeriod = nextPeriods.find((period) => period.id === selectedPeriodId) || currentPeriod;
-      const [nextSettlement, rawReceipts, receiptVisibility] = targetPeriod
+      const [nextSettlement, nextReceipts] = targetPeriod
         ? await Promise.all([
             fetchSettlementForPeriod(targetPeriod.id),
             fetchReceiptsForPeriod(targetPeriod.id),
-            MEMBERSHIP_FEATURE_ENABLED ? fetchEffectiveReceiptVisibility(targetPeriod.id) : Promise.resolve(null),
           ])
-        : [null, [] as Receipt[], null];
-      const visibleReceiptIds = receiptVisibility
-        ? new Set(receiptVisibility.filter((receipt) => receipt.visible && receipt.eligible && !receipt.manually_excluded).map((receipt) => receipt.receipt_id))
-        : null;
-      const nextReceipts = visibleReceiptIds
-        ? rawReceipts.filter((receipt) => visibleReceiptIds.has(receipt.id))
-        : rawReceipts;
+        : [null, [] as Receipt[]];
 
       if (generation !== refreshGenerationRef.current) return;
       setPeriods(nextPeriods);

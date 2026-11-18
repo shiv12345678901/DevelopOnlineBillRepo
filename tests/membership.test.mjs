@@ -97,14 +97,15 @@ test("financial preview renders authoritative returned values without client rec
   assert.match(source, /Not participating this cycle/);
 });
 
-test("ordinary pages exclude disabled members and their receipts", async () => {
-  const [app, home] = await Promise.all([
+test("ordinary pages rely on restrictive receipt RLS and exclude disabled members from Home", async () => {
+  const [app, api, home] = await Promise.all([
     readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/api.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/tabs/HomeTab.tsx", import.meta.url), "utf8"),
   ]);
-  assert.match(app, /fetchEffectiveReceiptVisibility\(targetPeriod\.id\)/);
-  assert.match(app, /receipt\.visible && receipt\.eligible && !receipt\.manually_excluded/);
-  assert.match(app, /rawReceipts\.filter\(\(receipt\) => visibleReceiptIds\.has\(receipt\.id\)\)/);
+  assert.doesNotMatch(app, /fetchEffectiveReceiptVisibility/);
+  assert.match(app, /fetchReceiptsForPeriod\(targetPeriod\.id\)/);
+  assert.match(api, /fetchReceiptsForPeriod[\s\S]*?\.from\("receipts"\)[\s\S]*?\.eq\("period_id", periodId\)/);
   assert.match(home, /filter\(\(member\) => member\.participation_mode !== "disabled"\)/);
   assert.match(home, /membershipPreview\?\.total_cents/);
   assert.match(home, /membershipPreview\?\.equal_share_cents/);
