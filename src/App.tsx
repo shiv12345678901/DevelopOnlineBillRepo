@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { GlassButton, GlassSheet } from "@zakisheriff/liquid-glass";
 import {
   fetchSettlementForPeriod, fetchReceiptsForPeriod, fetchPeriods, supabase,
   fetchMemberAvatarUrls, memberNameKey,
@@ -12,12 +13,14 @@ import { ReceiptsTab } from "./tabs/ReceiptsTab";
 import { HistoryTab } from "./tabs/HistoryTab";
 import { SettingsTab } from "./tabs/SettingsTab";
 import { MySpendingTab } from "./tabs/MySpendingTab";
-import { SettleTab } from "./tabs/SettleTab";
 import type { Theme } from "./theme";
 import {
   ACTIVE_SYNC_STORAGE_KEY,
+  COMPLETED_SYNC_POLL_MS,
   INITIAL_SYNC_STATE,
+  completedSyncTimestamp,
   fetchLatestActiveSync,
+  fetchLatestCompletedSync,
   fetchSyncRequest,
   isActiveSyncStatus,
   requestSyncWake,
@@ -52,6 +55,7 @@ export default function App() {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [memberAvatarUrls, setMemberAvatarUrls] = useState<Record<string, string>>({});
   const [syncState, setSyncState] = useState<SyncState>(INITIAL_SYNC_STATE);
+  const [lastCompletedSyncAt, setLastCompletedSyncAt] = useState<string | null>(null);
   const activeSyncIdRef = useRef<string | null>(localStorage.getItem(ACTIVE_SYNC_STORAGE_KEY));
   const pollTimerRef = useRef<number | null>(null);
   const timeoutTimerRef = useRef<number | null>(null);
@@ -59,9 +63,13 @@ export default function App() {
   const startingSyncRef = useRef(false);
   const refreshDataRef = useRef<() => Promise<void>>(async () => undefined);
   const recoverSyncRef = useRef<() => Promise<void>>(async () => undefined);
+  const refreshLatestCompletedSyncRef = useRef<() => Promise<void>>(async () => undefined);
   const previousTabRef = useRef<TabId>(tab);
   const refreshGenerationRef = useRef(0);
   const syncPendingSinceRef = useRef<number | null>(null);
+  const lastHandledCompletedSyncIdRef = useRef<string | null>(null);
+  const completedSyncCheckInFlightRef = useRef(false);
+  const completedSyncGenerationRef = useRef(0);
 
   // Theme → <html data-theme>, persisted
   useLayoutEffect(() => {
@@ -120,7 +128,7 @@ export default function App() {
   useEffect(() => {
     const previousTab = previousTabRef.current;
     previousTabRef.current = tab;
-    if (!session || previousTab === tab || (tab !== "receipts" && tab !== "settle")) return;
+    if (!session || previousTab === tab || tab !== "receipts") return;
 
     let cancelled = false;
     setLoading(true);
@@ -178,6 +186,30 @@ export default function App() {
 
   refreshDataRef.current = refreshData;
 
+  async function refreshLatestCompletedSync() {
+    if (!session || completedSyncCheckInFlightRef.current) return;
+    const generation = completedSyncGenerationRef.current;
+    completedSyncCheckInFlightRef.current = true;
+    try {
+      const latest = await fetchLatestCompletedSync();
+      if (generation !== completedSyncGenerationRef.current) return;
+      const completedAt = completedSyncTimestamp(latest);
+      if (!latest || !completedAt) return;
+      setLastCompletedSyncAt(completedAt);
+      if (lastHandledCompletedSyncIdRef.current === latest.id) return;
+      lastHandledCompletedSyncIdRef.current = latest.id;
+      await refreshDataRef.current();
+    } catch {
+      // Keep the last known completion time and retry on the next check.
+    } finally {
+      if (generation === completedSyncGenerationRef.current) {
+        completedSyncCheckInFlightRef.current = false;
+      }
+    }
+  }
+
+  refreshLatestCompletedSyncRef.current = refreshLatestCompletedSync;
+
   function clearSyncTimers() {
     if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
     if (timeoutTimerRef.current !== null) window.clearTimeout(timeoutTimerRef.current);
@@ -202,6 +234,11 @@ export default function App() {
     localStorage.removeItem(ACTIVE_SYNC_STORAGE_KEY);
 
     if (request.status === "done") {
+      const completedAt = completedSyncTimestamp(request);
+      if (completedAt) {
+        lastHandledCompletedSyncIdRef.current = request.id;
+        setLastCompletedSyncAt(completedAt);
+      }
       setSyncState({
         requestId: request.id,
         status: "done",
@@ -368,12 +405,32 @@ export default function App() {
   }, [session?.user.id]);
 
   useEffect(() => {
+    completedSyncGenerationRef.current += 1;
+    completedSyncCheckInFlightRef.current = false;
+    lastHandledCompletedSyncIdRef.current = null;
+    setLastCompletedSyncAt(null);
+    if (!session) {
+      return;
+    }
+
+    const checkLatestCompletion = () => {
+      if (document.visibilityState === "visible") void refreshLatestCompletedSyncRef.current();
+    };
+    checkLatestCompletion();
+    const timer = window.setInterval(checkLatestCompletion, COMPLETED_SYNC_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [session?.user.id]);
+
+  useEffect(() => {
     if (session && tab === "settings") void recoverSyncRef.current();
   }, [session?.user.id, tab]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") void recoverSyncRef.current();
+      if (document.visibilityState === "visible") {
+        void recoverSyncRef.current();
+        void refreshLatestCompletedSyncRef.current();
+      }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
@@ -464,6 +521,10 @@ export default function App() {
     setSession((current) => current ? { ...current, user } : current);
   }
 
+  const displayedPeriod = periods.find((period) => period.id === selectedPeriodId)
+    || periods.find((period) => period.status === "CURRENT")
+    || periods[0];
+
   if (session === undefined) {
     return (
       <div className="app auth-loading">
@@ -497,9 +558,8 @@ export default function App() {
           </div>
         ) : (
           <>
-            {tab === "home" && <HomeTab settlement={settlement} periods={periods} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => setTab("history")} />}
-            {tab === "receipts" && <ReceiptsTab receipts={receipts} />}
-            {tab === "settle" && <SettleTab settlement={settlement} periods={periods} memberAvatarUrls={memberAvatarUrls} />}
+            {tab === "home" && <HomeTab settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => setTab("history")} />}
+            {tab === "receipts" && <ReceiptsTab receipts={receipts} periodId={displayedPeriod?.id ?? null} settlementCalculatedAt={settlement?.calculated_at} />}
             {tab === "spending" && <MySpendingTab receipts={receipts} settlement={settlement} user={session.user} />}
             {tab === "history" && <HistoryTab periods={periods} />}
             {tab === "settings" && (
@@ -512,7 +572,10 @@ export default function App() {
                 onPeriodChange={handlePeriodChange}
                 onSyncNow={handleSyncNow}
                 syncState={syncState}
+                lastCompletedSyncAt={lastCompletedSyncAt}
                 online={online}
+                memberAvatarUrls={memberAvatarUrls}
+                onMembershipChanged={refreshData}
                 user={session.user}
                 avatarUrl={avatarUrl}
                 onAvatarUrlChange={setAvatarUrl}
@@ -524,19 +587,17 @@ export default function App() {
       </main>
 
       <TabBar tab={tab} setTab={setTab} />
-      {pendingPeriodId && (
-        <div className="confirm-backdrop" role="presentation" onClick={() => setPendingPeriodId(null)}>
-          <section className="confirm-sheet" role="dialog" aria-modal="true" aria-labelledby="period-confirm-title" onClick={(event) => event.stopPropagation()}>
+      <GlassSheet open={Boolean(pendingPeriodId)} onClose={() => setPendingPeriodId(null)} intensity={6} aria-label="Load older settlement">
+          <section className="confirm-sheet liquid-confirm-sheet" aria-labelledby="period-confirm-title">
             <div className="confirm-icon" aria-hidden="true">↻</div>
             <h2 id="period-confirm-title">Load older settlement?</h2>
-            <p>Home, receipts, spending, and settle will switch to this period. You can return to the current settlement anytime in Settings.</p>
+            <p>Home, receipts, and spending will switch to this period. You can return to the current period in Settings.</p>
             <div className="confirm-actions">
-              <button type="button" className="confirm-cancel" onClick={() => setPendingPeriodId(null)}>Cancel</button>
-              <button type="button" className="confirm-primary" onClick={confirmPeriodChange}>Load settlement</button>
+              <GlassButton type="button" variant="clear" onClick={() => setPendingPeriodId(null)}>Cancel</GlassButton>
+              <GlassButton type="button" variant="filled" onClick={confirmPeriodChange}>Load settlement</GlassButton>
             </div>
           </section>
-        </div>
-      )}
+      </GlassSheet>
     </div>
   );
 }

@@ -25,6 +25,14 @@ export type Receipt = {
   image_url: string | null;
 };
 
+export type WhatsAppCycleStatus = "ACTIVE" | "PENDING_SETTLEMENT" | "SETTLED" | "UNCONFIRMED";
+
+export type PaymentObligationsStatus = "UNINITIALIZED" | "REVIEWED";
+
+// Reviewed obligations are stored as a nested member-to-member amount matrix.
+// Transfer direction must not be inferred from this object in the frontend.
+export type PaymentObligations = Record<string, Record<string, number>>;
+
 export type Settlement = {
   id: string;
   period_id: string;
@@ -33,6 +41,8 @@ export type Settlement = {
   member_totals: Record<string, number>;
   receipt_count: number;
   calculated_at: string;
+  owes: PaymentObligations | null;
+  payment_obligations_status: PaymentObligationsStatus | null;
 };
 
 export type Period = {
@@ -44,6 +54,10 @@ export type Period = {
   per_person_cents: number;
   receipt_count: number;
   last_scanned_at?: string | null;
+  whatsapp_cycle_status?: WhatsAppCycleStatus | null;
+  whatsapp_calculation_message?: { id?: string; text?: string; timestamp?: number; timeStr?: string } | null;
+  whatsapp_clearance_message?: { id?: string; text?: string; timestamp?: number; timeStr?: string } | null;
+  whatsapp_cycle_updated_at?: string | null;
 };
 
 export type BankTransferReceipt = {
@@ -55,6 +69,67 @@ export type BankTransferReceipt = {
   amount_cents: number;
   transfer_date: string;
   receipt_url: string | null;
+  verification_status: "pending" | "verified" | "rejected" | string | null;
+  verified_at?: string | null;
+};
+
+export type WhatsAppBankTransferEvidence = {
+  id: string;
+  period_id: string;
+  sender_name: string | null;
+  recipient_name: string | null;
+  amount_cents: number | null;
+  transfer_date: string | null;
+  reference_number: string | null;
+  evidence_url: string | null;
+  review_status: "pending" | "reviewed" | "dismissed" | string | null;
+  captured_at: string | null;
+};
+
+export type ParticipationMode = "enabled" | "keep_receipts" | "disabled";
+
+export type MembershipPermissions = {
+  can_view: boolean;
+  can_edit: boolean;
+  can_review_disabled_receipts: boolean;
+};
+
+export type SettlementCycleMember = {
+  member_name: string;
+  participation_mode: ParticipationMode;
+};
+
+export type SettlementCycleMembership = {
+  period_id: string;
+  revision: number;
+  status: string;
+  members: SettlementCycleMember[];
+  permissions: MembershipPermissions;
+};
+
+export type SettlementCycleMemberPreview = SettlementCycleMember & {
+  paid_cents: number;
+  share_cents: number;
+  net_cents: number;
+};
+
+export type SettlementCyclePreview = {
+  period_id: string;
+  revision: number;
+  total_cents: number;
+  receipt_count: number;
+  equal_share_cents: number;
+  members: SettlementCycleMemberPreview[];
+  permissions: MembershipPermissions;
+};
+
+export type EffectiveReceiptVisibility = {
+  receipt_id: string;
+  payer: string;
+  mode: ParticipationMode;
+  visible: boolean;
+  eligible: boolean;
+  manually_excluded: boolean;
 };
 
 export function throwIfSupabaseError(error: unknown): void {
@@ -126,6 +201,69 @@ export async function fetchBankTransferReceipts(periodId: string): Promise<BankT
     .order("transfer_date", { ascending: false });
   throwIfSupabaseError(error);
   return data || [];
+}
+
+export async function fetchWhatsAppBankTransferEvidence(periodId: string): Promise<WhatsAppBankTransferEvidence[]> {
+  const { data, error } = await supabase
+    .from("whatsapp_bank_transfer_evidence")
+    .select("id,period_id,sender_name,recipient_name,amount_cents,transfer_date,reference_number,evidence_url,review_status,captured_at")
+    .eq("period_id", periodId)
+    .order("captured_at", { ascending: false });
+  throwIfSupabaseError(error);
+  return data || [];
+}
+
+export async function fetchWhatsAppTransferEvidence(periodId: string): Promise<Receipt[]> {
+  const { data, error } = await supabase
+    .from("receipts")
+    .select("*")
+    .eq("period_id", periodId)
+    .eq("is_excluded", true)
+    .in("merchant", ["Bank Transfer", "Payment Transfer"])
+    .order("captured_at", { ascending: false });
+  throwIfSupabaseError(error);
+  return data || [];
+}
+
+export async function fetchSettlementCycleMembershipPermissions(periodId: string): Promise<MembershipPermissions> {
+  const { data, error } = await supabase.rpc("get_settlement_cycle_membership_permissions", { p_period_id: periodId });
+  throwIfSupabaseError(error);
+  return data as MembershipPermissions;
+}
+
+export async function fetchSettlementCycleMembership(periodId: string): Promise<SettlementCycleMembership> {
+  const { data, error } = await supabase.rpc("get_settlement_cycle_membership", { p_period_id: periodId });
+  throwIfSupabaseError(error);
+  return data as SettlementCycleMembership;
+}
+
+export async function fetchSettlementCyclePreview(periodId: string): Promise<SettlementCyclePreview> {
+  const { data, error } = await supabase.rpc("preview_settlement_cycle_membership", { p_period_id: periodId });
+  throwIfSupabaseError(error);
+  return data as SettlementCyclePreview;
+}
+
+export async function setSettlementCycleMemberMode(periodId: string, memberName: string, participationMode: ParticipationMode, expectedRevision: number): Promise<SettlementCycleMembership> {
+  const { data, error } = await supabase.rpc("set_settlement_cycle_member_mode", {
+    p_period_id: periodId,
+    p_member_name: memberName,
+    p_participation_mode: participationMode,
+    p_expected_revision: expectedRevision,
+  });
+  throwIfSupabaseError(error);
+  return data as SettlementCycleMembership;
+}
+
+export async function fetchEffectiveReceiptVisibility(periodId: string): Promise<EffectiveReceiptVisibility[]> {
+  const { data, error } = await supabase.rpc("get_effective_receipt_visibility", { p_period_id: periodId });
+  throwIfSupabaseError(error);
+  return (data || []) as EffectiveReceiptVisibility[];
+}
+
+export async function fetchDisabledSettlementReceipts(periodId: string): Promise<Receipt[]> {
+  const { data, error } = await supabase.rpc("get_disabled_settlement_receipts", { p_period_id: periodId });
+  throwIfSupabaseError(error);
+  return (data || []) as Receipt[];
 }
 
 const evidenceUrlCache = new Map<string, { url: string; expiresAt: number }>();

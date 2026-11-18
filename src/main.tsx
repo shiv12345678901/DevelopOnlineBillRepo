@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import '@fontsource-variable/inter'
+import '@zakisheriff/liquid-glass/styles.css'
 import App from './App'
 import { UpdatePrompt } from './components/UpdatePrompt'
 import './index.css'

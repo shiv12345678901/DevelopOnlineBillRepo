@@ -1,15 +1,14 @@
 import { fmt, type Period } from "../api";
 import { formatDate } from "../components/format";
 import { CalendarRange } from "lucide-react";
+import { cycleStatusFor, cycleStatusLabel } from "../cycleStatus";
 
 export function HistoryTab({ periods }: { periods: Period[] }) {
   if (!periods.length) return <div className="empty">No past periods.</div>;
   return (
     <div className="screen screen--history">
       <header className="page-header">
-        <p className="eyebrow">Household archive</p>
         <h1 className="large-title">History</h1>
-        <p className="page-summary">Review current and previous settlement periods.</p>
       </header>
 
       <section className="content-section" aria-labelledby="periods-heading">
@@ -18,7 +17,10 @@ export function HistoryTab({ periods }: { periods: Period[] }) {
           <span>{periods.length}</span>
         </div>
         <ul className="history-list">
-        {periods.map((p, i) => (
+        {periods.map((p, i) => {
+          const cycleStatus = cycleStatusFor(p);
+          const label = cycleStatusLabel(cycleStatus);
+          return (
           <li
             key={p.id}
             className="period-card stagger"
@@ -27,10 +29,10 @@ export function HistoryTab({ periods }: { periods: Period[] }) {
             <div className="period-top">
               <span className="history-icon" aria-hidden="true"><CalendarRange /></span>
               <div className="period-title-copy">
-                <h3>{p.status === "CURRENT" ? "Current settlement" : "Completed settlement"}</h3>
-                <p>{formatDate(p.start_date)} – {formatDate(p.end_date)} · {p.receipt_count} receipts</p>
+                <h3>{cycleStatus === "PENDING_SETTLEMENT" ? "Pending settlement" : cycleStatus === "ACTIVE" ? "Current settlement" : cycleStatus === "UNCONFIRMED" ? "Historical settlement (unconfirmed)" : "Completed settlement"}</h3>
+                <p>{formatDate(p.start_date)} – {["ACTIVE", "PENDING_SETTLEMENT"].includes(cycleStatus) ? "Open" : formatDate(p.end_date)} · {p.receipt_count} receipts</p>
               </div>
-              {p.status === "CURRENT" && <span className="badge">Current</span>}
+              <span className={`badge cycle-badge cycle-badge--${cycleStatus.toLocaleLowerCase()}`}>{label}</span>
             </div>
             <dl className="period-amounts">
               <div>
@@ -38,12 +40,13 @@ export function HistoryTab({ periods }: { periods: Period[] }) {
                 <dd>{fmt(p.total_cents)}</dd>
               </div>
               <div>
-                <dt>Each person</dt>
+                <dt>{cycleStatus === "ACTIVE" ? "Est. equal share" : "Each person"}</dt>
                 <dd>{fmt(p.per_person_cents)}</dd>
               </div>
             </dl>
           </li>
-        ))}
+          );
+        })}
         </ul>
       </section>
     </div>

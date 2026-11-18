@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent, type PointerEvent } from "react";
 import type { PasskeyListItem, User } from "@supabase/supabase-js";
 import { Camera, CheckCircle2, ChevronRight, CircleAlert, Clock3, Crop, Fingerprint, LogOut, RefreshCw, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { GlassSegmented, GlassSlider } from "@zakisheriff/liquid-glass";
 import { supabase } from "../api";
 import { AppIcon, type AppIconName } from "../components/AppIcon";
 import { formatRelativeTime } from "../components/format";
 import { ProfileAvatar } from "../components/ProfileAvatar";
+import { SettlementMembersSettings } from "../components/SettlementMembersSettings";
 import type { Theme } from "../theme";
 import type { Period } from "../api";
 import { isSyncUiActive, type SyncState } from "../sync";
@@ -64,12 +66,11 @@ function cropProfileImage(file: Blob, zoom: number, offset: CropOffset) {
 }
 
 function SettingsRow({
-  icon, tone, label, description, value, valueClass = "",
+  icon, tone, label, value, valueClass = "",
 }: {
   icon: AppIconName;
   tone: string;
   label: string;
-  description?: string;
   value: string | number;
   valueClass?: string;
 }) {
@@ -80,7 +81,6 @@ function SettingsRow({
       </span>
       <span className="settings-copy">
         <span className="settings-title">{label}</span>
-        {description && <span className="settings-subtitle">{description}</span>}
       </span>
       <span className={`settings-value ${valueClass}`}>{value}</span>
     </li>
@@ -100,7 +100,10 @@ export function SettingsTab({
   onPeriodChange,
   onSyncNow,
   syncState,
+  lastCompletedSyncAt,
   online,
+  memberAvatarUrls,
+  onMembershipChanged,
 }: {
   theme: Theme;
   setTheme: (theme: Theme) => void;
@@ -114,7 +117,10 @@ export function SettingsTab({
   onPeriodChange: (periodId: string) => void;
   onSyncNow: () => Promise<void>;
   syncState: SyncState;
+  lastCompletedSyncAt: string | null;
   online: boolean;
+  memberAvatarUrls: Record<string, string>;
+  onMembershipChanged: () => Promise<void>;
 }) {
   const initialName = displayNameFor(user);
   const [name, setName] = useState(initialName);
@@ -136,19 +142,12 @@ export function SettingsTab({
   const longPressTriggered = useRef(false);
   const cropDrag = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const passkeySupported = typeof window !== "undefined" && "PublicKeyCredential" in window;
-  const selectedPeriod = periods.find((period) => period.id === selectedPeriodId)
-    || periods.find((period) => period.status === "CURRENT");
-  const hasScanField = selectedPeriod && Object.prototype.hasOwnProperty.call(selectedPeriod, "last_scanned_at");
-  const relativeScanTime = selectedPeriod?.last_scanned_at
-    ? formatRelativeTime(selectedPeriod.last_scanned_at, relativeTimeNow)
+  const relativeSyncTime = lastCompletedSyncAt
+    ? formatRelativeTime(lastCompletedSyncAt, relativeTimeNow)
     : null;
-  const scanLabel = !hasScanField
-    ? null
-    : selectedPeriod?.last_scanned_at === null
-      ? "Never scanned yet"
-      : relativeScanTime
-        ? `Last scanned: ${relativeScanTime}`
-        : null;
+  const syncTimeLabel = relativeSyncTime
+    ? `Last synced ${relativeSyncTime}`
+    : "No completed sync yet";
 
   const syncing = isSyncUiActive(syncState);
   const syncButtonLabel = syncing
@@ -471,10 +470,7 @@ export function SettingsTab({
           <span className="settings-copy">
             <span className="settings-title">Theme</span>
           </span>
-          <div className="theme-options" role="group" aria-label="Theme">
-            <button type="button" className={theme === "light" ? "active" : ""} onClick={() => setTheme("light")}>Light</button>
-            <button type="button" className={theme === "dark" ? "active" : ""} onClick={() => setTheme("dark")}>Dark</button>
-          </div>
+          <GlassSegmented className="theme-options liquid-segmented" options={["Light", "Dark"]} value={theme === "light" ? 0 : 1} onChange={(index) => setTheme(index === 0 ? "light" : "dark")} size="sm" aria-label="Theme" />
         </div>
       </section>
 
@@ -488,9 +484,7 @@ export function SettingsTab({
           </span>
           <span className="settings-copy">
             <span className="settings-title">Passkeys</span>
-            <span className="settings-subtitle">
-              {passkeys.length ? `${passkeys.length} saved on your account` : "Use Face ID, fingerprint, or device unlock"}
-            </span>
+            {passkeys.length > 0 && <span className="settings-subtitle">{passkeys.length} saved</span>}
           </span>
           <button type="button" onClick={addPasskey} disabled={!passkeySupported || passkeyBusy}>
             {passkeyBusy ? "Adding…" : passkeys.length ? "Add another" : "Add"}
@@ -509,6 +503,10 @@ export function SettingsTab({
           <SettingsRow icon="people" tone="tile-green" label="Members" value={memberCount} />
           <SettingsRow icon="dollar" tone="tile-orange" label="Currency" value="AUD ($)" />
         </ul>
+        <div className="settlement-members-block">
+          <div className="section-heading compact"><h3>Settlement Members</h3></div>
+          <SettlementMembersSettings period={periods.find((period) => period.id === selectedPeriodId)} memberAvatarUrls={memberAvatarUrls} onMembershipChanged={onMembershipChanged} />
+        </div>
       </section>
 
       <section className="content-section" aria-labelledby="account-settings-heading">
@@ -522,14 +520,10 @@ export function SettingsTab({
             </span>
             <span className="settings-copy">
               <span className="settings-title">Sync data</span>
-              {scanLabel ? (
-                <span className="last-scanned-line" role="status">
-                  <Clock3 aria-hidden="true" />
-                  {scanLabel}
-                </span>
-              ) : (
-                <span className="settings-subtitle">Refresh receipts and settlement</span>
-              )}
+              <span className="last-scanned-line" role="status">
+                <Clock3 aria-hidden="true" />
+                {syncTimeLabel}
+              </span>
             </span>
             <button
               className="sync-action-button"
@@ -567,7 +561,6 @@ export function SettingsTab({
               <span className="settings-icon tile-red" aria-hidden="true"><LogOut /></span>
               <span className="settings-copy">
                 <span className="settings-title">Sign out</span>
-                <span className="settings-subtitle">End session on this device</span>
               </span>
               <ChevronRight aria-hidden="true" />
             </button>
@@ -608,8 +601,7 @@ export function SettingsTab({
             </button>
             <div className="profile-zoom-control">
               <ZoomOut aria-hidden="true" />
-              <input type="range" min="1" max="2.5" step="0.01" value={cropZoom} onChange={(event) => {
-                const nextZoom = Number(event.target.value);
+              <GlassSlider min={1} max={2.5} step={0.01} value={cropZoom} onChange={(nextZoom) => {
                 setCropZoom(nextZoom);
                 if (nextZoom === 1) setCropOffset({ x: 0, y: 0 });
               }} aria-label="Photo zoom" disabled={photoBusy || (!pendingPhoto && !avatarUrl)} />

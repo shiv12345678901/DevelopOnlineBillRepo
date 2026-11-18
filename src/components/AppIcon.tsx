@@ -1,6 +1,5 @@
 import {
   CircleDollarSign,
-  ArrowLeftRight,
   ChartPie,
   Clock3,
   Cloud,
@@ -30,7 +29,6 @@ const ICONS = {
   moon: Moon,
   people: UsersRound,
   dollar: CircleDollarSign,
-  settle: ArrowLeftRight,
   cloud: Cloud,
   info: Info,
   grocery: ShoppingBasket,

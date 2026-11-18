@@ -142,6 +142,19 @@ The implementation is limited to InstaBox's documented lifecycle surface:
 This integration does not authorize the InstaBox worker's production database writes. Keep
 that worker disabled and leave Muse active until the separate handover is approved.
 
+## Settlement-cycle membership rollout
+
+The membership frontend is disabled by default so a development build cannot call membership
+RPCs before the capability-v8 backend and UUID mappings are deployed. After completing the
+deployment order in `CYCLE_MEMBERSHIP.md`, set this public feature flag for the frontend build:
+
+```text
+VITE_ENABLE_CYCLE_MEMBERSHIP=true
+```
+
+The flag exposes only authenticated RPC calls. Authorization remains derived from `auth.uid()`
+inside Supabase; no household role or administrator identity is stored in the browser.
+
 ## Notes
 
 - Amounts are shown in **AUD** by default (change `currency: "AUD"` and the

@@ -1,5 +1,6 @@
 -- Bank-transfer evidence used by the Settle screen.
--- A settlement step is only shown as verified when a row exists here.
+-- Evidence presence alone is not verification. Only an explicit
+-- verification_status='verified' may complete a settlement step.
 create table if not exists public.bank_transfer_receipts (
   id uuid primary key default gen_random_uuid(),
   period_id text not null references public.periods(id) on delete cascade,
@@ -9,9 +10,15 @@ create table if not exists public.bank_transfer_receipts (
   amount_cents integer not null check (amount_cents > 0),
   transfer_date date not null,
   receipt_url text,
+  verification_status text check (verification_status is null or verification_status in ('pending','verified','rejected')),
+  verified_at timestamptz,
   created_at timestamptz not null default now(),
   unique (period_id, step_id)
 );
+
+alter table public.bank_transfer_receipts
+  add column if not exists verification_status text,
+  add column if not exists verified_at timestamptz;
 
 alter table public.bank_transfer_receipts enable row level security;
 grant select on public.bank_transfer_receipts to authenticated;

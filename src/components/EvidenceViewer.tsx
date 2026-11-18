@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRightLeft, CalendarDays, CircleDollarSign, FileImage, Fingerprint, Hash, Layers3, RefreshCw, ShieldCheck, Store, Tag, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { GlassButton } from "@zakisheriff/liquid-glass";
 import { createEvidenceSignedUrl } from "../api";
 
 export type EvidenceDetails = {
@@ -118,15 +119,16 @@ export function EvidenceDetailPage({ evidence, onBack }: { evidence: EvidenceDet
       onPointerUp={finishSwipe}
       onPointerCancel={cancelSwipe}
     >
-      <button
+      <GlassButton
         className="evidence-floating-back"
+        variant="clear"
+        size="md"
+        intensity={5}
+        icon={<ArrowLeft aria-hidden="true" />}
         type="button"
         onClick={onBack}
         aria-label={`Back to ${evidence.kind === "Receipt" ? "receipts" : "settlement"}`}
-      >
-        <ArrowLeft aria-hidden="true" />
-        <span>Back</span>
-      </button>
+      />
 
       <section className="evidence-detail-hero" aria-labelledby="evidence-title">
         <div>

@@ -3,6 +3,7 @@ import { supabase } from "./api.ts";
 export const ACTIVE_SYNC_STORAGE_KEY = "splitmate-active-sync-request-id";
 export const ACTIVE_SYNC_MAX_AGE_MS = 30 * 60 * 1000;
 export const SYNC_PENDING_WARNING_MS = 3 * 60 * 1000;
+export const COMPLETED_SYNC_POLL_MS = 30 * 1000;
 
 export type SyncRequestRow = {
   id: string;
@@ -38,6 +39,11 @@ export function isActiveSyncStatus(status: string) {
 
 export function isSyncUiActive(state: SyncState) {
   return ["starting", "waking", "pending", "processing", "unreachable"].includes(state.status);
+}
+
+export function completedSyncTimestamp(request: SyncRequestRow | null | undefined) {
+  if (request?.status !== "done" || !request.stage_updated_at) return null;
+  return Number.isFinite(Date.parse(request.stage_updated_at)) ? request.stage_updated_at : null;
 }
 
 export type SyncWakeResponse = {
@@ -110,6 +116,20 @@ export async function fetchLatestActiveSync(): Promise<SyncRequestRow | null> {
     .in("status", ["pending", "processing"])
     .gte("created_at", cutoff)
     .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data as SyncRequestRow | null;
+}
+
+export async function fetchLatestCompletedSync(): Promise<SyncRequestRow | null> {
+  const { data, error } = await supabase
+    .from("sync_requests")
+    .select("id,requested_by,status,stage,stage_message,stage_updated_at,result_summary,error,created_at")
+    .eq("requested_by", "netlify-app")
+    .eq("status", "done")
+    .not("stage_updated_at", "is", null)
+    .order("stage_updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw error;

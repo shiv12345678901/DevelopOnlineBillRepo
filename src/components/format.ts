@@ -16,18 +16,21 @@ export function formatRelativeTime(value: string, now = Date.now()) {
   if (elapsedSeconds < 60) return "just now";
 
   const minutes = Math.floor(elapsedSeconds / 60);
-  if (minutes < 60) return minutes === 1 ? "1m ago" : `${minutes}min ago`;
+  if (minutes < 60) return minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`;
 
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}hr ago`;
+  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
 
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) return days === 1 ? "1 day ago" : `${days} days ago`;
 
-  if (days < 30) return `${Math.floor(days / 7)} wk ago`;
+  if (days < 30) {
+    const weeks = Math.floor(days / 7);
+    return weeks === 1 ? "1 week ago" : `${weeks} weeks ago`;
+  }
 
   const months = Math.floor(days / 30);
-  return `${months} mo ago`;
+  return months === 1 ? "1 month ago" : `${months} months ago`;
 }
 
 /** Stable semantic tint for a person, merchant, or category label. */

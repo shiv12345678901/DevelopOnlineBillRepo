@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import { useState } from "react";
 import { Calculator, ReceiptText, Tags, TrendingUp } from "lucide-react";
+import { GlassSegmented } from "@zakisheriff/liquid-glass";
 import { fmt, type Receipt, type Settlement } from "../api";
 import { MerchantIcon } from "../components/MerchantIcon";
 import { formatDate } from "../components/format";
@@ -84,10 +85,7 @@ export function MySpendingTab({
       <section className="content-section" aria-labelledby="spending-insights-heading">
         <div className="section-heading spending-heading">
           <h2 id="spending-insights-heading">By {groupBy}</h2>
-          <div className="spending-toggle" role="group" aria-label="Group spending by">
-            <button className={groupBy === "category" ? "active" : ""} type="button" onClick={() => setGroupBy("category")}>Category</button>
-            <button className={groupBy === "merchant" ? "active" : ""} type="button" onClick={() => setGroupBy("merchant")}>Merchant</button>
-          </div>
+          <GlassSegmented className="spending-toggle liquid-segmented" options={["Category", "Merchant"]} value={groupBy === "category" ? 0 : 1} onChange={(index) => setGroupBy(index === 0 ? "category" : "merchant")} size="sm" aria-label="Group spending by" />
         </div>
         {groups.length ? (
           <div className="category-chart-card">
@@ -139,7 +137,7 @@ export function MySpendingTab({
             ))}
           </ul>
         ) : (
-          <div className="empty-state compact-empty">Your purchases will appear here.</div>
+          <div className="empty-state compact-empty">No receipts yet.</div>
         )}
       </section>
     </div>
