@@ -6,6 +6,7 @@ import { supabase } from "../api";
 import { AppIcon, type AppIconName } from "../components/AppIcon";
 import { formatRelativeTime } from "../components/format";
 import { ProfileAvatar } from "../components/ProfileAvatar";
+import { SettlementMembersSettings } from "../components/SettlementMembersSettings";
 import type { Theme } from "../theme";
 import type { Period } from "../api";
 import { isSyncUiActive, type SyncState } from "../sync";
@@ -101,6 +102,8 @@ export function SettingsTab({
   syncState,
   lastCompletedSyncAt,
   online,
+  memberAvatarUrls,
+  onMembershipChanged,
 }: {
   theme: Theme;
   setTheme: (theme: Theme) => void;
@@ -116,6 +119,8 @@ export function SettingsTab({
   syncState: SyncState;
   lastCompletedSyncAt: string | null;
   online: boolean;
+  memberAvatarUrls: Record<string, string>;
+  onMembershipChanged: () => Promise<void>;
 }) {
   const initialName = displayNameFor(user);
   const [name, setName] = useState(initialName);
@@ -498,6 +503,10 @@ export function SettingsTab({
           <SettingsRow icon="people" tone="tile-green" label="Members" value={memberCount} />
           <SettingsRow icon="dollar" tone="tile-orange" label="Currency" value="AUD ($)" />
         </ul>
+        <div className="settlement-members-block">
+          <div className="section-heading compact"><h3>Settlement Members</h3></div>
+          <SettlementMembersSettings period={periods.find((period) => period.id === selectedPeriodId)} memberAvatarUrls={memberAvatarUrls} onMembershipChanged={onMembershipChanged} />
+        </div>
       </section>
 
       <section className="content-section" aria-labelledby="account-settings-heading">

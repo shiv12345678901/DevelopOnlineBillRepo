@@ -574,6 +574,8 @@ export default function App() {
                 syncState={syncState}
                 lastCompletedSyncAt={lastCompletedSyncAt}
                 online={online}
+                memberAvatarUrls={memberAvatarUrls}
+                onMembershipChanged={refreshData}
                 user={session.user}
                 avatarUrl={avatarUrl}
                 onAvatarUrlChange={setAvatarUrl}

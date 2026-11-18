@@ -86,6 +86,52 @@ export type WhatsAppBankTransferEvidence = {
   captured_at: string | null;
 };
 
+export type ParticipationMode = "enabled" | "keep_receipts" | "disabled";
+
+export type MembershipPermissions = {
+  can_view: boolean;
+  can_edit: boolean;
+  can_review_disabled_receipts: boolean;
+};
+
+export type SettlementCycleMember = {
+  member_name: string;
+  participation_mode: ParticipationMode;
+};
+
+export type SettlementCycleMembership = {
+  period_id: string;
+  revision: number;
+  status: string;
+  members: SettlementCycleMember[];
+  permissions: MembershipPermissions;
+};
+
+export type SettlementCycleMemberPreview = SettlementCycleMember & {
+  paid_cents: number;
+  share_cents: number;
+  net_cents: number;
+};
+
+export type SettlementCyclePreview = {
+  period_id: string;
+  revision: number;
+  total_cents: number;
+  receipt_count: number;
+  equal_share_cents: number;
+  members: SettlementCycleMemberPreview[];
+  permissions: MembershipPermissions;
+};
+
+export type EffectiveReceiptVisibility = {
+  receipt_id: string;
+  payer: string;
+  mode: ParticipationMode;
+  visible: boolean;
+  eligible: boolean;
+  manually_excluded: boolean;
+};
+
 export function throwIfSupabaseError(error: unknown): void {
   if (error) throw error;
 }
@@ -177,6 +223,47 @@ export async function fetchWhatsAppTransferEvidence(periodId: string): Promise<R
     .order("captured_at", { ascending: false });
   throwIfSupabaseError(error);
   return data || [];
+}
+
+export async function fetchSettlementCycleMembershipPermissions(periodId: string): Promise<MembershipPermissions> {
+  const { data, error } = await supabase.rpc("get_settlement_cycle_membership_permissions", { p_period_id: periodId });
+  throwIfSupabaseError(error);
+  return data as MembershipPermissions;
+}
+
+export async function fetchSettlementCycleMembership(periodId: string): Promise<SettlementCycleMembership> {
+  const { data, error } = await supabase.rpc("get_settlement_cycle_membership", { p_period_id: periodId });
+  throwIfSupabaseError(error);
+  return data as SettlementCycleMembership;
+}
+
+export async function fetchSettlementCyclePreview(periodId: string): Promise<SettlementCyclePreview> {
+  const { data, error } = await supabase.rpc("preview_settlement_cycle_membership", { p_period_id: periodId });
+  throwIfSupabaseError(error);
+  return data as SettlementCyclePreview;
+}
+
+export async function setSettlementCycleMemberMode(periodId: string, memberName: string, participationMode: ParticipationMode, expectedRevision: number): Promise<SettlementCycleMembership> {
+  const { data, error } = await supabase.rpc("set_settlement_cycle_member_mode", {
+    p_period_id: periodId,
+    p_member_name: memberName,
+    p_participation_mode: participationMode,
+    p_expected_revision: expectedRevision,
+  });
+  throwIfSupabaseError(error);
+  return data as SettlementCycleMembership;
+}
+
+export async function fetchEffectiveReceiptVisibility(periodId: string): Promise<EffectiveReceiptVisibility[]> {
+  const { data, error } = await supabase.rpc("get_effective_receipt_visibility", { p_period_id: periodId });
+  throwIfSupabaseError(error);
+  return (data || []) as EffectiveReceiptVisibility[];
+}
+
+export async function fetchDisabledSettlementReceipts(periodId: string): Promise<Receipt[]> {
+  const { data, error } = await supabase.rpc("get_disabled_settlement_receipts", { p_period_id: periodId });
+  throwIfSupabaseError(error);
+  return (data || []) as Receipt[];
 }
 
 const evidenceUrlCache = new Map<string, { url: string; expiresAt: number }>();

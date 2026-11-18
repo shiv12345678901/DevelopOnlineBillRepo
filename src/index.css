@@ -1496,6 +1496,45 @@ main {
 @keyframes iconFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 @keyframes livePulse { 0%, 100% { opacity: 0.65; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.12); } }
 @keyframes syncPulse { 0%, 100% { opacity: .55; transform: scale(.82); } 50% { opacity: 1; transform: scale(1.08); } }
+
+.settlement-members-block { margin-top: 24px; }
+.settlement-members-block .section-heading h3 { color: var(--label); font-size: .95rem; }
+.membership-loading, .membership-unavailable, .membership-permission-note, .membership-message { display: flex; align-items: center; gap: 10px; padding: 13px 14px; border: 1px solid var(--material-border); border-radius: 15px; background: var(--surface); color: var(--label-secondary); font-size: .76rem; line-height: 1.35; }
+.membership-unavailable > svg, .membership-permission-note > svg, .membership-message > svg { width: 18px; height: 18px; flex: none; }
+.membership-unavailable > div { display: grid; gap: 2px; }
+.membership-unavailable strong { color: var(--label); font-size: .84rem; }
+.membership-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--material-border); border-radius: 16px; background: var(--surface); }
+.membership-summary > div { display: grid; gap: 3px; padding: 12px 14px; }
+.membership-summary > div:nth-child(even) { border-left: 1px solid var(--separator); }
+.membership-summary > div:nth-child(n + 3) { border-top: 1px solid var(--separator); }
+.membership-summary span { color: var(--label-secondary); font-size: .68rem; }
+.membership-summary strong { color: var(--label); font-size: .92rem; font-variant-numeric: tabular-nums; }
+.membership-permission-note, .membership-message { margin-top: 10px; }
+.membership-message { border-color: color-mix(in srgb, var(--warning) 30%, var(--material-border)); color: var(--warning); }
+.membership-message > span { flex: 1; }
+.membership-message > button { min-height: 30px; padding: 0 10px; border: 0; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: .7rem; font-weight: 750; }
+.membership-list { display: grid; gap: 10px; margin-top: 12px; padding: 0; list-style: none; }
+.membership-member { display: grid; gap: 11px; padding: 14px; border: 1px solid var(--material-border); border-left: 4px solid var(--positive); border-radius: 16px; background: var(--surface); }
+.membership-member.mode-keep_receipts { border-left-color: var(--warning); }
+.membership-member.mode-disabled { border-left-color: var(--red); }
+.membership-member-heading { display: flex; align-items: center; gap: 10px; }
+.membership-member-heading > div { display: grid; min-width: 0; gap: 2px; }
+.membership-member-heading strong { overflow: hidden; color: var(--label); font-size: .87rem; text-overflow: ellipsis; white-space: nowrap; }
+.membership-member-heading span, .membership-member > p { color: var(--label-secondary); font-size: .7rem; line-height: 1.35; }
+.membership-mode-control { width: 100%; }
+.membership-mode-readonly { justify-self: start; padding: 4px 8px; border-radius: 999px; background: var(--surface-raised); color: var(--label-secondary); font-size: .7rem; font-weight: 700; }
+.membership-financials { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.membership-financials > div { display: grid; gap: 2px; }
+.membership-financials dt { color: var(--label-tertiary); font-size: .62rem; }
+.membership-financials dd { margin: 0; color: var(--label); font-size: .75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.membership-not-participating { color: var(--red); font-size: .72rem; font-weight: 700; }
+.membership-confirm { display: grid; gap: 12px; padding: 4px 2px 2px; }
+.membership-confirm-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 14px; background: var(--accent-soft); color: var(--accent); }
+.membership-confirm-icon svg { width: 22px; height: 22px; }
+.membership-confirm h2 { color: var(--label); font-size: 1.25rem; }
+.membership-confirm p { color: var(--label-secondary); font-size: .8rem; line-height: 1.45; }
+.membership-confirm p strong { color: var(--label); }
+@media (max-width: 390px) { .membership-mode-control { transform: scale(.94); transform-origin: left center; width: 106%; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes symbolSelect {
   0% { transform: scale(0.78); opacity: 0.55; }

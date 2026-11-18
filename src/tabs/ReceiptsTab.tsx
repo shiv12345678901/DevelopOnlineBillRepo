@@ -1,13 +1,14 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownToLine, CircleAlert, Image, SlidersHorizontal } from "lucide-react";
 import { GlassInput } from "@zakisheriff/liquid-glass";
-import { fmt, type BankTransferReceipt, type Receipt, type WhatsAppBankTransferEvidence } from "../api";
+import { fetchDisabledSettlementReceipts, fetchSettlementCycleMembershipPermissions, fmt, type BankTransferReceipt, type Receipt, type WhatsAppBankTransferEvidence } from "../api";
 import { formatDate } from "../components/format";
 import { AppIcon } from "../components/AppIcon";
 import { EvidenceDetailPage, type EvidenceDetails } from "../components/EvidenceViewer";
 import { MerchantIcon } from "../components/MerchantIcon";
 import { useTransferEvidence } from "../components/useTransferEvidence";
 import { transferEvidenceState } from "../settlementMatching";
+import { MEMBERSHIP_FEATURE_ENABLED } from "../membership";
 
 function firstName(value: string | null | undefined) {
   return (value ?? "").trim().split(/\s+/)[0] || "Unknown";
@@ -36,6 +37,8 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("newest");
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceDetails | null>(null);
+  const [disabledReceipts, setDisabledReceipts] = useState<Receipt[]>([]);
+  const [disabledReceiptsError, setDisabledReceiptsError] = useState("");
   const savedScrollY = useRef<number | null>(null);
   const transferEvidence = useTransferEvidence(periodId, settlementCalculatedAt);
   const visibleBankReceipts = transferEvidence.bankReceipts.filter((receipt) => transferEvidenceState(receipt) !== "pending");
@@ -62,6 +65,18 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
     groups.set(receipt.date, group);
     return groups;
   }, new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    setDisabledReceipts([]);
+    setDisabledReceiptsError("");
+    if (!MEMBERSHIP_FEATURE_ENABLED || !periodId) return () => { cancelled = true; };
+    fetchSettlementCycleMembershipPermissions(periodId)
+      .then((permissions) => permissions.can_review_disabled_receipts ? fetchDisabledSettlementReceipts(periodId) : [])
+      .then((rows) => { if (!cancelled) setDisabledReceipts(rows); })
+      .catch(() => { if (!cancelled) setDisabledReceiptsError("Disabled member receipts could not be loaded."); });
+    return () => { cancelled = true; };
+  }, [periodId, settlementCalculatedAt]);
 
   function openReceipt(receipt: Receipt) {
     if (!receipt.image_url) return;
@@ -263,6 +278,16 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt }: {
           </ul>
         </section>
       )}
+
+      {disabledReceipts.length > 0 && <section className="content-section" aria-labelledby="disabled-receipts-heading">
+        <div className="section-heading"><h2 id="disabled-receipts-heading">Excluded Member Receipts</h2><span>{disabledReceipts.length}</span></div>
+        <ul className="grouped-list">{disabledReceipts.map((receipt) => <li className={`list-row${receipt.image_url ? " evidence-row" : ""}`} key={receipt.id} role={receipt.image_url ? "button" : undefined} tabIndex={receipt.image_url ? 0 : undefined} onClick={() => openReceipt(receipt)} onKeyDown={(event) => receiptKeyDown(event, receipt)}>
+          <MerchantIcon merchant={receipt.merchant} category={receipt.category} />
+          <div className="row-main"><span className="row-title">{receipt.merchant}</span><span className="row-sub">{receipt.payer} · {receipt.is_excluded ? "Manually excluded" : "Membership disabled"}</span></div>
+          <span className="evidence-row-tail"><strong className="row-amount">{fmt(receipt.amount_cents)}</strong>{receipt.image_url && <Image aria-label="View excluded receipt image" />}</span>
+        </li>)}</ul>
+      </section>}
+      {disabledReceiptsError && <div className="evidence-fetch-error" role="alert"><CircleAlert aria-hidden="true" /><span>{disabledReceiptsError}</span></div>}
 
       {transferEvidence.error && (
         <div className="evidence-fetch-error" role="alert">
