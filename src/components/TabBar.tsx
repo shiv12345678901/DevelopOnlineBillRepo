@@ -19,7 +19,11 @@ export function TabBar({ tab, setTab }: { tab: TabId; setTab: (tab: TabId) => vo
   }));
 
   return (
-    <div className="nav-shell">
+    <div className="nav-shell" onClickCapture={(event) => {
+      if (tab !== "history") return;
+      const item = (event.target as HTMLElement).closest<HTMLElement>("[data-lg-item]");
+      if (item?.dataset.lgItem === "0") setTab("home");
+    }}>
       <GlassNav
         className="liquid-tab-bar"
         items={items}

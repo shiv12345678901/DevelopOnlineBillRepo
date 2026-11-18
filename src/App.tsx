@@ -13,6 +13,7 @@ import { ReceiptsTab } from "./tabs/ReceiptsTab";
 import { HistoryTab } from "./tabs/HistoryTab";
 import { SettingsTab } from "./tabs/SettingsTab";
 import { MySpendingTab } from "./tabs/MySpendingTab";
+import { HomeSkeleton } from "./components/HomeSkeleton";
 import type { Theme } from "./theme";
 import {
   ACTIVE_SYNC_STORAGE_KEY,
@@ -522,9 +523,9 @@ export default function App() {
 
   if (session === undefined) {
     return (
-      <div className="app auth-loading">
+      <div className="app">
         <div className="bg-wash" aria-hidden="true" />
-        <div className="loading"><div className="spinner" /><p>Opening SplitMate…</p></div>
+        <main><HomeSkeleton /></main>
       </div>
     );
   }
@@ -547,7 +548,7 @@ export default function App() {
 
       <main key={tab} className="tab-enter">
         {loading ? (
-          <div className="loading">
+          tab === "home" ? <HomeSkeleton /> : <div className="loading">
             <div className="spinner" />
             <p>Loading your bills…</p>
           </div>

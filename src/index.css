@@ -1402,6 +1402,34 @@ main {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+.home-skeleton { display: grid; gap: 24px; }
+.home-skeleton-header { display: grid; gap: 8px; padding: 3px 4px 0; }
+.skeleton-line, .skeleton-avatar { display: block; overflow: hidden; border-radius: 999px; background: var(--surface-raised); }
+.skeleton-line::after, .skeleton-avatar::after, .skeleton-card::after { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 18%, color-mix(in srgb, var(--label) 7%, transparent) 48%, transparent 78%); content: ""; transform: translateX(-100%); animation: skeletonShimmer 1.35s ease-in-out infinite; }
+.skeleton-line, .skeleton-avatar, .skeleton-card { position: relative; }
+.skeleton-title { width: 58%; height: 32px; }
+.skeleton-meta { width: 42%; height: 13px; }
+.skeleton-card { overflow: hidden; border: 1px solid var(--material-border); border-radius: 20px; background: var(--surface); }
+.skeleton-balance { display: grid; gap: 16px; padding: 20px; }
+.skeleton-label { width: 35%; height: 13px; }
+.skeleton-amount { width: 44%; height: 39px; }
+.skeleton-balance > div { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; padding-top: 15px; border-top: 1px solid var(--separator); }
+.skeleton-balance > div .skeleton-line { height: 26px; border-radius: 8px; }
+.home-skeleton-section { display: grid; gap: 10px; }
+.skeleton-heading { width: 30%; height: 20px; margin-left: 4px; }
+.skeleton-heading.short { width: 20%; }
+.skeleton-list { overflow: hidden; border: 1px solid var(--material-border); border-radius: 18px; background: var(--surface); }
+.skeleton-row { display: grid; min-height: 72px; grid-template-columns: 44px minmax(0, 1fr) 76px; gap: 12px; align-items: center; padding: 12px 14px; }
+.skeleton-row + .skeleton-row { border-top: 1px solid var(--separator); }
+.skeleton-avatar { width: 44px; height: 44px; }
+.skeleton-row-copy { display: grid; gap: 7px; }
+.skeleton-row-copy .skeleton-line:first-child { width: 58%; height: 14px; }
+.skeleton-row-copy .skeleton-line:last-child { width: 42%; height: 11px; }
+.skeleton-value { width: 76px; height: 14px; }
+.skeleton-history { display: grid; gap: 11px; padding: 18px; }
+.skeleton-history .skeleton-line { width: 58%; height: 16px; }
+.skeleton-history .skeleton-line:last-child { width: 38%; height: 12px; }
+@keyframes skeletonShimmer { to { transform: translateX(100%); } }
 .offline-banner {
   position: sticky;
   top: 0;
@@ -1525,7 +1553,7 @@ main {
 .membership-toggle.legacy > span { transform: translateX(10px); }
 .membership-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .membership-toggle:disabled { cursor: wait; opacity: .55; }
-.membership-confirm-modal { width: min(100% - 16px, 480px); }
+.membership-confirm-modal { width: min(100%, 480px); }
 .membership-confirm { display: grid; gap: 12px; padding: 10px 20px max(20px, env(safe-area-inset-bottom)); }
 .membership-confirm-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 14px; background: var(--accent-soft); color: var(--accent); }
 .membership-confirm-icon svg { width: 22px; height: 22px; }
@@ -1544,9 +1572,14 @@ main {
 .settings-action-button .settings-title { color: var(--label); }
 .settings-action-button .settings-subtitle { color: var(--label-secondary); }
 
-.ios-sheet-layer { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: flex-end; justify-content: center; padding: 8px; background: rgba(0, 0, 0, .5); animation: confirmFadeIn .2s ease both; }
-.ios-sheet { position: relative; width: min(100%, 600px); max-height: calc(100dvh - 24px); overflow: hidden; border: 1px solid var(--material-border); border-radius: 28px; outline: 0; background: var(--surface); color: var(--label); box-shadow: 0 24px 70px rgba(0, 0, 0, .42); animation: confirmSheetIn .28s cubic-bezier(.22, 1, .36, 1) both; }
-.ios-sheet-grabber { display: block; width: 38px; height: 5px; margin: 9px auto 3px; border-radius: 999px; background: var(--label-tertiary); opacity: .6; }
+.ios-sheet-layer { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: flex-end; justify-content: center; background: rgba(0, 0, 0, .5); animation: confirmFadeIn .22s ease both; transition: background-color .24s ease; }
+.ios-sheet-layer.is-closing { background: transparent; }
+.ios-sheet { position: relative; width: min(100%, 600px); max-height: calc(100dvh - max(10px, env(safe-area-inset-top))); overflow: hidden; border: 1px solid var(--material-border); border-bottom: 0; border-radius: 28px 28px 0 0; outline: 0; background: var(--surface); color: var(--label); box-shadow: 0 -16px 56px rgba(0, 0, 0, .38); animation: iosSheetIn .32s cubic-bezier(.22, 1, .36, 1) both; transition: transform .24s cubic-bezier(.4, 0, 1, 1); will-change: transform; }
+.ios-sheet-layer.is-closing .ios-sheet { transform: translateY(calc(100% + env(safe-area-inset-bottom))); }
+.ios-sheet-grabber-zone { display: grid; height: 25px; place-items: center; cursor: grab; touch-action: none; }
+.ios-sheet-grabber-zone:active { cursor: grabbing; }
+.ios-sheet-grabber { display: block; width: 38px; height: 5px; border-radius: 999px; background: var(--label-tertiary); opacity: .65; }
+@keyframes iosSheetIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .ios-primary-button, .ios-secondary-button { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 8px; cursor: pointer; border: 0; border-radius: 12px; padding: 0 16px; font: inherit; font-size: .82rem; font-weight: 750; }
 .ios-primary-button { background: var(--accent); color: #fff; }
 .ios-secondary-button { background: var(--surface-raised); color: var(--accent); }
@@ -1599,8 +1632,7 @@ main {
 .copy-calculation-status svg { width: 15px; height: 15px; }
 .copy-calculation-action { width: 100%; min-height: 48px; }
 @media (max-width: 390px) {
-  .ios-sheet-layer { padding: 6px; }
-  .ios-sheet { border-radius: 26px; }
+  .ios-sheet { border-right: 0; border-left: 0; border-radius: 26px 26px 0 0; }
   .copy-calculation-header { padding-inline: 16px; }
   .copy-calculation-body { padding-inline: 16px; }
   .copy-calculation-footer { padding-inline: 16px; }
