@@ -85,6 +85,11 @@ test("bottom tabs replace their marker while pushed pages add one history entry"
   assert.match(appSource, /pushPage\(\{ id: "evidence", evidence \}\)/);
 });
 
+test("returning from a pushed page prunes its stale browser-forward snapshot", () => {
+  assert.match(navigationSource, /const nextPages = currentPages\.slice\(0, -1\)[\s\S]*window\.history\.pushState\(marker\(nextPages\.length\)/);
+  assert.match(navigationSource, /ordinary bottom-tab switches still replace their single root entry/);
+});
+
 test("pushed pages cover the complete app width without exposing the underlay gutter", () => {
   assert.match(cssSource, /--page-inline-padding: 20px/);
   assert.match(cssSource, /\.swipe-back-stage \{[^}]*width: calc\(100% \+ var\(--page-inline-padding\) \+ var\(--page-inline-padding\)\)/);

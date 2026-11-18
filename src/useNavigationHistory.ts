@@ -62,6 +62,11 @@ export function useNavigationHistory(initialTab: TabId = "home") {
         const nextPages = currentPages.slice(0, -1);
         pagesRef.current = nextPages;
         setPages(nextPages);
+        // Back leaves the closed detail in the browser's forward list. Start a
+        // fresh entry at the restored page so iOS cannot swipe forward into a
+        // stale receipt/detail snapshot. This happens only after a real Back;
+        // ordinary bottom-tab switches still replace their single root entry.
+        window.history.pushState(marker(nextPages.length), "", window.location.href);
         window.requestAnimationFrame(() => window.scrollTo({ top: leaving.scrollY, behavior: "instant" }));
         focusActiveHeading();
         return;
