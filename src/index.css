@@ -1046,7 +1046,6 @@ main {
 .orbit-settle-summary .share-orbit-caption { margin-top: 0; }
 .compact-cycle-card { min-height: 58px; }
 .liquid-segmented { flex: none; }
-.liquid-confirm-sheet { width: 100%; padding: 4px 2px 2px; border: 0; background: transparent; box-shadow: none; animation: none; }
 .settle-empty-summary { display: grid; place-items: center; gap: 4px; min-height: 150px; text-align: center; }
 .settle-empty-summary strong { font-size: 2rem; font-variant-numeric: tabular-nums; }
 .settle-empty-summary span { color: var(--label-secondary); font-size: .78rem; }
@@ -1315,7 +1314,6 @@ main {
 .settlement-setting-card select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .confirm-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; align-items: end; justify-items: center; padding: 18px; background: rgba(0, 0, 0, .48); animation: confirmFadeIn .2s ease both; }
 .confirm-sheet { width: min(100%, 480px); padding: 22px; border: 1px solid var(--material-border); border-radius: 24px; background: var(--surface); box-shadow: 0 20px 60px rgba(0, 0, 0, .32); animation: confirmSheetIn .28s cubic-bezier(.22, 1, .36, 1) both; }
-.confirm-icon { display: grid; width: 42px; height: 42px; place-items: center; margin-bottom: 14px; border-radius: 13px; background: var(--accent-soft); color: var(--accent); font-size: 1.4rem; font-weight: 700; }
 .confirm-sheet h2 { font-size: 1.2rem; letter-spacing: -.02em; }
 .confirm-sheet p { margin-top: 7px; color: var(--label-secondary); font-size: .82rem; line-height: 1.45; }
 .confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 20px; }
@@ -1594,6 +1592,20 @@ main {
 .ios-sheet-grabber-zone:active { cursor: grabbing; }
 .ios-sheet-grabber { display: block; width: 38px; height: 5px; border-radius: 999px; background: var(--label-tertiary); opacity: .65; }
 @keyframes iosSheetIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.lg-sheet.lg-glass:has(.period-confirm-sheet) { width: min(100%, 600px); margin-bottom: 0; border-radius: 28px 28px 0 0; }
+.lg-sheet__content:has(> .period-confirm-sheet) { padding: 0; }
+.period-confirm-sheet { display: grid; width: 100%; color: var(--label); }
+.period-confirm-toolbar { display: grid; min-height: 52px; grid-template-columns: minmax(72px, 1fr) auto minmax(72px, 1fr); align-items: center; padding: 0 10px; border-bottom: 1px solid var(--separator); }
+.period-confirm-toolbar h2 { font-size: 1rem; font-weight: 700; letter-spacing: -.012em; text-align: center; }
+.period-confirm-toolbar button { min-width: 44px; min-height: 44px; padding: 0 8px; cursor: pointer; border: 0; border-radius: 10px; background: transparent; color: var(--accent); font: inherit; font-size: .9rem; text-align: left; }
+.period-confirm-toolbar button:active { background: var(--accent-soft); }
+.period-confirm-toolbar button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.period-confirm-toolbar .period-confirm-primary { justify-self: end; font-weight: 750; text-align: right; }
+.period-confirm-content { display: grid; justify-items: center; padding: 26px 24px max(30px, env(safe-area-inset-bottom)); text-align: center; }
+.period-confirm-icon { display: grid; width: 54px; height: 54px; place-items: center; margin-bottom: 16px; border-radius: 17px; background: var(--accent-soft); color: var(--accent); }
+.period-confirm-icon svg { width: 27px; height: 27px; stroke-width: 1.9; }
+.period-confirm-content h3 { font-size: 1.24rem; line-height: 1.25; letter-spacing: -.025em; }
+.period-confirm-content p { max-width: 36ch; margin-top: 8px; color: var(--label-secondary); font-size: .84rem; line-height: 1.48; }
 .ios-primary-button, .ios-secondary-button { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 8px; cursor: pointer; border: 0; border-radius: 12px; padding: 0 16px; font: inherit; font-size: .82rem; font-weight: 750; }
 .ios-primary-button { background: var(--accent); color: #fff; }
 .ios-secondary-button { background: var(--surface-raised); color: var(--accent); }
