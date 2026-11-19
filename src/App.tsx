@@ -610,7 +610,7 @@ export default function App() {
       )}
 
       <main className="tab-enter">
-        <SwipeBackContainer canGoBack={canGoBack} onBack={goBack} page={pushedPage}>
+        <SwipeBackContainer canGoBack={canGoBack} onBack={goBack} underlayScrollY={activePage?.scrollY ?? 0} page={pushedPage}>
           {basePage}
         </SwipeBackContainer>
       </main>

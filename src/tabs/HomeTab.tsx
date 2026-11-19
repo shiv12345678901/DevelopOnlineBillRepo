@@ -54,6 +54,15 @@ function firstName(user: User) {
   return String(displayName).trim().split(/\s+/)[0] || "there";
 }
 
+function compactRelativeTime(value: string, now: number) {
+  return formatRelativeTime(value, now)
+    ?.replace(/^(\d+) minutes? ago$/, "$1m ago")
+    .replace(/^(\d+) hours? ago$/, "$1h ago")
+    .replace(/^(\d+) days? ago$/, "$1d ago")
+    .replace(/^(\d+) weeks? ago$/, "$1w ago")
+    .replace(/^(\d+) months? ago$/, "$1mo ago");
+}
+
 export function HomeTab({
   settlement,
   periods,
@@ -122,7 +131,7 @@ export function HomeTab({
     .sort((left, right) => memberOrder(left.member_name) - memberOrder(right.member_name));
   const cycleStatus = currentPeriod ? cycleStatusFor(currentPeriod) : "ACTIVE";
   const freshnessTimestamp = lastCompletedSyncAt || currentPeriod?.last_scanned_at || null;
-  const freshnessText = freshnessTimestamp ? formatRelativeTime(freshnessTimestamp, freshnessNow) : null;
+  const freshnessText = freshnessTimestamp ? compactRelativeTime(freshnessTimestamp, freshnessNow) : null;
   const membershipFinancialsUnavailable = MEMBERSHIP_FEATURE_ENABLED && !currentMembershipPreview;
   const totalCents = membershipFinancialsUnavailable ? null : currentMembershipPreview?.total_cents ?? settlement?.total_cents ?? currentPeriod?.total_cents ?? 0;
   const perPersonCents = membershipFinancialsUnavailable ? null : currentMembershipPreview?.equal_share_cents ?? settlement?.per_person_cents ?? currentPeriod?.per_person_cents ?? 0;
@@ -161,6 +170,9 @@ export function HomeTab({
           <div>
             <p className="summary-label" id="balance-heading">{cycleStatus === "ACTIVE" ? "Estimated equal share" : cycleStatus === "SETTLED" ? "Final equal share" : "Calculated equal share"}</p>
             <span className={`summary-status cycle-badge--${cycleStatus.toLocaleLowerCase()}`}>{cycleStatusLabel(cycleStatus)}</span>
+          </div>
+          <div className="home-summary-meta">
+            <span className="home-summary-icon" aria-hidden="true"><WalletCards /></span>
             <span className="home-freshness" role="status">
               <Clock3 aria-hidden="true" />
               {freshnessTimestamp && freshnessText
@@ -168,7 +180,6 @@ export function HomeTab({
                 : <span>Update time unavailable</span>}
             </span>
           </div>
-          <span className="home-summary-icon" aria-hidden="true"><WalletCards /></span>
         </div>
         <p className="summary-amount">{perPersonCents === null ? "—" : fmt(perPersonCents)}</p>
         <dl className="summary-details">

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowDownToLine, CircleAlert, Image, SlidersHorizontal } from "lucide-react";
-import { GlassInput, GlassSegmented } from "@zakisheriff/liquid-glass";
+import { GlassInput } from "@zakisheriff/liquid-glass";
 import { fetchDisabledSettlementReceipts, fetchSettlementCycleMembershipPermissions, fmt, type BankTransferReceipt, type Receipt, type WhatsAppBankTransferEvidence } from "../api";
 import { formatDate } from "../components/format";
 import { AppIcon } from "../components/AppIcon";
@@ -9,8 +9,6 @@ import { MerchantIcon } from "../components/MerchantIcon";
 import { useTransferEvidence } from "../components/useTransferEvidence";
 import { transferEvidenceState } from "../settlementMatching";
 import { MEMBERSHIP_FEATURE_ENABLED } from "../membership";
-
-type ReceiptSection = "purchases" | "transfers" | "review";
 
 function firstName(value: string | null | undefined) {
   return (value ?? "").trim().split(/\s+/)[0] || "Unknown";
@@ -39,7 +37,6 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("newest");
-  const [section, setSection] = useState<ReceiptSection>("purchases");
   const [disabledReceipts, setDisabledReceipts] = useState<Receipt[]>([]);
   const [disabledReceiptsError, setDisabledReceiptsError] = useState("");
   const transferEvidence = useTransferEvidence(periodId, settlementCalculatedAt);
@@ -62,7 +59,6 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
   const showGroups = !normalizedQuery && categoryFilter === "all" && sortOrder === "newest";
   const visibleReceipts = filteredReceipts;
   const hasPurchaseFilters = Boolean(normalizedQuery) || categoryFilter !== "all" || sortOrder !== "newest";
-  const reviewItemCount = transferEvidence.whatsAppBankEvidence.length + disabledReceipts.length;
   const receiptsByDate = visibleReceipts.reduce<Map<string, Receipt[]>>((groups, receipt) => {
     const group = groups.get(receipt.date) || [];
     group.push(receipt);
@@ -71,7 +67,6 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
   }, new Map());
 
   useEffect(() => {
-    setSection("purchases");
     setQuery("");
     setCategoryFilter("all");
     setSortOrder("newest");
@@ -175,16 +170,6 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
         <h1 className="large-title">Receipts</h1>
       </header>
 
-      <GlassSegmented
-        className="receipt-section-switcher liquid-segmented"
-        options={["Purchases", "Transfers", "Review"]}
-        value={section === "purchases" ? 0 : section === "transfers" ? 1 : 2}
-        onChange={(index) => setSection(index === 0 ? "purchases" : index === 1 ? "transfers" : "review")}
-        size="sm"
-        aria-label="Receipt section"
-      />
-
-      {section === "purchases" && <>
       <div className="search-controls receipt-purchase-controls">
         <GlassInput className="search-field liquid-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} onClear={() => setQuery("")} placeholder="Search receipts" autoComplete="off" enterKeyHint="search" aria-label="Search receipts" intensity={5} />
         <label className={`filter-button native-filter${categoryFilter !== "all" || sortOrder !== "newest" ? " active" : ""}`}>
@@ -238,9 +223,8 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
           <span className="evidence-row-tail"><strong className="row-amount">{fmt(receipt.amount_cents)}</strong>{receipt.image_url && <Image aria-label="View receipt image" />}</span>
         </li>
       ))}</ul>}
-      </>}
 
-      {section === "transfers" && (visibleBankReceipts.length > 0 ? (
+      {visibleBankReceipts.length > 0 && (
         <section className="content-section bank-receipts-section" aria-labelledby="bank-receipts-heading">
           <div className="section-heading">
             <h2 id="bank-receipts-heading">Bank receipts</h2>
@@ -272,9 +256,9 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
             })}
           </ul>
         </section>
-      ) : <div className="empty-state"><AppIcon name="dollar" /><h3>No transfer receipts</h3><p>Reviewed bank-transfer receipts for this settlement will appear here.</p></div>)}
+      )}
 
-      {section === "review" && transferEvidence.whatsAppBankEvidence.length > 0 && (
+      {transferEvidence.whatsAppBankEvidence.length > 0 && (
         <section className="content-section bank-receipts-section" aria-labelledby="whatsapp-evidence-heading">
           <div className="section-heading"><h2 id="whatsapp-evidence-heading">WhatsApp transfer evidence</h2></div>
           <ul className="grouped-list">
@@ -291,7 +275,7 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
         </section>
       )}
 
-      {section === "review" && disabledReceipts.length > 0 && <section className="content-section" aria-labelledby="disabled-receipts-heading">
+      {disabledReceipts.length > 0 && <section className="content-section" aria-labelledby="disabled-receipts-heading">
         <div className="section-heading"><h2 id="disabled-receipts-heading">Excluded Member Receipts</h2><span>{disabledReceipts.length}</span></div>
         <ul className="grouped-list">{disabledReceipts.map((receipt) => <li className={`list-row${receipt.image_url ? " evidence-row" : ""}`} key={receipt.id} role={receipt.image_url ? "button" : undefined} tabIndex={receipt.image_url ? 0 : undefined} onClick={() => openReceipt(receipt)} onKeyDown={(event) => receiptKeyDown(event, receipt)}>
           <MerchantIcon merchant={receipt.merchant} category={receipt.category} />
@@ -299,10 +283,9 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
           <span className="evidence-row-tail"><strong className="row-amount">{fmt(receipt.amount_cents)}</strong>{receipt.image_url && <Image aria-label="View excluded receipt image" />}</span>
         </li>)}</ul>
       </section>}
-      {section === "review" && reviewItemCount === 0 && !disabledReceiptsError && !transferEvidence.error && <div className="empty-state"><AppIcon name="info" /><h3>Nothing needs review</h3><p>WhatsApp transfer evidence and excluded-member receipts will appear here when attention is needed.</p></div>}
-      {section === "review" && disabledReceiptsError && <div className="evidence-fetch-error" role="alert"><CircleAlert aria-hidden="true" /><span>{disabledReceiptsError}</span></div>}
+      {disabledReceiptsError && <div className="evidence-fetch-error" role="alert"><CircleAlert aria-hidden="true" /><span>{disabledReceiptsError}</span></div>}
 
-      {section !== "purchases" && transferEvidence.error && (
+      {transferEvidence.error && (
         <div className="evidence-fetch-error" role="alert">
           <CircleAlert aria-hidden="true" />
           <span>{transferEvidence.error} Verification remains unknown.</span>

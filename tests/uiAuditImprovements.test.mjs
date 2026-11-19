@@ -30,17 +30,16 @@ test("the Home header wraps instead of truncating scaled text", () => {
   assert.doesNotMatch(cssSource, /\.home-header \.large-title \{[^}]*text-overflow: ellipsis/);
 });
 
-test("Receipts separates purchases, transfers and review content", () => {
-  assert.match(receiptsSource, /options=\{\["Purchases", "Transfers", "Review"\]\}/);
-  assert.match(receiptsSource, /section === "purchases"/);
-  assert.match(receiptsSource, /section === "transfers"/);
-  assert.match(receiptsSource, /section === "review"/);
+test("Receipts keeps its continuous list and provides filter recovery", () => {
+  assert.doesNotMatch(receiptsSource, /options=\{\["Purchases", "Transfers", "Review"\]\}/);
+  assert.doesNotMatch(receiptsSource, /type ReceiptSection/);
+  assert.match(receiptsSource, /visibleBankReceipts\.length > 0/);
+  assert.match(receiptsSource, /transferEvidence\.whatsAppBankEvidence\.length > 0/);
   assert.match(receiptsSource, />Clear filters</);
 });
 
 test("empty states explain how content will become available", () => {
   assert.match(receiptsSource, /New purchases will appear here after the next successful WhatsApp sync/);
-  assert.match(receiptsSource, /Nothing needs review/);
   assert.match(spendingSource, /Receipts matched to your profile will appear here after the next successful sync/);
   assert.match(historySource, /Completed billing cycles will appear here after the first verified clearance rollover/);
 });
@@ -48,6 +47,9 @@ test("empty states explain how content will become available", () => {
 test("Home displays the freshness of its financial data", () => {
   assert.match(appSource, /lastCompletedSyncAt=\{lastCompletedSyncAt\}/);
   assert.match(homeSource, /lastCompletedSyncAt \|\| currentPeriod\?\.last_scanned_at/);
-  assert.match(homeSource, /formatRelativeTime\(freshnessTimestamp, freshnessNow\)/);
+  assert.match(homeSource, /compactRelativeTime\(freshnessTimestamp, freshnessNow\)/);
+  assert.match(homeSource, /replace\(\/\^\(\\d\+\) minutes\? ago\$\/, "\$1m ago"\)/);
   assert.match(homeSource, /<time dateTime=\{freshnessTimestamp\}>Updated \{freshnessText\}<\/time>/);
+  assert.match(homeSource, /className="home-summary-meta"/);
+  assert.match(cssSource, /\.home-summary-meta \{[^}]*justify-items: end/);
 });

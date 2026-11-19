@@ -101,11 +101,19 @@ test("completed swipe stays offscreen until React removes the outgoing page", ()
   assert.doesNotMatch(completeBackSource, /\}\s*resetStyles\(\);\s*\}\);/);
 });
 
-test("back navigation restores scroll before committing the revealed page", () => {
+test("back navigation restores scroll after layout but before the revealed page paints", () => {
   const helperStart = navigationSource.indexOf("const showPreviousPage");
   const helperSource = navigationSource.slice(helperStart, navigationSource.indexOf("}, [marker]);", helperStart));
-  assert.ok(helperSource.indexOf("window.scrollTo") < helperSource.indexOf("setPages(nextPages)"));
-  assert.doesNotMatch(helperSource, /requestAnimationFrame\(\(\) => window\.scrollTo/);
+  assert.ok(helperSource.indexOf("restoreScrollRef.current = restoredScrollY") < helperSource.indexOf("setPages(nextPages)"));
+  assert.match(navigationSource, /useLayoutEffect\(\(\) => \{[\s\S]*window\.scrollTo\(\{ top: restoreScrollRef\.current, behavior: "instant" \}\)/);
+  assert.doesNotMatch(navigationSource, /requestAnimationFrame\(\(\) => window\.scrollTo/);
+});
+
+test("interactive swipe reveals the root at its saved scroll position", () => {
+  assert.match(componentSource, /const offsetY = window\.scrollY - underlayScrollY/);
+  assert.match(componentSource, /underlayContentRef\.current\.style\.transform = `translate3d\(0,\$\{offsetY\}px,0\)`/);
+  assert.match(componentSource, /className="swipe-back-underlay-content"/);
+  assert.match(appSource, /underlayScrollY=\{activePage\?\.scrollY \?\? 0\}/);
 });
 
 test("browser, header and detail swipe Back share real page history", () => {

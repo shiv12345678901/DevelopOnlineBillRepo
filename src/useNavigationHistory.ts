@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { EvidenceDetails } from "./components/EvidenceViewer";
 import type { TabId } from "./components/TabBar";
 import { closeTopNavigationOverlay } from "./navigationOverlays";
@@ -31,6 +31,7 @@ export function useNavigationHistory(initialTab: TabId = "home") {
   const backPendingRef = useRef(false);
   const pendingTabRef = useRef<TabId | null>(null);
   const ignoreNextPopRef = useRef(false);
+  const restoreScrollRef = useRef<number | null>(null);
   tabRef.current = tab;
   pagesRef.current = pages;
 
@@ -42,6 +43,12 @@ export function useNavigationHistory(initialTab: TabId = "home") {
     version: 2,
   }), []);
 
+  useLayoutEffect(() => {
+    if (restoreScrollRef.current === null) return;
+    window.scrollTo({ top: restoreScrollRef.current, behavior: "instant" });
+    restoreScrollRef.current = null;
+  }, [pages, tab]);
+
   const showPreviousPage = useCallback((currentPages: NavigationPage[]) => {
     const leaving = currentPages[currentPages.length - 1];
     const nextPages = currentPages.slice(0, -1);
@@ -50,10 +57,10 @@ export function useNavigationHistory(initialTab: TabId = "home") {
       ? tabScrollRef.current.get(pendingTab) || 0
       : leaving.scrollY;
 
-    // Restore the revealed page before React removes the outgoing page. A
-    // requestAnimationFrame here paints the old scroll position once first,
-    // which appears as a flash at the end of an interactive swipe.
-    window.scrollTo({ top: restoredScrollY, behavior: "instant" });
+    // Restore after React puts the revealed page back into normal document
+    // flow, but before the browser paints it. Restoring against the outgoing
+    // page can clamp the saved position to the wrong document height.
+    restoreScrollRef.current = restoredScrollY;
     pagesRef.current = nextPages;
     setPages(nextPages);
     if (!nextPages.length && pendingTab) {
@@ -104,10 +111,10 @@ export function useNavigationHistory(initialTab: TabId = "home") {
       }
 
       const fallbackTab: TabId = "home";
+      restoreScrollRef.current = tabScrollRef.current.get(fallbackTab) || 0;
       tabRef.current = fallbackTab;
       setTabState(fallbackTab);
       window.history.replaceState(marker(0, fallbackTab), "", window.location.href);
-      window.requestAnimationFrame(() => window.scrollTo({ top: tabScrollRef.current.get(fallbackTab) || 0, behavior: "instant" }));
       focusActiveHeading();
     };
     window.addEventListener("popstate", onPopState);
@@ -151,10 +158,10 @@ export function useNavigationHistory(initialTab: TabId = "home") {
     if (!pagesRef.current.length) tabScrollRef.current.set(tabRef.current, window.scrollY);
     pagesRef.current = [];
     setPages([]);
+    restoreScrollRef.current = tabScrollRef.current.get(nextTab) || 0;
     tabRef.current = nextTab;
     setTabState(nextTab);
     window.history.replaceState(marker(0, nextTab), "", window.location.href);
-    window.requestAnimationFrame(() => window.scrollTo({ top: tabScrollRef.current.get(nextTab) || 0, behavior: "instant" }));
     focusActiveHeading();
   }, [marker]);
 

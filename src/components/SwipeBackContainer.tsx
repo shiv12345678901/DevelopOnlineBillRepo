@@ -40,11 +40,13 @@ export function swipeBackTargetIsBlocked(target: EventTarget | null, boundary: H
   return false;
 }
 
-export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }: {
+export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, underlayContentRef, underlayScrollY, dimRef }: {
   canGoBack: boolean;
   onBack: () => boolean;
   pageRef: RefObject<HTMLDivElement | null>;
   underlayRef: RefObject<HTMLDivElement | null>;
+  underlayContentRef: RefObject<HTMLDivElement | null>;
+  underlayScrollY: number;
   dimRef: RefObject<HTMLSpanElement | null>;
 }) {
   const gestureRef = useRef<Gesture | null>(null);
@@ -73,6 +75,7 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
       element?.style.removeProperty("transition");
       element?.style.removeProperty("transform");
     }
+    underlayContentRef.current?.style.removeProperty("transform");
     dimRef.current?.style.removeProperty("opacity");
     if (updateState) setState({ isTracking: false, isDragging: false });
   }
@@ -139,6 +142,13 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
       || hasNavigationOverlay()
       || !isSwipeBackStart(localX, bounds.width)
       || swipeBackTargetIsBlocked(event.target, boundary)) return;
+    // The pushed page and its root page share the window scroll container.
+    // Offset the root underlay so the interactive reveal starts at its saved
+    // position instead of briefly exposing the top of Home.
+    if (underlayContentRef.current) {
+      const offsetY = window.scrollY - underlayScrollY;
+      underlayContentRef.current.style.transform = `translate3d(0,${offsetY}px,0)`;
+    }
     // Claim the gesture before Safari can begin its browser-history snapshot.
     event.preventDefault();
     gestureRef.current = { touchId: touch.identifier, startX: touch.clientX, startY: touch.clientY, lastX: touch.clientX, lastAt: performance.now(), velocity: 0, width: bounds.width, dragging: false, rejected: false };
@@ -216,13 +226,14 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
   };
 }
 
-export function SwipeBackContainer({ canGoBack, onBack, page, children }: { canGoBack: boolean; onBack: () => boolean; page?: ReactNode; children: ReactNode }) {
+export function SwipeBackContainer({ canGoBack, onBack, underlayScrollY = 0, page, children }: { canGoBack: boolean; onBack: () => boolean; underlayScrollY?: number; page?: ReactNode; children: ReactNode }) {
   const pageRef = useRef<HTMLDivElement>(null);
   const underlayRef = useRef<HTMLDivElement>(null);
+  const underlayContentRef = useRef<HTMLDivElement>(null);
   const dimRef = useRef<HTMLSpanElement>(null);
   const leadingGuardRef = useRef<HTMLSpanElement>(null);
   const trailingGuardRef = useRef<HTMLSpanElement>(null);
-  const { state } = useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef });
+  const { state } = useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, underlayContentRef, underlayScrollY, dimRef });
   useEffect(() => {
     if (canGoBack) return;
     const preventNativeHistory = (event: TouchEvent) => event.preventDefault();
@@ -236,7 +247,7 @@ export function SwipeBackContainer({ canGoBack, onBack, page, children }: { canG
       <span ref={trailingGuardRef} className="native-history-guard native-history-guard--trailing" aria-hidden="true" />
     </>}
     <div ref={underlayRef} className={canGoBack ? "swipe-back-underlay" : "swipe-back-base"} aria-hidden={canGoBack || undefined} inert={canGoBack || undefined}>
-      {children}
+      <div ref={underlayContentRef} className="swipe-back-underlay-content" style={canGoBack ? undefined : { transform: "none" }}>{children}</div>
       {canGoBack && <span ref={dimRef} className="swipe-back-dim" />}
     </div>
     {canGoBack && <div ref={pageRef} className="swipe-back-page">{page}</div>}
