@@ -68,11 +68,23 @@ test("Home displays the freshness of its financial data", () => {
 test("older-period confirmation uses the opaque iOS confirmation sheet", () => {
   assert.match(appSource, /<IosSheet open=\{Boolean\(pendingPeriodId\)\}/);
   assert.match(appSource, /className="period-confirm-modal" overlayPriority=\{OVERLAY_PRIORITY\.confirmation\}/);
-  assert.match(appSource, /className="period-confirm-icon"[^>]*><CalendarClock \/>/);
+  assert.match(appSource, /className="period-confirm-icon"/);
+  assert.match(appSource, /<CalendarClock \/>/);
   assert.match(appSource, /className="ios-secondary-button"/);
   assert.match(appSource, />Cancel<\/button>/);
-  assert.match(appSource, /className="ios-primary-button"[^>]*>View Period<\/button>/);
+  assert.match(appSource, /className="ios-primary-button"/);
   assert.doesNotMatch(appSource, /GlassSheet|period-confirm-toolbar|lg-sheet/);
   assert.match(cssSource, /\.period-confirm-modal \{ background: var\(--surface\); \}/);
   assert.match(cssSource, /\.period-confirm \{[^}]*padding: 4px 22px max\(24px, env\(safe-area-inset-bottom\)\)/);
+});
+
+test("period changes show loading, success, and recoverable error states", () => {
+  assert.match(appSource, /type PeriodChangeStatus = "confirm" \| "loading" \| "success" \| "error"/);
+  assert.match(appSource, /dismissible=\{periodChangeStatus !== "loading"\}/);
+  assert.match(appSource, /"Loading period…"/);
+  assert.match(appSource, /"Period changed"/);
+  assert.match(appSource, /`Now viewing \$\{pendingPeriodLabel\}\.`/);
+  assert.match(appSource, /"Couldn’t load period"/);
+  assert.match(appSource, />\{periodChangeStatus === "error" \? "Try Again" : "View Period"\}<\/button>/);
+  assert.match(cssSource, /\.period-confirm\.state-loading \.period-confirm-icon svg \{ animation: spin/);
 });

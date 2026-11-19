@@ -13,13 +13,14 @@ type SheetDrag = {
   velocity: number;
 };
 
-export function IosSheet({ open, onClose, label, children, className = "", overlayPriority = OVERLAY_PRIORITY.sheet }: {
+export function IosSheet({ open, onClose, label, children, className = "", overlayPriority = OVERLAY_PRIORITY.sheet, dismissible = true }: {
   open: boolean;
   onClose: () => void;
   label: string;
   children: ReactNode;
   className?: string;
   overlayPriority?: number;
+  dismissible?: boolean;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLElement>(null);
@@ -57,7 +58,7 @@ export function IosSheet({ open, onClose, label, children, className = "", overl
   }
 
   function animateClosed() {
-    if (closingRef.current) return;
+    if (closingRef.current || !dismissible) return;
     closingRef.current = true;
     setClosing(true);
     const sheet = sheetRef.current;
@@ -88,7 +89,7 @@ export function IosSheet({ open, onClose, label, children, className = "", overl
     }
   }, [mounted, open]);
 
-  useEffect(() => open ? registerNavigationOverlay(overlayPriority, animateClosed) : undefined, [open, overlayPriority]);
+  useEffect(() => open ? registerNavigationOverlay(overlayPriority, dismissible ? animateClosed : () => undefined) : undefined, [dismissible, open, overlayPriority]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -127,7 +128,7 @@ export function IosSheet({ open, onClose, label, children, className = "", overl
   }, []);
 
   function startDrag(event: ReactPointerEvent<HTMLSpanElement>) {
-    if (closingRef.current || !sheetRef.current) return;
+    if (closingRef.current || !dismissible || !sheetRef.current) return;
     clearMotionTimers();
     const now = performance.now();
     dragRef.current = { pointerId: event.pointerId, startY: event.clientY, lastY: event.clientY, lastAt: now, velocity: 0 };
@@ -189,9 +190,9 @@ export function IosSheet({ open, onClose, label, children, className = "", overl
 
   if (!mounted) return null;
   return createPortal(
-    <div ref={layerRef} className={`ios-sheet-layer${closing ? " is-closing" : ""}`} onMouseDown={(event) => { if (event.target === event.currentTarget) animateClosed(); }}>
+    <div ref={layerRef} className={`ios-sheet-layer${closing ? " is-closing" : ""}`} onMouseDown={(event) => { if (dismissible && event.target === event.currentTarget) animateClosed(); }}>
       <section ref={sheetRef} className={`ios-sheet ${className}`.trim()} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} onAnimationEnd={finishEntranceAnimation}>
-        <span className="ios-sheet-grabber-zone" aria-hidden="true" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={(event) => endDrag(event)} onPointerCancel={(event) => endDrag(event, true)} onLostPointerCapture={(event) => endDrag(event, true)}><span className="ios-sheet-grabber" /></span>
+        <span className={`ios-sheet-grabber-zone${dismissible ? "" : " is-disabled"}`} aria-hidden="true" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={(event) => endDrag(event)} onPointerCancel={(event) => endDrag(event, true)} onLostPointerCapture={(event) => endDrag(event, true)}><span className="ios-sheet-grabber" /></span>
         {open ? children : contentRef.current}
       </section>
     </div>,

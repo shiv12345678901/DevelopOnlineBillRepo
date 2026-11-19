@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, CheckCircle2, CircleAlert, LoaderCircle } from "lucide-react";
 import {
   fetchSettlementForPeriod, fetchReceiptsForPeriod, fetchPeriods, supabase,
   fetchMemberAvatarUrls, memberNameKey,
@@ -18,7 +18,7 @@ import { EvidenceDetailPage } from "./components/EvidenceViewer";
 import { SwipeBackContainer } from "./components/SwipeBackContainer";
 import { IosSheet } from "./components/IosSheet";
 import { useNavigationHistory } from "./useNavigationHistory";
-import { OVERLAY_PRIORITY, registerNavigationOverlay } from "./navigationOverlays";
+import { OVERLAY_PRIORITY } from "./navigationOverlays";
 import type { Theme } from "./theme";
 import {
   ACTIVE_SYNC_STORAGE_KEY,
@@ -39,6 +39,13 @@ import {
 const THEME_KEY = "splitmate-theme";
 const SYNC_POLL_MS = 5000;
 const SYNC_TIMEOUT_MS = 300000;
+type PeriodChangeStatus = "confirm" | "loading" | "success" | "error";
+
+function periodRangeLabel(period: Period | undefined) {
+  if (!period) return "the selected period";
+  const shortDate = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+  return `${shortDate(period.start_date)} – ${period.status === "CURRENT" ? "Today" : shortDate(period.end_date)}`;
+}
 
 function getInitialTheme(): Theme {
   const savedTheme = localStorage.getItem(THEME_KEY);
@@ -53,6 +60,7 @@ export default function App() {
   const [periods, setPeriods] = useState<Period[]>([]);
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
   const [pendingPeriodId, setPendingPeriodId] = useState<string | null>(null);
+  const [periodChangeStatus, setPeriodChangeStatus] = useState<PeriodChangeStatus>("confirm");
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState("");
   const [session, setSession] = useState<Session | null>();
@@ -77,6 +85,9 @@ export default function App() {
   const lastHandledCompletedSyncIdRef = useRef<string | null>(null);
   const completedSyncCheckInFlightRef = useRef(false);
   const completedSyncGenerationRef = useRef(0);
+  const periodChangeTargetRef = useRef<string | null>(null);
+  const periodChangePreviousRef = useRef<string | null>(null);
+  const periodChangeTimerRef = useRef<number | null>(null);
   const mountedTabsRef = useRef(new Set<TabId>(["home"]));
   mountedTabsRef.current.add(tab);
 
@@ -100,6 +111,10 @@ export default function App() {
       mounted = false;
       subscription.unsubscribe();
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (periodChangeTimerRef.current !== null) window.clearTimeout(periodChangeTimerRef.current);
   }, []);
 
   // Online/offline banner
@@ -150,6 +165,9 @@ export default function App() {
   function handlePeriodChange(nextPeriodId: string) {
     const currentPeriodId = periods.find((period) => period.status === "CURRENT")?.id;
     if (nextPeriodId !== currentPeriodId) {
+      if (periodChangeTimerRef.current !== null) window.clearTimeout(periodChangeTimerRef.current);
+      periodChangeTargetRef.current = null;
+      setPeriodChangeStatus("confirm");
       setPendingPeriodId(nextPeriodId);
       return;
     }
@@ -175,12 +193,26 @@ export default function App() {
       setSettlement(nextSettlement);
       setReceipts(nextReceipts);
       setDataError("");
+      if (targetPeriod?.id === periodChangeTargetRef.current) {
+        periodChangeTargetRef.current = null;
+        setPeriodChangeStatus("success");
+        periodChangeTimerRef.current = window.setTimeout(() => {
+          setPendingPeriodId(null);
+          setPeriodChangeStatus("confirm");
+          periodChangeTimerRef.current = null;
+        }, 1000);
+      }
     } catch (error) {
       if (generation !== refreshGenerationRef.current) return;
       const detail = error && typeof error === "object" && "message" in error
         ? String(error.message)
         : "Please check your connection and try again.";
       setDataError(`Couldn’t refresh your bills. ${detail}`);
+      if (selectedPeriodId === periodChangeTargetRef.current) {
+        periodChangeTargetRef.current = null;
+        setPeriodChangeStatus("error");
+        setSelectedPeriodId(periodChangePreviousRef.current);
+      }
     }
   }
 
@@ -519,8 +551,20 @@ export default function App() {
 
   function confirmPeriodChange() {
     if (!pendingPeriodId) return;
-    setPendingPeriodId(null);
+    if (periodChangeTimerRef.current !== null) window.clearTimeout(periodChangeTimerRef.current);
+    periodChangePreviousRef.current = selectedPeriodId;
+    periodChangeTargetRef.current = pendingPeriodId;
+    setPeriodChangeStatus("loading");
     setSelectedPeriodId(pendingPeriodId);
+  }
+
+  function dismissPeriodChange() {
+    if (periodChangeStatus === "loading") return;
+    if (periodChangeTimerRef.current !== null) window.clearTimeout(periodChangeTimerRef.current);
+    periodChangeTimerRef.current = null;
+    periodChangeTargetRef.current = null;
+    setPendingPeriodId(null);
+    setPeriodChangeStatus("confirm");
   }
 
   function handleUserUpdated(user: User) {
@@ -530,10 +574,7 @@ export default function App() {
   const displayedPeriod = periods.find((period) => period.id === selectedPeriodId)
     || periods.find((period) => period.status === "CURRENT")
     || periods[0];
-
-  useEffect(() => pendingPeriodId
-    ? registerNavigationOverlay(OVERLAY_PRIORITY.confirmation, () => setPendingPeriodId(null))
-    : undefined, [pendingPeriodId]);
+  const pendingPeriodLabel = periodRangeLabel(periods.find((period) => period.id === pendingPeriodId));
 
   if (session === undefined) {
     return (
@@ -617,15 +658,15 @@ export default function App() {
       </main>
 
       <TabBar tab={activePage?.id === "history" ? "history" : tab} setTab={selectTab} />
-      <IosSheet open={Boolean(pendingPeriodId)} onClose={() => setPendingPeriodId(null)} label="View older settlement" className="period-confirm-modal" overlayPriority={OVERLAY_PRIORITY.confirmation}>
-          <section className="period-confirm" aria-labelledby="period-confirm-title">
-            <span className="period-confirm-icon" aria-hidden="true"><CalendarClock /></span>
-            <h2 id="period-confirm-title">View older settlement?</h2>
-            <p>Home, Receipts, and Spending will show this settlement period. You can return to the current period from Settings.</p>
-            <div className="confirm-actions">
-              <button className="ios-secondary-button" type="button" onClick={() => setPendingPeriodId(null)}>Cancel</button>
-              <button className="ios-primary-button" type="button" onClick={confirmPeriodChange}>View Period</button>
-            </div>
+      <IosSheet open={Boolean(pendingPeriodId)} onClose={dismissPeriodChange} label="View older settlement" className="period-confirm-modal" overlayPriority={OVERLAY_PRIORITY.confirmation} dismissible={periodChangeStatus !== "loading"}>
+          <section className={`period-confirm state-${periodChangeStatus}`} aria-labelledby="period-confirm-title" aria-live="polite">
+            <span className="period-confirm-icon" aria-hidden="true">{periodChangeStatus === "loading" ? <LoaderCircle /> : periodChangeStatus === "success" ? <CheckCircle2 /> : periodChangeStatus === "error" ? <CircleAlert /> : <CalendarClock />}</span>
+            <h2 id="period-confirm-title">{periodChangeStatus === "loading" ? "Loading period…" : periodChangeStatus === "success" ? "Period changed" : periodChangeStatus === "error" ? "Couldn’t load period" : "View older settlement?"}</h2>
+            <p>{periodChangeStatus === "loading" ? "Updating Home, Receipts, and Spending." : periodChangeStatus === "success" ? `Now viewing ${pendingPeriodLabel}.` : periodChangeStatus === "error" ? "Your previous period is still displayed. Check your connection and try again." : "Home, Receipts, and Spending will show this settlement period. You can return to the current period from Settings."}</p>
+            {(periodChangeStatus === "confirm" || periodChangeStatus === "error") && <div className="confirm-actions">
+              <button className="ios-secondary-button" type="button" onClick={dismissPeriodChange}>Cancel</button>
+              <button className="ios-primary-button" type="button" onClick={confirmPeriodChange}>{periodChangeStatus === "error" ? "Try Again" : "View Period"}</button>
+            </div>}
           </section>
       </IosSheet>
     </div>

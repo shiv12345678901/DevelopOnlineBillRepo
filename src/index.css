@@ -1590,12 +1590,16 @@ main {
 .ios-sheet-layer.is-closing .ios-sheet { transform: translateY(calc(100% + env(safe-area-inset-bottom))); }
 .ios-sheet-grabber-zone { display: grid; height: 29px; place-items: center; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .ios-sheet-grabber-zone:active { cursor: grabbing; }
+.ios-sheet-grabber-zone.is-disabled { cursor: default; opacity: .45; }
 .ios-sheet-grabber { display: block; width: 38px; height: 5px; border-radius: 999px; background: var(--label-tertiary); opacity: .65; }
 @keyframes iosSheetIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .period-confirm-modal { background: var(--surface); }
-.period-confirm { display: grid; padding: 4px 22px max(24px, env(safe-area-inset-bottom)); color: var(--label); }
+.period-confirm { display: grid; min-height: 236px; align-content: start; padding: 4px 22px max(24px, env(safe-area-inset-bottom)); color: var(--label); }
 .period-confirm-icon { display: grid; width: 46px; height: 46px; place-items: center; margin-bottom: 16px; border-radius: 14px; background: var(--accent-soft); color: var(--accent); }
 .period-confirm-icon svg { width: 23px; height: 23px; stroke-width: 2; }
+.period-confirm.state-loading .period-confirm-icon svg { animation: spin .8s linear infinite; }
+.period-confirm.state-success .period-confirm-icon { background: color-mix(in srgb, var(--positive) 14%, var(--surface)); color: var(--positive); }
+.period-confirm.state-error .period-confirm-icon { background: color-mix(in srgb, var(--red) 14%, var(--surface)); color: var(--red); }
 .period-confirm h2 { font-size: 1.2rem; line-height: 1.3; letter-spacing: -.02em; }
 .period-confirm > p { max-width: 42ch; margin-top: 7px; color: var(--label-secondary); font-size: .82rem; line-height: 1.48; }
 .ios-primary-button, .ios-secondary-button { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 8px; cursor: pointer; border: 0; border-radius: 12px; padding: 0 16px; font: inherit; font-size: .82rem; font-weight: 750; }
