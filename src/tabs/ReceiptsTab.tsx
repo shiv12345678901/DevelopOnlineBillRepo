@@ -48,7 +48,7 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
       const name = receipt.payer.trim();
       if (name) names.set(name.toLocaleLowerCase(), name);
     });
-    return Array.from(names, ([key, name]) => ({ key, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(names, ([key, name]) => ({ key, name, label: name.split(/\s+/)[0] })).sort((a, b) => a.name.localeCompare(b.name));
   }, [receipts]);
   const filteredReceipts = useMemo(() => {
     const filtered = receipts.filter((receipt) => {
@@ -192,7 +192,7 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
       </div>
       <div className="member-filter-pills" role="tablist" aria-label="Filter receipts by member">
         <button className={memberFilter === "all" ? "active" : ""} type="button" role="tab" aria-selected={memberFilter === "all"} onClick={() => setMemberFilter("all")}>All</button>
-        {members.map((member) => <button className={memberFilter === member.key ? "active" : ""} type="button" role="tab" aria-selected={memberFilter === member.key} onClick={() => setMemberFilter(member.key)} key={member.key}>{member.name}</button>)}
+        {members.map((member) => <button className={memberFilter === member.key ? "active" : ""} type="button" role="tab" aria-label={`Filter receipts paid by ${member.name}`} aria-selected={memberFilter === member.key} onClick={() => setMemberFilter(member.key)} key={member.key}>{member.label}</button>)}
       </div>
 
       {!visibleReceipts.length ? <div className="empty-state"><AppIcon name={hasPurchaseFilters ? "search" : "docText"} /><h3>{hasPurchaseFilters ? "No matching receipts" : "No purchases yet"}</h3><p>{hasPurchaseFilters ? "Try clearing the search and filters." : "New purchases will appear here after the next successful WhatsApp sync."}</p>{hasPurchaseFilters && <button className="empty-state-action" type="button" onClick={clearPurchaseFilters}>Clear filters</button>}</div> : showGroups ? <div className="receipt-groups">

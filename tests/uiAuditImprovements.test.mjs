@@ -42,6 +42,9 @@ test("Receipts filters purchases by member instead of category", () => {
   assert.match(receiptsSource, /aria-label="Filter receipts by member"/);
   assert.match(receiptsSource, /receipt\.payer\.trim\(\)\.toLocaleLowerCase\(\) === memberFilter/);
   assert.match(receiptsSource, /members\.map\(\(member\) =>/);
+  assert.match(receiptsSource, /label: name\.split\(\/\\s\+\/\)\[0\]/);
+  assert.match(receiptsSource, /aria-label=\{`Filter receipts paid by \$\{member\.name\}`\}/);
+  assert.match(receiptsSource, />\{member\.label\}<\/button>/);
   assert.doesNotMatch(receiptsSource, /categoryFilter|Filter by category|category-tabs/);
   assert.match(cssSource, /\.member-filter-pills/);
 });
