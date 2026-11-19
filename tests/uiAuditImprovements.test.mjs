@@ -1,0 +1,53 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const [appSource, cssSource, homeSource, receiptsSource, spendingSource, historySource] = await Promise.all([
+  readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/index.css", import.meta.url), "utf8"),
+  readFile(new URL("../src/tabs/HomeTab.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/tabs/ReceiptsTab.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/tabs/MySpendingTab.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/tabs/HistoryTab.tsx", import.meta.url), "utf8"),
+]);
+
+test("semantic secondary text colors meet the reviewed contrast floor", () => {
+  assert.match(cssSource, /--label-tertiary: rgba\(235, 235, 245, 0\.56\)/);
+  assert.match(cssSource, /--label-secondary: rgba\(60, 60, 67, 0\.74\)/);
+  assert.match(cssSource, /--label-tertiary: rgba\(60, 60, 67, 0\.74\)/);
+});
+
+test("mobile interface text never drops below eleven CSS pixels", () => {
+  const remSizes = [...cssSource.matchAll(/font-size:\s*(?:0)?(\.[0-9]+)rem/g)].map((match) => Number(match[1]));
+  assert.ok(remSizes.length > 0);
+  assert.ok(remSizes.every((size) => size >= 0.6875), `Found undersized rem value: ${Math.min(...remSizes)}`);
+});
+
+test("the Home header wraps instead of truncating scaled text", () => {
+  assert.match(cssSource, /\.home-header \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto/);
+  assert.match(cssSource, /\.home-header \.large-title \{[^}]*overflow-wrap: anywhere/);
+  assert.match(cssSource, /@media \(max-width: 480px\)[\s\S]*\.home-header \.large-title \{[^}]*white-space: normal/);
+  assert.doesNotMatch(cssSource, /\.home-header \.large-title \{[^}]*text-overflow: ellipsis/);
+});
+
+test("Receipts separates purchases, transfers and review content", () => {
+  assert.match(receiptsSource, /options=\{\["Purchases", "Transfers", "Review"\]\}/);
+  assert.match(receiptsSource, /section === "purchases"/);
+  assert.match(receiptsSource, /section === "transfers"/);
+  assert.match(receiptsSource, /section === "review"/);
+  assert.match(receiptsSource, />Clear filters</);
+});
+
+test("empty states explain how content will become available", () => {
+  assert.match(receiptsSource, /New purchases will appear here after the next successful WhatsApp sync/);
+  assert.match(receiptsSource, /Nothing needs review/);
+  assert.match(spendingSource, /Receipts matched to your profile will appear here after the next successful sync/);
+  assert.match(historySource, /Completed billing cycles will appear here after the first verified clearance rollover/);
+});
+
+test("Home displays the freshness of its financial data", () => {
+  assert.match(appSource, /lastCompletedSyncAt=\{lastCompletedSyncAt\}/);
+  assert.match(homeSource, /lastCompletedSyncAt \|\| currentPeriod\?\.last_scanned_at/);
+  assert.match(homeSource, /formatRelativeTime\(freshnessTimestamp, freshnessNow\)/);
+  assert.match(homeSource, /<time dateTime=\{freshnessTimestamp\}>Updated \{freshnessText\}<\/time>/);
+});

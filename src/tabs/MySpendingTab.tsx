@@ -4,6 +4,7 @@ import { Calculator, ReceiptText, Tags, TrendingUp } from "lucide-react";
 import { GlassSegmented } from "@zakisheriff/liquid-glass";
 import { fmt, type Receipt, type Settlement } from "../api";
 import { MerchantIcon } from "../components/MerchantIcon";
+import { AppIcon } from "../components/AppIcon";
 import { formatDate } from "../components/format";
 import { payerMatchesUser } from "../payerMatching";
 
@@ -114,7 +115,7 @@ export function MySpendingTab({
             </div>
           </div>
         ) : (
-          <div className="empty-state compact-empty">No receipts paid by you in this settlement.</div>
+          <div className="empty-state compact-empty"><AppIcon name="chart" /><h3>No personal spending yet</h3><p>Receipts matched to your profile will appear here after the next successful sync.</p></div>
         )}
       </section>
 
@@ -137,7 +138,7 @@ export function MySpendingTab({
             ))}
           </ul>
         ) : (
-          <div className="empty-state compact-empty">No receipts yet.</div>
+          <div className="empty-state compact-empty"><AppIcon name="docText" /><h3>No personal receipts yet</h3><p>Purchases paid by you will appear here when they are matched to this settlement.</p></div>
         )}
       </section>
     </div>

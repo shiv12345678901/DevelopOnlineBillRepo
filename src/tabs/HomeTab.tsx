@@ -12,7 +12,7 @@ import {
   type SettlementCyclePreview,
 } from "../api";
 import { ProfileAvatar } from "../components/ProfileAvatar";
-import { formatDate } from "../components/format";
+import { formatDate, formatRelativeTime } from "../components/format";
 import { cycleStatusFor, cycleStatusLabel, type CycleStatus } from "../cycleStatus";
 import { hasReviewedPaymentObligations, provisionalShareDifference } from "../settlementLifecycle";
 import { summarizeTransferEvidence } from "../settlementMatching";
@@ -60,6 +60,7 @@ export function HomeTab({
   period,
   memberAvatarUrls = {},
   user,
+  lastCompletedSyncAt,
   onOpenHistory,
 }: {
   settlement: Settlement | null;
@@ -67,12 +68,19 @@ export function HomeTab({
   period?: Period;
   memberAvatarUrls?: Record<string, string>;
   user: User;
+  lastCompletedSyncAt: string | null;
   onOpenHistory: () => void;
 }) {
   const currentPeriod = period || periods.find((candidate) => candidate.id === settlement?.period_id) || periods.find((candidate) => candidate.status === "CURRENT") || periods[0];
   const [membershipPreview, setMembershipPreview] = useState<SettlementCyclePreview | null>(null);
   const [membershipLoading, setMembershipLoading] = useState(false);
   const [membershipError, setMembershipError] = useState(false);
+  const [freshnessNow, setFreshnessNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setFreshnessNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +121,8 @@ export function HomeTab({
     .filter((member) => member.participation_mode !== "disabled")
     .sort((left, right) => memberOrder(left.member_name) - memberOrder(right.member_name));
   const cycleStatus = currentPeriod ? cycleStatusFor(currentPeriod) : "ACTIVE";
+  const freshnessTimestamp = lastCompletedSyncAt || currentPeriod?.last_scanned_at || null;
+  const freshnessText = freshnessTimestamp ? formatRelativeTime(freshnessTimestamp, freshnessNow) : null;
   const membershipFinancialsUnavailable = MEMBERSHIP_FEATURE_ENABLED && !currentMembershipPreview;
   const totalCents = membershipFinancialsUnavailable ? null : currentMembershipPreview?.total_cents ?? settlement?.total_cents ?? currentPeriod?.total_cents ?? 0;
   const perPersonCents = membershipFinancialsUnavailable ? null : currentMembershipPreview?.equal_share_cents ?? settlement?.per_person_cents ?? currentPeriod?.per_person_cents ?? 0;
@@ -151,6 +161,12 @@ export function HomeTab({
           <div>
             <p className="summary-label" id="balance-heading">{cycleStatus === "ACTIVE" ? "Estimated equal share" : cycleStatus === "SETTLED" ? "Final equal share" : "Calculated equal share"}</p>
             <span className={`summary-status cycle-badge--${cycleStatus.toLocaleLowerCase()}`}>{cycleStatusLabel(cycleStatus)}</span>
+            <span className="home-freshness" role="status">
+              <Clock3 aria-hidden="true" />
+              {freshnessTimestamp && freshnessText
+                ? <time dateTime={freshnessTimestamp}>Updated {freshnessText}</time>
+                : <span>Update time unavailable</span>}
+            </span>
           </div>
           <span className="home-summary-icon" aria-hidden="true"><WalletCards /></span>
         </div>

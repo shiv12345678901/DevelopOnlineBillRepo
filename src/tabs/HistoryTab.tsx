@@ -4,7 +4,7 @@ import { CalendarRange } from "lucide-react";
 import { cycleStatusFor, cycleStatusLabel } from "../cycleStatus";
 
 export function HistoryTab({ periods }: { periods: Period[] }) {
-  if (!periods.length) return <div className="empty">No past periods.</div>;
+  if (!periods.length) return <div className="empty-state"><CalendarRange aria-hidden="true" /><h3>No settlement history yet</h3><p>Completed billing cycles will appear here after the first verified clearance rollover.</p></div>;
   return (
     <div className="screen screen--history">
       <header className="page-header">

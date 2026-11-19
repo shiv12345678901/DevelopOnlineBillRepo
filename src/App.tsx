@@ -553,7 +553,7 @@ export default function App() {
   ) : (
     <>
       <div className="tab-panel" hidden={tab !== "home"}>
-        <HomeTab settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => pushPage({ id: "history" })} />
+        <HomeTab settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} user={session.user} lastCompletedSyncAt={lastCompletedSyncAt} onOpenHistory={() => pushPage({ id: "history" })} />
       </div>
       {mountedTabsRef.current.has("receipts") && (
         <div className="tab-panel" hidden={tab !== "receipts"}>
