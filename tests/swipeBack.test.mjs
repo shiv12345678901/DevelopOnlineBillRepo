@@ -105,6 +105,8 @@ test("back navigation restores scroll after layout but before the revealed page 
   const helperStart = navigationSource.indexOf("const showPreviousPage");
   const helperSource = navigationSource.slice(helperStart, navigationSource.indexOf("}, [marker]);", helperStart));
   assert.ok(helperSource.indexOf("restoreScrollRef.current = restoredScrollY") < helperSource.indexOf("setPages(nextPages)"));
+  assert.match(navigationSource, /import \{ flushSync \} from "react-dom"/);
+  assert.match(helperSource, /flushSync\(\(\) => \{[\s\S]*setPages\(nextPages\)/);
   assert.match(navigationSource, /useLayoutEffect\(\(\) => \{[\s\S]*window\.scrollTo\(\{ top: restoreScrollRef\.current, behavior: "instant" \}\)/);
   assert.doesNotMatch(navigationSource, /requestAnimationFrame\(\(\) => window\.scrollTo/);
 });

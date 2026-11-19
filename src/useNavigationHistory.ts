@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { EvidenceDetails } from "./components/EvidenceViewer";
 import type { TabId } from "./components/TabBar";
 import { closeTopNavigationOverlay } from "./navigationOverlays";
@@ -61,12 +62,23 @@ export function useNavigationHistory(initialTab: TabId = "home") {
     // flow, but before the browser paints it. Restoring against the outgoing
     // page can clamp the saved position to the wrong document height.
     restoreScrollRef.current = restoredScrollY;
-    pagesRef.current = nextPages;
-    setPages(nextPages);
-    if (!nextPages.length && pendingTab) {
-      pendingTabRef.current = null;
-      tabRef.current = pendingTab;
-      setTabState(pendingTab);
+    const returningToTab = !nextPages.length && pendingTab;
+    if (returningToTab) pendingTabRef.current = null;
+
+    // A completed interactive swipe has already moved the outgoing page fully
+    // offscreen. Commit the page removal and scroll restoration together so
+    // the browser cannot paint an intermediate frame at the root page's old
+    // scroll position before the layout effect runs.
+    flushSync(() => {
+      pagesRef.current = nextPages;
+      setPages(nextPages);
+      if (returningToTab) {
+        tabRef.current = pendingTab;
+        setTabState(pendingTab);
+      }
+    });
+
+    if (returningToTab) {
       window.history.replaceState(marker(0, pendingTab), "", window.location.href);
       focusActiveHeading();
       return;
