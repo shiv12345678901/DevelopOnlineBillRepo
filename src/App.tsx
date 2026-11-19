@@ -71,6 +71,7 @@ export default function App() {
   const refreshLatestCompletedSyncRef = useRef<() => Promise<void>>(async () => undefined);
   const previousTabRef = useRef<TabId>(tab);
   const refreshGenerationRef = useRef(0);
+  const hasLoadedDataRef = useRef(false);
   const syncPendingSinceRef = useRef<number | null>(null);
   const lastHandledCompletedSyncIdRef = useRef<string | null>(null);
   const completedSyncCheckInFlightRef = useRef(false);
@@ -114,12 +115,13 @@ export default function App() {
   useEffect(() => {
     if (!session) {
       refreshGenerationRef.current += 1;
+      hasLoadedDataRef.current = false;
       setLoading(false);
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
+    if (!hasLoadedDataRef.current) setLoading(true);
     refreshData()
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -165,6 +167,7 @@ export default function App() {
         : [null, [] as Receipt[]];
 
       if (generation !== refreshGenerationRef.current) return;
+      hasLoadedDataRef.current = true;
       setPeriods(nextPeriods);
       setSettlement(nextSettlement);
       setReceipts(nextReceipts);
@@ -179,7 +182,7 @@ export default function App() {
   }
 
   async function retryDataLoad() {
-    setLoading(true);
+    if (!hasLoadedDataRef.current) setLoading(true);
     await refreshData();
     setLoading(false);
   }
@@ -547,7 +550,9 @@ export default function App() {
     </div>
   ) : (
     <>
-      {tab === "home" && <HomeTab settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => pushPage({ id: "history" })} />}
+      <div hidden={tab !== "home"}>
+        <HomeTab settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => pushPage({ id: "history" })} />
+      </div>
       {tab === "receipts" && <ReceiptsTab receipts={receipts} periodId={displayedPeriod?.id ?? null} settlementCalculatedAt={settlement?.calculated_at} onOpenEvidence={(evidence) => pushPage({ id: "evidence", evidence })} />}
       {tab === "spending" && <MySpendingTab receipts={receipts} settlement={settlement} user={session.user} />}
       {tab === "settings" && (
@@ -592,7 +597,7 @@ export default function App() {
         </div>
       )}
 
-      <main key={tab} className="tab-enter">
+      <main className="tab-enter">
         <SwipeBackContainer canGoBack={canGoBack} onBack={goBack} page={pushedPage}>
           {basePage}
         </SwipeBackContainer>

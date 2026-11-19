@@ -76,7 +76,6 @@ export function HomeTab({
 
   useEffect(() => {
     let cancelled = false;
-    setMembershipPreview(null);
     setMembershipError(false);
     if (!MEMBERSHIP_FEATURE_ENABLED || !currentPeriod?.id) {
       setMembershipLoading(false);
@@ -108,15 +107,16 @@ export function HomeTab({
     return () => { cancelled = true; };
   }, [currentPeriod?.id, settlement?.calculated_at]);
 
+  const currentMembershipPreview = membershipPreview?.period_id === currentPeriod?.id ? membershipPreview : null;
   const legacyMembers = Object.entries(settlement?.member_totals || {}).sort(([left], [right]) => memberOrder(left) - memberOrder(right));
-  const participatingMembers = membershipPreview?.members
+  const participatingMembers = currentMembershipPreview?.members
     .filter((member) => member.participation_mode !== "disabled")
     .sort((left, right) => memberOrder(left.member_name) - memberOrder(right.member_name));
   const cycleStatus = currentPeriod ? cycleStatusFor(currentPeriod) : "ACTIVE";
-  const membershipFinancialsUnavailable = MEMBERSHIP_FEATURE_ENABLED && !membershipPreview;
-  const totalCents = membershipFinancialsUnavailable ? null : membershipPreview?.total_cents ?? settlement?.total_cents ?? currentPeriod?.total_cents ?? 0;
-  const perPersonCents = membershipFinancialsUnavailable ? null : membershipPreview?.equal_share_cents ?? settlement?.per_person_cents ?? currentPeriod?.per_person_cents ?? 0;
-  const receiptCount = membershipFinancialsUnavailable ? null : membershipPreview?.receipt_count ?? settlement?.receipt_count ?? currentPeriod?.receipt_count ?? 0;
+  const membershipFinancialsUnavailable = MEMBERSHIP_FEATURE_ENABLED && !currentMembershipPreview;
+  const totalCents = membershipFinancialsUnavailable ? null : currentMembershipPreview?.total_cents ?? settlement?.total_cents ?? currentPeriod?.total_cents ?? 0;
+  const perPersonCents = membershipFinancialsUnavailable ? null : currentMembershipPreview?.equal_share_cents ?? settlement?.per_person_cents ?? currentPeriod?.per_person_cents ?? 0;
+  const receiptCount = membershipFinancialsUnavailable ? null : currentMembershipPreview?.receipt_count ?? settlement?.receipt_count ?? currentPeriod?.receipt_count ?? 0;
   const evidence = useTransferEvidence(currentPeriod?.id || null, settlement?.calculated_at);
   const evidenceSummary = summarizeTransferEvidence(evidence.bankReceipts);
   const whatsAppEvidenceSummary = evidence.whatsAppBankEvidence.reduce((summary, item) => {
@@ -166,9 +166,9 @@ export function HomeTab({
           <h2 id="members-heading">Paid so far</h2>
           <span>{participatingMembers ? `${participatingMembers.length} people` : `${legacyMembers.length} people`}</span>
         </div>
-        {MEMBERSHIP_FEATURE_ENABLED && membershipLoading ? (
+        {MEMBERSHIP_FEATURE_ENABLED && membershipLoading && !currentMembershipPreview ? (
           <div className="empty-state compact-empty" role="status">Updating settlement members…</div>
-        ) : MEMBERSHIP_FEATURE_ENABLED && membershipError ? (
+        ) : MEMBERSHIP_FEATURE_ENABLED && membershipError && !currentMembershipPreview ? (
           <div className="empty-state compact-empty" role="alert">Membership totals are unavailable. Refresh before relying on this calculation.</div>
         ) : participatingMembers ? (participatingMembers.length ? <ul className="grouped-list member-list">
         {participatingMembers.map((member, i) => (

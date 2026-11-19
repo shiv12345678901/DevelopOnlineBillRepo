@@ -48,6 +48,19 @@ test("opening Receipts refreshes in the background without replacing the page", 
   assert.doesNotMatch(effect, /setLoading/);
 });
 
+test("Home stays mounted across tab switches and refreshes values in place", async () => {
+  const [appSource, homeSource] = await Promise.all([
+    readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/tabs/HomeTab.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(appSource, /<div hidden=\{tab !== "home"\}>\s*<HomeTab/);
+  assert.doesNotMatch(appSource, /<main key=\{tab\}/);
+  assert.match(appSource, /if \(!hasLoadedDataRef\.current\) setLoading\(true\)/);
+  assert.doesNotMatch(homeSource, /setMembershipPreview\(null\)/);
+  assert.match(homeSource, /membershipLoading && !currentMembershipPreview/);
+  assert.match(homeSource, /membershipError && !currentMembershipPreview/);
+});
+
 test("History can always return Home through the selected bottom-nav item", async () => {
   const source = await readFile(new URL("../src/components/TabBar.tsx", import.meta.url), "utf8");
   assert.match(source, /if \(tab !== "history"\) return/);

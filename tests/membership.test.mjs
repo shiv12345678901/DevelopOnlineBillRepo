@@ -106,9 +106,9 @@ test("ordinary pages rely on restrictive receipt RLS and exclude disabled member
   assert.match(app, /fetchReceiptsForPeriod\(targetPeriod\.id\)/);
   assert.match(api, /fetchReceiptsForPeriod[\s\S]*?\.from\("receipts"\)[\s\S]*?\.eq\("period_id", periodId\)/);
   assert.match(home, /filter\(\(member\) => member\.participation_mode !== "disabled"\)/);
-  assert.match(home, /membershipPreview\?\.total_cents/);
-  assert.match(home, /membershipPreview\?\.equal_share_cents/);
-  assert.match(home, /membershipPreview\?\.receipt_count/);
+  assert.match(home, /currentMembershipPreview\?\.total_cents/);
+  assert.match(home, /currentMembershipPreview\?\.equal_share_cents/);
+  assert.match(home, /currentMembershipPreview\?\.receipt_count/);
 });
 
 test("successful changes refresh financial and receipt state before reloading membership", async () => {
