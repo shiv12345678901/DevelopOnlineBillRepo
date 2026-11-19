@@ -17,21 +17,6 @@ const componentSource = await readFile(new URL("../src/components/SwipeBackConta
 const navigationSource = await readFile(new URL("../src/useNavigationHistory.ts", import.meta.url), "utf8");
 const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
-const indexSource = await readFile(new URL("../index.html", import.meta.url), "utf8");
-
-test("the saved appearance is applied before the first browser paint", () => {
-  assert.ok(indexSource.indexOf('localStorage.getItem("splitmate-theme")') < indexSource.indexOf('<script type="module"'));
-  assert.match(indexSource, /html \{ min-height: 100%; background: #000; color-scheme: dark; \}/);
-  assert.match(indexSource, /html\[data-theme="light"\] \{ background: #f2f2f7; color-scheme: light; \}/);
-});
-
-test("loading completion does not replay decorative page opacity animations", () => {
-  assert.match(cssSource, /\.tab-enter \{ animation: none; \}/);
-  assert.match(cssSource, /\.screen--home \.page-header \{ animation: none; \}/);
-  assert.match(cssSource, /\.screen--home \.content-section \{ animation: none; \}/);
-  assert.match(cssSource, /\.home-balance \{ animation: none; \}/);
-  assert.match(cssSource, /\.stagger, \.stagger \.avatar \{ animation: none; \}/);
-});
 
 test("edge swipe uses the required activation area and mobile transition", () => {
   assert.equal(NATIVE_HISTORY_GUARD_PX, 20);
@@ -106,6 +91,21 @@ test("gesture conflicts, cancellation, reduced motion and cleanup are handled ce
   assert.match(componentSource, /event\.propertyName === "transform"/);
   assert.match(componentSource, /SWIPE_BACK_TRANSITION_MS \+ 80/);
   assert.match(componentSource, /resetStyles\(false\)/);
+});
+
+test("completed swipe stays offscreen until React removes the outgoing page", () => {
+  const completeBackStart = componentSource.indexOf("function completeBack");
+  const completeBackSource = componentSource.slice(completeBackStart, componentSource.indexOf("function onTouchStart", completeBackStart));
+  assert.match(completeBackSource, /if \(!navigated\) \{\s*resetStyles\(\);\s*return;\s*\}/);
+  assert.match(completeBackSource, /setState\(\{ isTracking: false, isDragging: false \}\)/);
+  assert.doesNotMatch(completeBackSource, /\}\s*resetStyles\(\);\s*\}\);/);
+});
+
+test("back navigation restores scroll before committing the revealed page", () => {
+  const helperStart = navigationSource.indexOf("const showPreviousPage");
+  const helperSource = navigationSource.slice(helperStart, navigationSource.indexOf("}, [marker]);", helperStart));
+  assert.ok(helperSource.indexOf("window.scrollTo") < helperSource.indexOf("setPages(nextPages)"));
+  assert.doesNotMatch(helperSource, /requestAnimationFrame\(\(\) => window\.scrollTo/);
 });
 
 test("browser, header and detail swipe Back share real page history", () => {

@@ -120,7 +120,10 @@ export function useSwipeBack({ canGoBack, onBack, pageRef, underlayRef, dimRef }
         resetStyles();
         return;
       }
-      resetStyles();
+      // Keep the completed page translated offscreen until React commits the
+      // navigation and removes it. Clearing the transform here can expose the
+      // outgoing page for one frame after the swipe finishes.
+      setState({ isTracking: false, isDragging: false });
     });
   }
 

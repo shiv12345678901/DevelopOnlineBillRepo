@@ -45,19 +45,25 @@ export function useNavigationHistory(initialTab: TabId = "home") {
   const showPreviousPage = useCallback((currentPages: NavigationPage[]) => {
     const leaving = currentPages[currentPages.length - 1];
     const nextPages = currentPages.slice(0, -1);
+    const pendingTab = pendingTabRef.current;
+    const restoredScrollY = !nextPages.length && pendingTab
+      ? tabScrollRef.current.get(pendingTab) || 0
+      : leaving.scrollY;
+
+    // Restore the revealed page before React removes the outgoing page. A
+    // requestAnimationFrame here paints the old scroll position once first,
+    // which appears as a flash at the end of an interactive swipe.
+    window.scrollTo({ top: restoredScrollY, behavior: "instant" });
     pagesRef.current = nextPages;
     setPages(nextPages);
-    const pendingTab = pendingTabRef.current;
     if (!nextPages.length && pendingTab) {
       pendingTabRef.current = null;
       tabRef.current = pendingTab;
       setTabState(pendingTab);
       window.history.replaceState(marker(0, pendingTab), "", window.location.href);
-      window.requestAnimationFrame(() => window.scrollTo({ top: tabScrollRef.current.get(pendingTab) || 0, behavior: "instant" }));
       focusActiveHeading();
       return;
     }
-    window.requestAnimationFrame(() => window.scrollTo({ top: leaving.scrollY, behavior: "instant" }));
     focusActiveHeading();
   }, [marker]);
 
