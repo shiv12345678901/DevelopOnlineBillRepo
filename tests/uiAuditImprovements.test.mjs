@@ -65,14 +65,14 @@ test("Home displays the freshness of its financial data", () => {
   assert.match(cssSource, /\.home-summary-meta \{[^}]*justify-items: end/);
 });
 
-test("older-period confirmation uses a single native-style sheet surface", () => {
-  assert.match(appSource, /className="period-confirm-toolbar"/);
-  assert.match(appSource, />Cancel<\/button>/);
-  assert.match(appSource, /className="period-confirm-primary"[^>]*>View<\/button>/);
+test("older-period confirmation uses the opaque iOS confirmation sheet", () => {
+  assert.match(appSource, /<IosSheet open=\{Boolean\(pendingPeriodId\)\}/);
+  assert.match(appSource, /className="period-confirm-modal" overlayPriority=\{OVERLAY_PRIORITY\.confirmation\}/);
   assert.match(appSource, /className="period-confirm-icon"[^>]*><CalendarClock \/>/);
-  assert.doesNotMatch(appSource, /liquid-confirm-sheet|<GlassButton/);
-  assert.match(cssSource, /\.lg-sheet\.lg-glass:has\(\.period-confirm-sheet\) \{[^}]*margin-bottom: 0;[^}]*border-radius: 28px 28px 0 0/);
-  assert.match(cssSource, /\.lg-sheet__content:has\(> \.period-confirm-sheet\) \{ padding: 0; \}/);
-  assert.match(cssSource, /\.period-confirm-toolbar \{[^}]*border-bottom: 1px solid var\(--separator\)/);
-  assert.match(cssSource, /\.period-confirm-content \{[^}]*padding: 26px 24px max\(30px, env\(safe-area-inset-bottom\)\)/);
+  assert.match(appSource, /className="ios-secondary-button"/);
+  assert.match(appSource, />Cancel<\/button>/);
+  assert.match(appSource, /className="ios-primary-button"[^>]*>View Period<\/button>/);
+  assert.doesNotMatch(appSource, /GlassSheet|period-confirm-toolbar|lg-sheet/);
+  assert.match(cssSource, /\.period-confirm-modal \{ background: var\(--surface\); \}/);
+  assert.match(cssSource, /\.period-confirm \{[^}]*padding: 4px 22px max\(24px, env\(safe-area-inset-bottom\)\)/);
 });

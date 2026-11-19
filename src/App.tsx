@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { GlassSheet } from "@zakisheriff/liquid-glass";
 import { CalendarClock } from "lucide-react";
 import {
   fetchSettlementForPeriod, fetchReceiptsForPeriod, fetchPeriods, supabase,
@@ -17,6 +16,7 @@ import { MySpendingTab } from "./tabs/MySpendingTab";
 import { HomeSkeleton } from "./components/HomeSkeleton";
 import { EvidenceDetailPage } from "./components/EvidenceViewer";
 import { SwipeBackContainer } from "./components/SwipeBackContainer";
+import { IosSheet } from "./components/IosSheet";
 import { useNavigationHistory } from "./useNavigationHistory";
 import { OVERLAY_PRIORITY, registerNavigationOverlay } from "./navigationOverlays";
 import type { Theme } from "./theme";
@@ -617,20 +617,17 @@ export default function App() {
       </main>
 
       <TabBar tab={activePage?.id === "history" ? "history" : tab} setTab={selectTab} />
-      <GlassSheet open={Boolean(pendingPeriodId)} onClose={() => setPendingPeriodId(null)} intensity={6} aria-label="Load older settlement">
-          <section className="period-confirm-sheet" aria-labelledby="period-confirm-title">
-            <header className="period-confirm-toolbar">
-              <button type="button" onClick={() => setPendingPeriodId(null)}>Cancel</button>
-              <h2 id="period-confirm-title">View Period</h2>
-              <button className="period-confirm-primary" type="button" onClick={confirmPeriodChange}>View</button>
-            </header>
-            <div className="period-confirm-content">
-              <span className="period-confirm-icon" aria-hidden="true"><CalendarClock /></span>
-              <h3>View older settlement?</h3>
-              <p>Home, Receipts, and Spending will show this settlement period. You can return to the current period from Settings.</p>
+      <IosSheet open={Boolean(pendingPeriodId)} onClose={() => setPendingPeriodId(null)} label="View older settlement" className="period-confirm-modal" overlayPriority={OVERLAY_PRIORITY.confirmation}>
+          <section className="period-confirm" aria-labelledby="period-confirm-title">
+            <span className="period-confirm-icon" aria-hidden="true"><CalendarClock /></span>
+            <h2 id="period-confirm-title">View older settlement?</h2>
+            <p>Home, Receipts, and Spending will show this settlement period. You can return to the current period from Settings.</p>
+            <div className="confirm-actions">
+              <button className="ios-secondary-button" type="button" onClick={() => setPendingPeriodId(null)}>Cancel</button>
+              <button className="ios-primary-button" type="button" onClick={confirmPeriodChange}>View Period</button>
             </div>
           </section>
-      </GlassSheet>
+      </IosSheet>
     </div>
   );
 }
