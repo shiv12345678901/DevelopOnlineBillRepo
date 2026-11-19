@@ -38,6 +38,14 @@ test("Receipts keeps its continuous list and provides filter recovery", () => {
   assert.match(receiptsSource, />Clear filters</);
 });
 
+test("Receipts filters purchases by member instead of category", () => {
+  assert.match(receiptsSource, /aria-label="Filter receipts by member"/);
+  assert.match(receiptsSource, /receipt\.payer\.trim\(\)\.toLocaleLowerCase\(\) === memberFilter/);
+  assert.match(receiptsSource, /members\.map\(\(member\) =>/);
+  assert.doesNotMatch(receiptsSource, /categoryFilter|Filter by category|category-tabs/);
+  assert.match(cssSource, /\.member-filter-pills/);
+});
+
 test("empty states explain how content will become available", () => {
   assert.match(receiptsSource, /New purchases will appear here after the next successful WhatsApp sync/);
   assert.match(spendingSource, /Receipts matched to your profile will appear here after the next successful sync/);

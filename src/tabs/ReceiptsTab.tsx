@@ -35,19 +35,26 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
   onOpenEvidence: (evidence: EvidenceDetails) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [memberFilter, setMemberFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("newest");
   const [disabledReceipts, setDisabledReceipts] = useState<Receipt[]>([]);
   const [disabledReceiptsError, setDisabledReceiptsError] = useState("");
   const transferEvidence = useTransferEvidence(periodId, settlementCalculatedAt);
   const visibleBankReceipts = transferEvidence.bankReceipts.filter((receipt) => transferEvidenceState(receipt) !== "pending");
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const categories = useMemo(() => Array.from(new Set(receipts.map((receipt) => receipt.category).filter(Boolean))).sort(), [receipts]);
+  const members = useMemo(() => {
+    const names = new Map<string, string>();
+    receipts.forEach((receipt) => {
+      const name = receipt.payer.trim();
+      if (name) names.set(name.toLocaleLowerCase(), name);
+    });
+    return Array.from(names, ([key, name]) => ({ key, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [receipts]);
   const filteredReceipts = useMemo(() => {
     const filtered = receipts.filter((receipt) => {
-      const matchesCategory = categoryFilter === "all" || receipt.category === categoryFilter;
+      const matchesMember = memberFilter === "all" || receipt.payer.trim().toLocaleLowerCase() === memberFilter;
       const matchesQuery = !normalizedQuery || [receipt.merchant, receipt.payer, receipt.category, receipt.date].some((value) => value?.toLocaleLowerCase().includes(normalizedQuery));
-      return matchesCategory && matchesQuery;
+      return matchesMember && matchesQuery;
     });
     return [...filtered].sort((a, b) => {
       if (sortOrder === "oldest") return a.date.localeCompare(b.date);
@@ -55,10 +62,10 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
       if (sortOrder === "amount-low") return a.amount_cents - b.amount_cents;
       return b.date.localeCompare(a.date);
     });
-  }, [categoryFilter, normalizedQuery, receipts, sortOrder]);
-  const showGroups = !normalizedQuery && categoryFilter === "all" && sortOrder === "newest";
+  }, [memberFilter, normalizedQuery, receipts, sortOrder]);
+  const showGroups = !normalizedQuery && memberFilter === "all" && sortOrder === "newest";
   const visibleReceipts = filteredReceipts;
-  const hasPurchaseFilters = Boolean(normalizedQuery) || categoryFilter !== "all" || sortOrder !== "newest";
+  const hasPurchaseFilters = Boolean(normalizedQuery) || memberFilter !== "all" || sortOrder !== "newest";
   const receiptsByDate = visibleReceipts.reduce<Map<string, Receipt[]>>((groups, receipt) => {
     const group = groups.get(receipt.date) || [];
     group.push(receipt);
@@ -68,13 +75,13 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
 
   useEffect(() => {
     setQuery("");
-    setCategoryFilter("all");
+    setMemberFilter("all");
     setSortOrder("newest");
   }, [periodId]);
 
   function clearPurchaseFilters() {
     setQuery("");
-    setCategoryFilter("all");
+    setMemberFilter("all");
     setSortOrder("newest");
   }
 
@@ -172,7 +179,7 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
 
       <div className="search-controls receipt-purchase-controls">
         <GlassInput className="search-field liquid-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} onClear={() => setQuery("")} placeholder="Search receipts" autoComplete="off" enterKeyHint="search" aria-label="Search receipts" intensity={5} />
-        <label className={`filter-button native-filter${categoryFilter !== "all" || sortOrder !== "newest" ? " active" : ""}`}>
+        <label className={`filter-button native-filter${memberFilter !== "all" || sortOrder !== "newest" ? " active" : ""}`}>
           <SlidersHorizontal aria-hidden="true" />
           <span className="visually-hidden">Sort receipts</span>
           <select aria-label="Sort receipts" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}>
@@ -183,9 +190,9 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
           </select>
         </label>
       </div>
-      <div className="category-tabs" role="tablist" aria-label="Filter by category">
-        <button className={categoryFilter === "all" ? "active" : ""} type="button" role="tab" aria-selected={categoryFilter === "all"} onClick={() => setCategoryFilter("all")}>All</button>
-        {categories.map((category) => <button className={categoryFilter === category ? "active" : ""} type="button" role="tab" aria-selected={categoryFilter === category} onClick={() => setCategoryFilter(category)} key={category}>{category}</button>)}
+      <div className="member-filter-pills" role="tablist" aria-label="Filter receipts by member">
+        <button className={memberFilter === "all" ? "active" : ""} type="button" role="tab" aria-selected={memberFilter === "all"} onClick={() => setMemberFilter("all")}>All</button>
+        {members.map((member) => <button className={memberFilter === member.key ? "active" : ""} type="button" role="tab" aria-selected={memberFilter === member.key} onClick={() => setMemberFilter(member.key)} key={member.key}>{member.name}</button>)}
       </div>
 
       {!visibleReceipts.length ? <div className="empty-state"><AppIcon name={hasPurchaseFilters ? "search" : "docText"} /><h3>{hasPurchaseFilters ? "No matching receipts" : "No purchases yet"}</h3><p>{hasPurchaseFilters ? "Try clearing the search and filters." : "New purchases will appear here after the next successful WhatsApp sync."}</p>{hasPurchaseFilters && <button className="empty-state-action" type="button" onClick={clearPurchaseFilters}>Clear filters</button>}</div> : showGroups ? <div className="receipt-groups">

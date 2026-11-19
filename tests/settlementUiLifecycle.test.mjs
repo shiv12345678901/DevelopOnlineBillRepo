@@ -73,7 +73,7 @@ test("visited top-level tabs stay mounted and update their contents in place", a
   }
   assert.doesNotMatch(appSource, /\{tab === "receipts" && <ReceiptsTab/);
   assert.doesNotMatch(appSource, /\{tab === "spending" && <MySpendingTab/);
-  assert.match(receiptsSource, /setQuery\(""\);[\s\S]*setCategoryFilter\("all"\);[\s\S]*setSortOrder\("newest"\);[\s\S]*\[periodId\]/);
+  assert.match(receiptsSource, /setQuery\(""\);[\s\S]*setMemberFilter\("all"\);[\s\S]*setSortOrder\("newest"\);[\s\S]*\[periodId\]/);
 });
 
 test("History can always return Home through the selected bottom-nav item", async () => {

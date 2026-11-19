@@ -926,10 +926,10 @@ main {
 .filter-dropdown button { min-height: 36px; padding: 0 10px; cursor: pointer; border: 0; border-radius: 10px; background: transparent; color: var(--label-secondary); font: inherit; font-size: .8rem; font-weight: 600; text-align: left; }
 .filter-dropdown button:hover, .filter-dropdown button.active { background: var(--accent-soft); color: var(--accent); }
 @keyframes filterDropdownIn { from { opacity: 0; transform: translateY(-5px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-.category-tabs { display: flex; gap: 7px; overflow-x: auto; margin-top: 10px; margin-bottom: 7px; padding: 1px 1px 4px; scrollbar-width: none; }
-.category-tabs::-webkit-scrollbar { display: none; }
-.category-tabs button { flex: 0 0 auto; min-height: 32px; padding: 0 12px; cursor: pointer; border: 1px solid var(--separator); border-radius: 999px; background: var(--surface); color: var(--label-secondary); font: inherit; font-size: .75rem; font-weight: 650; transition: background-color .18s ease, color .18s ease, border-color .18s ease; }
-.category-tabs button.active { border-color: var(--accent); background: var(--accent); color: #fff; }
+.member-filter-pills { display: flex; gap: 7px; overflow-x: auto; margin-top: 10px; margin-bottom: 7px; padding: 1px 1px 4px; scrollbar-width: none; }
+.member-filter-pills::-webkit-scrollbar { display: none; }
+.member-filter-pills button { flex: 0 0 auto; min-height: 32px; padding: 0 12px; cursor: pointer; border: 1px solid var(--separator); border-radius: 999px; background: var(--surface); color: var(--label-secondary); font: inherit; font-size: .75rem; font-weight: 650; transition: background-color .18s ease, color .18s ease, border-color .18s ease; }
+.member-filter-pills button.active { border-color: var(--accent); background: var(--accent); color: #fff; }
 .settle-summary { animation-delay: 0ms; }
 .settle-summary { padding-bottom: 17px; }
 .simple-settle-summary .summary-caption { position: relative; z-index: 1; margin-top: 2px; color: var(--label-secondary); font-size: .76rem; }
