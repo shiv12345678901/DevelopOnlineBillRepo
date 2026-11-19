@@ -53,12 +53,27 @@ test("Home stays mounted across tab switches and refreshes values in place", asy
     readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/tabs/HomeTab.tsx", import.meta.url), "utf8"),
   ]);
-  assert.match(appSource, /<div hidden=\{tab !== "home"\}>\s*<HomeTab/);
+  assert.match(appSource, /<div className="tab-panel" hidden=\{tab !== "home"\}>\s*<HomeTab/);
   assert.doesNotMatch(appSource, /<main key=\{tab\}/);
   assert.match(appSource, /if \(!hasLoadedDataRef\.current\) setLoading\(true\)/);
   assert.doesNotMatch(homeSource, /setMembershipPreview\(null\)/);
   assert.match(homeSource, /membershipLoading && !currentMembershipPreview/);
   assert.match(homeSource, /membershipError && !currentMembershipPreview/);
+});
+
+test("visited top-level tabs stay mounted and update their contents in place", async () => {
+  const [appSource, receiptsSource] = await Promise.all([
+    readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/tabs/ReceiptsTab.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(appSource, /mountedTabsRef = useRef\(new Set<TabId>\(\["home"\]\)\)/);
+  assert.match(appSource, /mountedTabsRef\.current\.add\(tab\)/);
+  for (const tab of ["receipts", "spending", "settings"]) {
+    assert.match(appSource, new RegExp(`mountedTabsRef\\.current\\.has\\("${tab}"\\)[\\s\\S]*?hidden=\\{tab !== "${tab}"\\}`));
+  }
+  assert.doesNotMatch(appSource, /\{tab === "receipts" && <ReceiptsTab/);
+  assert.doesNotMatch(appSource, /\{tab === "spending" && <MySpendingTab/);
+  assert.match(receiptsSource, /setQuery\(""\);[\s\S]*setCategoryFilter\("all"\);[\s\S]*setSortOrder\("newest"\);[\s\S]*\[periodId\]/);
 });
 
 test("History can always return Home through the selected bottom-nav item", async () => {

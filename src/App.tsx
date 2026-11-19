@@ -76,6 +76,8 @@ export default function App() {
   const lastHandledCompletedSyncIdRef = useRef<string | null>(null);
   const completedSyncCheckInFlightRef = useRef(false);
   const completedSyncGenerationRef = useRef(0);
+  const mountedTabsRef = useRef(new Set<TabId>(["home"]));
+  mountedTabsRef.current.add(tab);
 
   // Theme → <html data-theme>, persisted
   useLayoutEffect(() => {
@@ -550,29 +552,39 @@ export default function App() {
     </div>
   ) : (
     <>
-      <div hidden={tab !== "home"}>
+      <div className="tab-panel" hidden={tab !== "home"}>
         <HomeTab settlement={settlement} periods={periods} period={displayedPeriod} memberAvatarUrls={memberAvatarUrls} user={session.user} onOpenHistory={() => pushPage({ id: "history" })} />
       </div>
-      {tab === "receipts" && <ReceiptsTab receipts={receipts} periodId={displayedPeriod?.id ?? null} settlementCalculatedAt={settlement?.calculated_at} onOpenEvidence={(evidence) => pushPage({ id: "evidence", evidence })} />}
-      {tab === "spending" && <MySpendingTab receipts={receipts} settlement={settlement} user={session.user} />}
-      {tab === "settings" && (
-        <SettingsTab
-          theme={theme}
-          setTheme={setTheme}
-          periods={periods}
-          selectedPeriodId={selectedPeriodId || periods.find((period) => period.status === "CURRENT")?.id || ""}
-          onPeriodChange={handlePeriodChange}
-          onSyncNow={handleSyncNow}
-          syncState={syncState}
-          lastCompletedSyncAt={lastCompletedSyncAt}
-          online={online}
-          memberAvatarUrls={memberAvatarUrls}
-          onMembershipChanged={refreshData}
-          user={session.user}
-          avatarUrl={avatarUrl}
-          onAvatarUrlChange={setAvatarUrl}
-          onUserUpdated={handleUserUpdated}
-        />
+      {mountedTabsRef.current.has("receipts") && (
+        <div className="tab-panel" hidden={tab !== "receipts"}>
+          <ReceiptsTab receipts={receipts} periodId={displayedPeriod?.id ?? null} settlementCalculatedAt={settlement?.calculated_at} onOpenEvidence={(evidence) => pushPage({ id: "evidence", evidence })} />
+        </div>
+      )}
+      {mountedTabsRef.current.has("spending") && (
+        <div className="tab-panel" hidden={tab !== "spending"}>
+          <MySpendingTab receipts={receipts} settlement={settlement} user={session.user} />
+        </div>
+      )}
+      {mountedTabsRef.current.has("settings") && (
+        <div className="tab-panel" hidden={tab !== "settings"}>
+          <SettingsTab
+            theme={theme}
+            setTheme={setTheme}
+            periods={periods}
+            selectedPeriodId={selectedPeriodId || periods.find((period) => period.status === "CURRENT")?.id || ""}
+            onPeriodChange={handlePeriodChange}
+            onSyncNow={handleSyncNow}
+            syncState={syncState}
+            lastCompletedSyncAt={lastCompletedSyncAt}
+            online={online}
+            memberAvatarUrls={memberAvatarUrls}
+            onMembershipChanged={refreshData}
+            user={session.user}
+            avatarUrl={avatarUrl}
+            onAvatarUrlChange={setAvatarUrl}
+            onUserUpdated={handleUserUpdated}
+          />
+        </div>
       )}
     </>
   );

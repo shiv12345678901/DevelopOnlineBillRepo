@@ -66,6 +66,12 @@ export function ReceiptsTab({ receipts, periodId, settlementCalculatedAt, onOpen
   }, new Map());
 
   useEffect(() => {
+    setQuery("");
+    setCategoryFilter("all");
+    setSortOrder("newest");
+  }, [periodId]);
+
+  useEffect(() => {
     let cancelled = false;
     setDisabledReceipts([]);
     setDisabledReceiptsError("");
